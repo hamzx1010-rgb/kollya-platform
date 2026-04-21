@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>كلية — لوحة الإدارة</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #080806;
+      --bg2: #0c0c09;
+      --bg3: #11110e;
+      --gold: #c9a84c;
+      --gold-light: #e8c97a;
+      --gold-dim: #7a6230;
+      --gold-faint: rgba(201,168,76,0.07);
+      --cream: #f5f0e8;
+      --cream-dim: #9a9488;
+      --border: rgba(201,168,76,0.1);
+      --red: #c94c4c;
+      --green: #4ca87a;
+      --blue: #4c7ac9;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--cream);
+      font-family: 'Amiri', serif;
+      min-height: 100vh;
+      display: flex;
+    }
+
+    .admin-sidebar {
+      width: 240px;
+      background: var(--bg2);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; right: 0;
+      height: 100vh;
+      z-index: 100;
+    }
+    .admin-logo {
+      padding: 28px 24px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .admin-logo-text {
+      font-family: 'Scheherazade New', serif;
+      font-size: 1.8rem;
+      color: var(--gold);
+      text-shadow: 0 0 20px rgba(201,168,76,0.3);
+      display: block;
+    }
+    .admin-logo-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--gold-dim);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .admin-nav { flex: 1; padding: 16px 0; overflow-y: auto; }
+    .admin-nav::-webkit-scrollbar { width: 0; }
+    .admin-nav-section {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.52rem;
+      color: var(--gold-dim);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 12px 24px 6px;
+    }
+    .admin-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 24px;
+      color: var(--cream-dim);
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-right: 3px solid transparent;
+      text-decoration: none;
+    }
+    .admin-nav-item:hover { color: var(--cream); background: var(--gold-faint); }
+    .admin-nav-item.active { color: var(--gold); border-right-color: var(--gold); background: var(--gold-faint); }
+    .admin-nav-icon { width: 20px; text-align: center; font-size: 1rem; }
+    .admin-nav-badge {
+      margin-right: auto;
+      background: var(--red);
+      color: white;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.5rem;
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+
+    .admin-footer {
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+    }
+    .admin-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .admin-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--bg);
+      font-size: 0.8rem;
+    }
+
+    .admin-main {
+      margin-right: 240px;
+      flex: 1;
+      min-height: 100vh;
+      padding: 32px;
+      overflow-y: auto;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+    }
+    .page-title {
+      font-family: 'Scheherazade New', serif;
+      font-size: 2rem;
+      color: var(--cream);
+    }
+    .page-subtitle {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--cream-dim);
+      letter-spacing: 0.1em;
+      margin-top: 4px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 24px;
+      text-align: center;
+    }
+    .stat-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 2rem;
+      color: var(--gold);
+      margin-bottom: 8px;
+    }
+    .stat-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--cream-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .table {
+      width: 100%;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-collapse: collapse;
+      margin-bottom: 24px;
+    }
+    .table th {
+      background: var(--bg3);
+      padding: 16px;
+      text-align: right;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--gold);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    .table td {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .table tr:hover {
+      background: var(--gold-faint);
+    }
+
+    .btn {
+      background: var(--gold);
+      color: var(--bg);
+      border: none;
+      padding: 8px 16px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .btn:hover { background: var(--gold-light); }
+    .btn-danger {
+      background: var(--red);
+      color: white;
+    }
+    .btn-danger:hover { background: #e05c7a; }
+    .btn-success {
+      background: var(--green);
+      color: white;
+    }
+    .btn-success:hover { background: #5cb88a; }
+    .btn-small {
+      padding: 4px 12px;
+      font-size: 0.6rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      border-radius: 2px;
+    }
+    .badge-green {
+      background: rgba(76, 168, 122, 0.2);
+      color: var(--green);
+    }
+    .badge-red {
+      background: rgba(201, 76, 76, 0.2);
+      color: var(--red);
+    }
+
+    .post-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .post-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .post-card-author {
+      font-family: 'Scheherazade New', serif;
+      color: var(--cream);
+    }
+    .post-card-content {
+      color: var(--cream-dim);
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .post-card-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 28px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-title {
+      font-family: 'Scheherazade New', serif;
+      font-size: 1.3rem;
+      color: var(--cream);
+      margin-bottom: 16px;
+    }
+    .modal-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: none;
+      border: none;
+      color: var(--cream-dim);
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+    .modal-close:hover { color: var(--gold); }
+
+    .logout-btn {
+      width: 100%;
+      background: var(--red);
+      color: white;
+      border: none;
+      padding: 10px;
+      cursor: pointer;
+      font-family: 'Amiri', serif;
+      margin-top: 16px;
+    }
+    .logout-btn:hover { background: #e05c7a; }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--cream-dim);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--gold-dim);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .admin-sidebar {
+        width: 200px;
+      }
+      .admin-main {
+        margin-right: 200px;
+        padding: 16px;
+      }
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="admin-sidebar">
+  <div class="admin-logo">
+    <span class="admin-logo-text">🛡️ الإدارة</span>
+    <span class="admin-logo-label">Admin Panel</span>
+  </div>
+
+  <div class="admin-nav">
+    <div class="admin-nav-section">القوائم</div>
+    <div class="admin-nav-item active" onclick="switchView('dashboard')">
+      <span class="admin-nav-icon">📊</span>
+      <span>لوحة البيانات</span>
+    </div>
+    <div class="admin-nav-item" onclick="switchView('users')">
+      <span class="admin-nav-icon">👥</span>
+      <span>المستخدمون</span>
+      <span class="admin-nav-badge" id="usersBadge" style="display: none;">0</span>
+    </div>
+    <div class="admin-nav-item" onclick="switchView('posts')">
+      <span class="admin-nav-icon">📝</span>
+      <span>المنشورات</span>
+      <span class="admin-nav-badge" id="postsBadge" style="display: none;">0</span>
+    </div>
+    <div class="admin-nav-item" onclick="switchView('pending')">
+      <span class="admin-nav-icon">⏳</span>
+      <span>المنشورات المعلقة</span>
+      <span class="admin-nav-badge" id="pendingBadge">0</span>
+    </div>
+  </div>
+
+  <div class="admin-footer">
+    <div class="admin-user">
+      <div class="admin-avatar" id="adminAvatar">أ</div>
+      <div>
+        <div style="font-family: 'Scheherazade New', serif; font-size: 0.9rem;">مدير</div>
+        <div style="font-family: 'Space Mono', monospace; font-size: 0.55rem; color: var(--gold-dim);">ADMIN</div>
+      </div>
+    </div>
+    <button class="logout-btn" onclick="logout()">تسجيل الخروج</button>
+  </div>
+</div>
+
+<div class="admin-main">
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboardView" class="view active">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">لوحة البيانات</h1>
+        <p class="page-subtitle">الإحصائيات والمراقبة</p>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="totalUsers">0</div>
+        <div class="stat-label">إجمالي المستخدمين</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalPosts">0</div>
+        <div class="stat-label">إجمالي المنشورات</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalComments">0</div>
+        <div class="stat-label">إجمالي التعليقات</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="bannedUsers">0</div>
+        <div class="stat-label">المحظورون</div>
+      </div>
+    </div>
+
+    <h2 style="margin-bottom: 16px; font-size: 1.2rem;">النشاط الأخير</h2>
+    <div id="recentActivity" style="background: var(--bg2); border: 1px solid var(--border); padding: 20px;">
+      <p style="color: var(--cream-dim);">جاري تحميل البيانات...</p>
+    </div>
+  </div>
+
+  <!-- USERS VIEW -->
+  <div id="usersView" class="view">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">المستخدمون</h1>
+        <p class="page-subtitle">إدارة حسابات المستخدمين</p>
+      </div>
+    </div>
+
+    <table class="table">
+      <thead>
+        <tr>
+          <th>اسم المستخدم</th>
+          <th>الاسم الكامل</th>
+          <th>المنشورات</th>
+          <th>التاريخ</th>
+          <th>الحالة</th>
+          <th>الإجراءات</th>
+        </tr>
+      </thead>
+      <tbody id="usersTableBody">
+        <tr><td colspan="6" style="text-align: center; color: var(--cream-dim);">جاري التحميل...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- POSTS VIEW -->
+  <div id="postsView" class="view">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">المنشورات</h1>
+        <p class="page-subtitle">مراجعة وإدارة المنشورات</p>
+      </div>
+    </div>
+
+    <div id="postsContainer"></div>
+  </div>
+
+  <!-- PENDING POSTS VIEW -->
+  <div id="pendingView" class="view">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">المنشورات المعلقة</h1>
+        <p class="page-subtitle">المنشورات بانتظار الموافقة</p>
+      </div>
+    </div>
+
+    <div id="pendingContainer"></div>
+  </div>
+
+</div>
+
+<!-- USER DETAILS MODAL -->
+<div id="userModal" class="modal" onclick="if(event.target === this) this.classList.remove('active')">
+  <div class="modal-content">
+    <button class="modal-close" onclick="document.getElementById('userModal').classList.remove('active')">×</button>
+    <h2 class="modal-title" id="modalUserName">اسم المستخدم</h2>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="padding: 12px; background: var(--bg3); border: 1px solid var(--border);">
+        <div style="margin-bottom: 8px;"><strong>اسم المستخدم:</strong> <span id="modalUsername">-</span></div>
+        <div style="margin-bottom: 8px;"><strong>تاريخ التسجيل:</strong> <span id="modalJoinDate">-</span></div>
+        <div><strong>المنشورات:</strong> <span id="modalUserPostCount">0</span></div>
+      </div>
+      <div id="userActionButtons"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentUser = null;
+
+// ==================== AUTH ====================
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/me');
+    const data = await res.json();
+    
+    if (!data.user || !data.user.isAdmin) {
+      window.location.href = '/';
+      return;
+    }
+    
+    currentUser = data.user;
+    document.getElementById('adminAvatar').textContent = currentUser.avatar;
+    loadStats();
+    loadUsers();
+    loadPosts();
+    loadPendingPosts();
+  } catch (e) {
+    window.location.href = '/';
+  }
+}
+
+function logout() {
+  fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
+
+// ==================== VIEW SWITCHING ====================
+function switchView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(view + 'View').classList.add('active');
+  
+  document.querySelectorAll('.admin-nav-item').forEach(item => item.classList.remove('active'));
+  event.target.closest('.admin-nav-item')?.classList.add('active');
+  
+  if (view === 'users') loadUsers();
+  else if (view === 'posts') loadPosts();
+  else if (view === 'pending') loadPendingPosts();
+}
+
+// ==================== STATS ====================
+async function loadStats() {
+  try {
+    const res = await fetch('/api/admin/stats');
+    const data = await res.json();
+    
+    if (data.success) {
+      document.getElementById('totalUsers').textContent = data.stats.totalUsers;
+      document.getElementById('totalPosts').textContent = data.stats.totalPosts;
+      document.getElementById('totalComments').textContent = data.stats.totalComments;
+      document.getElementById('bannedUsers').textContent = data.stats.bannedUsers;
+    }
+  } catch (e) {
+    console.error('Error loading stats:', e);
+  }
+}
+
+// ==================== USERS ====================
+async function loadUsers() {
+  const tbody = document.getElementById('usersTableBody');
+  tbody.innerHTML = '<tr><td colspan="6" class="loading"><div class="spinner"></div></td></tr>';
+  
+  try {
+    const res = await fetch('/api/admin/users');
+    const data = await res.json();
+    
+    if (!data.users) return;
+    
+    tbody.innerHTML = '';
+    data.users.forEach(user => {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><strong>${user.username}</strong></td>
+        <td>${user.fullName}</td>
+        <td>${user.postCount}</td>
+        <td style="font-size: 0.8rem;">${new Date(user.createdAt).toLocaleDateString('ar')}</td>
+        <td>
+          <span class="badge ${user.isBanned ? 'badge-red' : 'badge-green'}">
+            ${user.isBanned ? '🚫 محظور' : '✓ نشط'}
+          </span>
+        </td>
+        <td>
+          <button class="btn btn-small btn-${user.isBanned ? 'success' : 'danger'}" onclick="toggleBanUser('${user.id}')">
+            ${user.isBanned ? '✓ فك الحظر' : '🚫 حظر'}
+          </button>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color: #e05c7a;">خطأ في التحميل</td></tr>';
+  }
+}
+
+async function toggleBanUser(userId) {
+  try {
+    const res = await fetch('/api/admin/ban-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    });
+    
+    const data = await res.json();
+    if (data.success) {
+      loadUsers();
+      loadStats();
+    }
+  } catch (e) {
+    alert('خطأ');
+  }
+}
+
+// ==================== POSTS ====================
+async function loadPosts() {
+  const container = document.getElementById('postsContainer');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  
+  try {
+    const res = await fetch('/api/posts?channel=الرسائل');
+    const data = await res.json();
+    
+    container.innerHTML = '';
+    if (data.posts.length === 0) {
+      container.innerHTML = '<p style="text-align: center; padding: 40px;">لا توجد منشورات</p>';
+      return;
+    }
+    
+    data.posts.forEach(post => {
+      const div = document.createElement('div');
+      div.className = 'post-card';
+      div.innerHTML = `
+        <div class="post-card-header">
+          <div>
+            <div class="post-card-author">${post.fullName}</div>
+            <div style="font-size: 0.8rem; color: var(--cream-dim);">@${post.username}</div>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--cream-dim);">${new Date(post.timestamp).toLocaleString('ar')}</div>
+        </div>
+        <div class="post-card-content">${post.content}</div>
+        ${post.image ? `<img src="${post.image}" style="width: 100%; max-height: 200px; object-fit: cover; margin-bottom: 12px;">` : ''}
+        <div class="post-card-actions">
+          <button class="btn btn-danger btn-small" onclick="deletePost('${post.id}')">🗑️ حذف</button>
+          <button class="btn btn-small" onclick="viewPostDetails('${post.id}')" style="background: var(--blue);">👁️ عرض</button>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  } catch (e) {
+    container.innerHTML = '<p style="color: #e05c7a;">خطأ في التحميل</p>';
+  }
+}
+
+// ==================== PENDING POSTS ====================
+async function loadPendingPosts() {
+  const container = document.getElementById('pendingContainer');
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  
+  try {
+    const res = await fetch('/api/admin/pending-posts');
+    const data = await res.json();
+    
+    container.innerHTML = '';
+    if (!data.posts || data.posts.length === 0) {
+      container.innerHTML = '<p style="text-align: center; padding: 40px;">لا توجد منشورات معلقة ✓</p>';
+      document.getElementById('pendingBadge').style.display = 'none';
+      return;
+    }
+    
+    document.getElementById('pendingBadge').textContent = data.posts.length;
+    
+    data.posts.forEach(post => {
+      const div = document.createElement('div');
+      div.className = 'post-card';
+      div.style.borderLeftColor = 'var(--gold)';
+      div.style.borderLeftWidth = '3px';
+      div.innerHTML = `
+        <div class="post-card-header">
+          <div>
+            <div class="post-card-author">${post.fullName}</div>
+            <div style="font-size: 0.8rem; color: var(--cream-dim);">@${post.username}</div>
+          </div>
+          <span class="badge" style="background: var(--gold-faint); color: var(--gold);">⏳ معلقة</span>
+        </div>
+        <div class="post-card-content">${post.content}</div>
+        ${post.image ? `<img src="${post.image}" style="width: 100%; max-height: 200px; object-fit: cover; margin-bottom: 12px;">` : ''}
+        <div class="post-card-actions">
+          <button class="btn btn-success btn-small" onclick="approvePost('${post.id}')">✓ موافقة</button>
+          <button class="btn btn-danger btn-small" onclick="deletePost('${post.id}')">🗑️ رفض</button>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  } catch (e) {
+    container.innerHTML = '<p style="color: #e05c7a;">خطأ في التحميل</p>';
+  }
+}
+
+async function approvePost(postId) {
+  try {
+    const res = await fetch('/api/admin/approve-post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId })
+    });
+    
+    const data = await res.json();
+    if (data.success) {
+      loadPendingPosts();
+      loadPosts();
+      loadStats();
+    }
+  } catch (e) {
+    alert('خطأ');
+  }
+}
+
+async function deletePost(postId) {
+  if (!confirm('هل تريد حذف هذا المنشور نهائياً؟')) return;
+  
+  try {
+    const res = await fetch('/api/admin/delete-post', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId })
+    });
+    
+    const data = await res.json();
+    if (data.success) {
+      loadPendingPosts();
+      loadPosts();
+      loadStats();
+    }
+  } catch (e) {
+    alert('خطأ');
+  }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', checkAuth);
+</script>
+
+</body>
+</html>

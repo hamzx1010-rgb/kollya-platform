@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>كلية — تسجيل الدخول</title>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0a08;
+      --bg2: #0e0e0b;
+      --bg3: #131310;
+      --gold: #c9a84c;
+      --gold-light: #e8c97a;
+      --gold-dim: #7a6230;
+      --gold-faint: rgba(201,168,76,0.08);
+      --cream: #f5f0e8;
+      --cream-dim: #9a9488;
+      --border: rgba(201,168,76,0.12);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--cream);
+      font-family: 'Amiri', serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.25;
+    }
+
+    .login-wrap {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .logo {
+      font-family: 'Scheherazade New', serif;
+      font-size: 3rem;
+      color: var(--gold);
+      text-align: center;
+      text-shadow: 0 0 40px rgba(201,168,76,0.25);
+      margin-bottom: 8px;
+      display: block;
+    }
+    .logo-sub {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--gold-dim);
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 32px 28px;
+    }
+
+    .step { display: none; }
+    .step.active { display: block; }
+
+    .step-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--gold-dim);
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .step-title {
+      font-family: 'Scheherazade New', serif;
+      font-size: 1.5rem;
+      color: var(--cream);
+      margin-bottom: 6px;
+    }
+    .step-desc {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--cream-dim);
+      line-height: 1.7;
+      letter-spacing: 0.03em;
+      margin-bottom: 28px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+    .field label {
+      display: block;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--gold-dim);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .field input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--cream);
+      padding: 12px 16px;
+      font-family: 'Amiri', serif;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      text-align: right;
+      border-radius: 0;
+    }
+    .field input:focus { border-color: var(--gold); }
+    .field input::placeholder { color: var(--cream-dim); opacity: 0.4; }
+
+    .hint {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.5rem;
+      color: var(--cream-dim);
+      letter-spacing: 0.05em;
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    .btn-primary {
+      width: 100%;
+      background: var(--gold);
+      color: var(--bg);
+      border: none;
+      padding: 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      margin-top: 8px;
+    }
+    .btn-primary:hover { background: var(--gold-light); }
+    .btn-primary:active { transform: translateY(1px); }
+
+    .error-msg {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      color: #e05c7a;
+      letter-spacing: 0.05em;
+      margin-top: 10px;
+      display: none;
+      text-align: center;
+    }
+    .error-msg.show { display: block; }
+
+    .success-check {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .check-circle {
+      width: 56px;
+      height: 56px;
+      background: rgba(201,168,76,0.1);
+      border: 2px solid var(--gold);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 1.5rem;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 24px 0;
+    }
+
+    .progress {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 28px;
+    }
+    .progress-dot {
+      height: 3px;
+      flex: 1;
+      background: var(--border);
+      border-radius: 2px;
+      transition: background 0.3s;
+    }
+    .progress-dot.done { background: var(--gold); }
+    .progress-dot.active { background: var(--gold-dim); }
+
+    .toggle-form {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.9rem;
+      color: var(--cream-dim);
+    }
+
+    .toggle-form button {
+      background: none;
+      border: none;
+      color: var(--gold);
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 0.9rem;
+    }
+
+    .toggle-form button:hover { color: var(--gold-light); }
+  </style>
+</head>
+<body>
+
+<div class="login-wrap">
+  <span class="logo">كلية</span>
+  <div class="logo-sub">الشبكة الجامعية الخاصة</div>
+
+  <div class="card">
+
+    <!-- LOGIN FORM -->
+    <div class="step active" id="loginStep">
+      <div class="step-label">تسجيل الدخول</div>
+      <div class="step-title">اهلاً وسهلاً بعودتك</div>
+      <div class="step-desc">أدخل بيانات حسابك للدخول</div>
+
+      <div class="field">
+        <label>اسم المستخدم</label>
+        <input type="text" id="loginUsername" placeholder="اسم المستخدم الخاص بك" />
+      </div>
+
+      <div class="field">
+        <label>كلمة السر</label>
+        <input type="password" id="loginPassword" placeholder="كلمة السر الخاصة بك" />
+      </div>
+
+      <div class="error-msg" id="loginErr"></div>
+      <button class="btn-primary" onclick="login()">دخول</button>
+
+      <div class="toggle-form">
+        <span>ليس لديك حساب؟</span>
+        <button onclick="toggleForm()">سجل الآن</button>
+      </div>
+    </div>
+
+    <!-- REGISTER FORM -->
+    <div class="step" id="registerStep">
+      <div class="progress">
+        <div class="progress-dot active"></div>
+        <div class="progress-dot"></div>
+      </div>
+      <div class="step-label">التسجيل - الخطوة 1</div>
+      <div class="step-title">تحقق من هويتك</div>
+      <div class="step-desc">أدخل بيانات البطاقة الجامعية</div>
+
+      <div class="field">
+        <label>رقم بطاقة الطالب</label>
+        <input type="text" id="carteInput" placeholder="مثال: 202312345" maxlength="12" />
+        <div class="hint">رقم موجود على بطاقة الطالب الخاصة بك</div>
+      </div>
+
+      <div class="field">
+        <label>كلمة سر البكالوريا</label>
+        <input type="password" id="bacInput" placeholder="كلمة السر المستخدمة في bac.onec.dz" />
+        <div class="hint">نفس كلمة السر التي استعملتها لرؤية نتائج البكالوريا</div>
+      </div>
+
+      <div class="error-msg" id="err1"></div>
+      <button class="btn-primary" onclick="goStep2()">التحقق والمتابعة</button>
+
+      <div class="toggle-form">
+        <button onclick="toggleForm()">لديك حساب بالفعل؟ دخول</button>
+      </div>
+    </div>
+
+    <!-- REGISTER STEP 2 -->
+    <div class="step" id="registerStep2">
+      <div class="progress">
+        <div class="progress-dot done"></div>
+        <div class="progress-dot active"></div>
+      </div>
+      <div class="success-check">
+        <div class="check-circle">✓</div>
+      </div>
+      <div class="step-label">التسجيل - الخطوة 2</div>
+      <div class="step-title">أنشئ حسابك</div>
+      <div class="step-desc">اختر اسم مستخدم وكلمة سر خاصة بك</div>
+
+      <div class="field">
+        <label>الاسم الكامل</label>
+        <input type="text" id="nameInput" placeholder="الاسم واللقب" />
+      </div>
+
+      <div class="field">
+        <label>اسم المستخدم</label>
+        <input type="text" id="usernameInput" placeholder="مثال: hamza_dz" maxlength="20" />
+        <div class="hint">حروف، أرقام، شرطة سفلية فقط — بدون مسافات</div>
+      </div>
+
+      <div class="field">
+        <label>كلمة سر جديدة</label>
+        <input type="password" id="passInput" placeholder="8 أحرف على الأقل" />
+      </div>
+
+      <div class="field">
+        <label>تأكيد كلمة السر</label>
+        <input type="password" id="confirmInput" placeholder="أعد كتابة كلمة السر" />
+      </div>
+
+      <div class="error-msg" id="err2"></div>
+      <button class="btn-primary" onclick="register()">إنشاء الحساب والدخول</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  async function login() {
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const err = document.getElementById('loginErr');
+
+    if (!username || !password) {
+      err.textContent = 'أكمل جميع الحقول';
+      err.classList.add('show');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        window.location.href = '/';
+      } else {
+        err.textContent = data.message || 'بيانات دخول غير صحيحة';
+        err.classList.add('show');
+      }
+    } catch (e) {
+      err.textContent = 'خطأ في الاتصال';
+      err.classList.add('show');
+    }
+  }
+
+  function toggleForm() {
+    document.getElementById('loginStep').classList.toggle('active');
+    document.getElementById('registerStep').classList.toggle('active');
+  }
+
+  function goStep2() {
+    const carte = document.getElementById('carteInput').value.trim();
+    const bac = document.getElementById('bacInput').value.trim();
+    const err = document.getElementById('err1');
+
+    if (carte.length < 6 || bac.length < 4) {
+      err.textContent = 'رقم البطاقة أو كلمة السر غير صحيحة';
+      err.classList.add('show');
+      return;
+    }
+    err.classList.remove('show');
+
+    document.getElementById('registerStep').classList.remove('active');
+    document.getElementById('registerStep2').classList.add('active');
+  }
+
+  async function register() {
+    const name = document.getElementById('nameInput').value.trim();
+    const username = document.getElementById('usernameInput').value.trim();
+    const pass = document.getElementById('passInput').value;
+    const confirm = document.getElementById('confirmInput').value;
+    const carte = document.getElementById('carteInput').value.trim();
+    const bac = document.getElementById('bacInput').value.trim();
+    const err = document.getElementById('err2');
+
+    if (!name || !username || pass.length < 8) {
+      err.textContent = 'أكمل جميع الحقول (كلمة السر 8 أحرف على الأقل)';
+      err.classList.add('show');
+      return;
+    }
+    if (pass !== confirm) {
+      err.textContent = 'كلمتا السر غير متطابقتين';
+      err.classList.add('show');
+      return;
+    }
+    err.classList.remove('show');
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: name,
+          username,
+          password: pass,
+          carte,
+          bac
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        window.location.href = '/';
+      } else {
+        err.textContent = data.message || 'خطأ في التسجيل';
+        err.classList.add('show');
+      }
+    } catch (e) {
+      err.textContent = 'خطأ في الاتصال';
+      err.classList.add('show');
+    }
+  }
+</script>
+</body>
+</html>
