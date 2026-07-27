@@ -36,23 +36,14 @@ let rows   = [];
    DATA
    ------------------------------------------------------------ */
 
-const SAMPLE = [
-  { id:'u5', username:'amina.z', full_name:'Amina Zerrouki', faculty:'Informatique', xp:812, streak:21 },
-  { id:'u2', username:'youssef', full_name:'Youssef Kader',  faculty:'Physique',     xp:640, streak:12 },
-  { id:'u6', username:'karim.d', full_name:'Karim Daoudi',   faculty:'Informatique', xp:455, streak:8  },
-  { id:'u1', username:'sara.b',  full_name:'Sara Benali',    faculty:'Informatique', xp:340, streak:7  },
-  { id:'u3', username:'leila',   full_name:'Leila Mansouri', faculty:'Biologie',     xp:295, streak:3  },
-  { id:'u4', username:'omar.k',  full_name:'Omar Kaci',      faculty:'Mathématiques',xp:180, streak:1  }
-];
-
 async function load() {
-  const list = api?.leaderboard ? await api.leaderboard({ scope, metric }) : SAMPLE;
+  const list = api?.leaderboard ? await api.leaderboard({ scope, metric }) : [];
   const mine = me.get();
 
-  let out = list.map(r => ({ ...r, isMe: r.id === mine?.id || r.username === mine?.username }));
-  if (scope === 'faculty' && mine?.faculty) {
-    out = out.filter(r => r.faculty === mine.faculty);
-  }
+  // The faculty filter is applied by the query, so nothing is thrown
+  // away here — a client-side filter would silently truncate the
+  // page-size-50 result set.
+  let out = list.map(r => ({ ...r, isMe: String(r.id) === String(mine?.id) }));
   out.sort((a, b) => (b[metric] || 0) - (a[metric] || 0));
 
   // dense ranking: equal scores share a place
@@ -80,7 +71,8 @@ function podium(top) {
       const lv = levelFromXp(r.xp || 0);
       return `<button class="lb-slot p${place}${r.isMe ? ' me' : ''}" data-user="${esc(r.username || '')}">
           ${place === 1 ? `<span class="lb-crown">${icon('trophy', { size: 18 })}</span>` : ''}
-          <span class="av lg" style="background:${avatarColor(r.id)}">${esc(initials(r.full_name))}</span>
+          <span class="av lg"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
+            r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</span>
           <span class="lb-medal">${place}</span>
           <span class="t-sm t-bold truncate">${esc((r.full_name || '').split(' ')[0])}</span>
           <span class="t-xs t-dim t-mono">${value(r)}</span>
@@ -95,7 +87,8 @@ function row(r) {
   const lv = levelFromXp(r.xp || 0);
   return `<button class="lb-row${r.isMe ? ' me' : ''}" data-user="${esc(r.username || '')}" data-rank="${r.rank}">
       <span class="lb-rank t-mono">${r.rank}</span>
-      <span class="av sm" style="background:${avatarColor(r.id)}">${esc(initials(r.full_name))}</span>
+      <span class="av sm"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
+        r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</span>
       <span class="grow" style="min-width:0;text-align:start">
         <span class="t-sm t-bold truncate" style="display:block">${esc(r.full_name)}${r.isMe ? ' <span class="pill" style="height:18px">vous</span>' : ''}</span>
         <span class="t-xs t-dim">${esc(r.faculty || '')} · Niv. ${lv.level}</span>

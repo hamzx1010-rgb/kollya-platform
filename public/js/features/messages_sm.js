@@ -24,6 +24,7 @@ import {
   onVisible, env, uid, safeUrl, cssEscape
 } from '../core/utils_sm.js';
 import { state, setState, me, draft, scoped, on as onEvent, emit } from '../core/store_sm.js';
+import { person, cachePeople } from '../core/people_sm.js';
 import { I, icon, reactionIcon, reactionLabel, REACTION_KEYS } from '../core/icons_sm.js';
 import {
   toast, contextMenu, reactionPicker, actionBar, lightbox,
@@ -54,94 +55,75 @@ let api = null;
 export function useApi(impl) { api = impl; }
 
 /* ------------------------------------------------------------
-   SAMPLE DATA  (removed when db_sm.js lands)
+   DATA ACCESS  — every call goes to Neon, nothing is invented here
    ------------------------------------------------------------ */
 
-const SAMPLE_PEERS = [
-  { id:'u2', username:'youssef', full_name:'Youssef Kader', faculty:'Physique', online:true },
-  { id:'u3', username:'leila',   full_name:'Leila Mansouri', faculty:'Biologie', online:false },
-  { id:'u4', username:'omar.k',  full_name:'Omar Kaci',      faculty:'Maths',    online:true }
-];
-
-function sampleData() {
-  const now = Date.now();
-  const myId = me.id || 'u1';
-  const m = (from, to, text, minsAgo, extra = {}) => ({
-    id: uid('m'), sender_id: from, receiver_id: to, text,
-    created_at: new Date(now - minsAgo * 60000).toISOString(),
-    reactions: {}, ...extra
-  });
-
-  const threads = {
-    u2: [
-      m('u2', myId, "Salut ! Tu as les notes du cours d'algo ?", 190),
-      m(myId, 'u2', 'Oui je les ai scannées hier', 186),
-      m(myId, 'u2', '', 185, {
-        media_type: 'image', media_name: 'notes-algo-1.jpg',
-        media_url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&q=70'
-      }),
-      m(myId, 'u2', 'Je te les envoie ce soir', 184, { reactions: { u2: 'like' } }),
-      m('u2', myId, 'Merci beaucoup, tu me sauves', 180, { seen_at: new Date().toISOString() }),
-      m('u2', myId, '', 172, {
-        media_type: 'file', media_name: 'TD3-corrige.pdf',
-        media_url: 'https://example.org/TD3-corrige.pdf'
-      }),
-      m(myId, 'u2', 'Regarde aussi https://openclassrooms.com/algo pour les tris', 168),
-      m('u2', myId, '', 90, { media_type: 'audio', media_duration: 14, media_url: '' }),
-      m('u2', myId, 'Tu viens à la révision demain ?', 42),
-      m(myId, 'u2', 'Oui, à quelle heure ?', 38, { seen_at: new Date().toISOString() }),
-      m('u2', myId, '14h en salle B12', 12, { reactions: { u1: 'love' } })
-    ],
-    u3: [
-      m('u3', myId, '', 1450, {
-        media_type: 'image', media_name: 'labo.jpg',
-        media_url: 'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=600&q=70'
-      }),
-      m('u3', myId, 'Le TP de bio est reporté à vendredi', 1440),
-      m(myId, 'u3', 'Bonne nouvelle, merci de prévenir', 1430)
-    ],
-    u4: [
-      m('u4', myId, 'Quelqu\'un a le corrigé de la série 3 ?', 60)
-    ]
-  };
-  return threads;
-}
-
-let SAMPLE = null;
-
-/* ------------------------------------------------------------
-   DATA ACCESS  — one seam, so swapping in Neon changes nothing else
-   ------------------------------------------------------------ */
+let pollTimer = 0;
 
 async function loadConversations() {
-  if (api?.listConversations) return api.listConversations();
-  SAMPLE ||= sampleData();
-  return SAMPLE_PEERS.map(p => {
-    const thread = SAMPLE[p.id] || [];
-    const last = thread[thread.length - 1];
-    return {
-      peer: p,
-      last,
-      unread: p.id === 'u4' ? 1 : 0
-    };
-  }).sort((a, b) => new Date(b.last?.created_at || 0) - new Date(a.last?.created_at || 0));
+  if (!api?.listConversations) return [];
+  const rows = await api.listConversations();
+  cachePeople(rows.map(r => r.peer));
+  return rows;
 }
 
 async function loadThread(peerId) {
-  if (api?.listMessages) return api.listMessages(peerId);
-  SAMPLE ||= sampleData();
-  return [...(SAMPLE[peerId] || [])];
+  if (!api?.listMessages) return [];
+  return api.listMessages(peerId);
 }
 
 async function sendMessage(payload) {
-  if (api?.sendMessage) return api.sendMessage(payload);
-  SAMPLE[payload.receiver_id] ||= [];
-  SAMPLE[payload.receiver_id].push(payload);
-  return payload;
+  if (!api?.sendMessage) throw new Error('Base de données non connectée');
+  return api.sendMessage(payload);
 }
 
 async function persistReaction(msgId, key) {
-  if (api?.react) return api.react(msgId, key);
+  if (!api?.react) throw new Error('Base de données non connectée');
+  return api.react(msgId, key);
+}
+
+/**
+ * Neon has no realtime channel, so the open conversation is polled.
+ * Slower when the tab is hidden, stopped when it is closed — a chat
+ * app that keeps hammering a database in a background tab is how you
+ * burn a free tier in a week.
+ */
+function startPolling() {
+  stopPolling();
+  const beat = async () => {
+    if (document.hidden || !peer || !api?.listMessages) return;
+    try {
+      const fresh = await api.listMessages(peer.id);
+      // only repaint when something actually changed
+      const changed = fresh.length !== msgs.length ||
+        fresh.some((m, i) => String(m.id) !== String(msgs[i]?.id) || m.seen_at !== msgs[i]?.seen_at);
+      if (changed) {
+        const stick = atBottom;
+        msgs = fresh;
+        renderThread({ keepScroll: !stick });
+      }
+      const typing = await api.isTyping?.(peer.id);
+      showTyping(!!typing);
+    } catch { /* a failed poll is not worth a toast */ }
+  };
+  pollTimer = setInterval(beat, document.hidden ? 20000 : 5000);
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = 0;
+}
+
+function showTyping(on) {
+  const body = $('#threadBody');
+  if (!body) return;
+  let node = $('#typingRow');
+  if (on && !node) {
+    body.insertAdjacentHTML('beforeend',
+      `<div class="bubble-row" id="typingRow"><div class="av sm" style="background:${avatarColor(peer.id)}">${esc(initials(peer.full_name))}</div>
+       <div class="typing"><i></i><i></i><i></i></div></div>`);
+    if (atBottom) scrollToBottom(false);
+  } else if (!on && node) node.remove();
 }
 
 /* ------------------------------------------------------------
@@ -163,11 +145,11 @@ function convRow(c) {
     onclick: () => openThread(p.id)
   });
 
-  const av = el('div', {
-    class: 'av',
-    'data-online': String(!!p.online),
-    style: { background: avatarColor(p.id) }
-  }, initials(p.full_name));
+  const av = p.avatar_url
+    ? el('div', { class: 'av', 'data-online': String(!!isOnline(p)),
+                  html: `<img src="${esc(safeUrl(p.avatar_url))}" alt="">` })
+    : el('div', { class: 'av', 'data-online': String(!!isOnline(p)),
+                  style: { background: avatarColor(p.id) } }, initials(p.full_name));
 
   node.append(av, el('div', { class: 'conv-body' },
     el('div', { class: 'conv-top' },
@@ -182,6 +164,12 @@ function convRow(c) {
   return node;
 }
 
+/** "Online" = seen in the last two minutes, from profiles.last_seen. */
+function isOnline(p) {
+  if (!p?.last_seen) return false;
+  return Date.now() - new Date(p.last_seen).getTime() < 120000;
+}
+
 const mediaLabel = t => ({
   image: 'Photo', video: 'Vidéo', audio: 'Message vocal', file: 'Fichier'
 }[t] || 'Pièce jointe');
@@ -190,14 +178,26 @@ async function renderConvList() {
   const box = $('#convScroll');
   if (!box) return;
   box.innerHTML = skeletonList(5, 'conv');
-  convs = await loadConversations();
+  try {
+    convs = await loadConversations();
+  } catch (err) {
+    box.innerHTML = '';
+    box.append(emptyState({
+      icon: I.message,
+      title: 'Chargement impossible',
+      text: err?.status === 401 ? 'Session expirée — reconnectez-vous.' : (err?.message || ''),
+      action: { label: 'Réessayer', onClick: () => renderConvList() }
+    }));
+    return;
+  }
 
   if (!convs.length) {
     box.innerHTML = '';
     box.append(emptyState({
       icon: I.message,
       title: 'Aucune conversation',
-      text: 'Commencez à discuter avec les étudiants de votre faculté.'
+      text: 'Commencez à discuter avec les étudiants de votre faculté.',
+      action: { label: 'Nouveau message', onClick: openNewConversation }
     }));
     return;
   }
@@ -277,16 +277,22 @@ function bubbleRow(m, prev, next) {
     'data-id': m.id
   });
 
-  const av = el('div', { class: 'av sm', style: { background: avatarColor(m.sender_id) } },
-    initials(mine ? (me.get()?.full_name || '') : (peer?.full_name || '')));
+  const who = mine ? (me.get() || {}) : (peer || {});
+  const av = who.avatar_url
+    ? el('div', { class: 'av sm', html: `<img src="${esc(safeUrl(who.avatar_url))}" alt="">` })
+    : el('div', { class: 'av sm', style: { background: avatarColor(m.sender_id) } },
+         initials(who.full_name || ''));
 
   const bub = el('div', { class: 'bubble', html: bubbleContent(m) });
 
   bub.append(el('div', { class: 'bubble-meta', html:
     `<span>${clockTime(m.created_at)}</span>` +
-    (mine ? (m.seen_at
-      ? `<span class="tick read">${I.tickDouble}</span>`
-      : `<span class="tick">${I.tick}</span>`) : '')
+    (m.edited_at ? '<span class="t-xs" style="opacity:.7"> modifié</span>' : '') +
+    (mine ? (m._pending
+      ? `<span class="tick pending" data-tip="Envoi…">${icon('clock', { size: 13 })}</span>`
+      : m.seen_at
+        ? `<span class="tick read">${I.tickDouble}</span>`
+        : `<span class="tick">${I.tick}</span>`) : '')
   }));
 
   const chips = reactionChips(m);
@@ -308,9 +314,10 @@ function bubbleRow(m, prev, next) {
    THREAD RENDER
    ------------------------------------------------------------ */
 
-function renderThread() {
+function renderThread({ keepScroll = false } = {}) {
   const body = $('#threadBody');
   if (!body) return;
+  const prevTop = body.scrollTop;
 
   body.innerHTML = '';
   if (!msgs.length) {
@@ -332,7 +339,8 @@ function renderThread() {
   });
   body.append(frag);
 
-  scrollToBottom(false);
+  if (keepScroll) body.scrollTop = prevTop;
+  else scrollToBottom(false);
   markVisibleAsRead();
   wireVoicePlayers(body);
   if (infoOpen) renderInfoPanel();
@@ -620,7 +628,7 @@ function wireInfoPanel(pref) {
   on($('#infoClose'), 'click', () => toggleInfo(false));
   on($('#aProfile'), 'click', () => location.hash = `#/profile/${peer.username}`);
   on($('#aMessage'), 'click', () => { toggleInfo(false); $('#composerInput')?.focus(); });
-  on($('#aSearch'), 'click', () => toast('Recherche dans la conversation bientôt'));
+  on($('#aSearch'), 'click', () => openThreadSearch());
 
   const toggleMute = () => {
     const next = !getChatPref(peer.id).muted;
@@ -668,7 +676,7 @@ function wireInfoPanel(pref) {
     if (all.length) lightbox(all, 0);
   });
 
-  on($('#optExport'), 'click', () => toast('Export bientôt disponible'));
+  on($('#optExport'), 'click', exportThread);
 
   on($('#optClear'), 'click', async () => {
     if (!await confirmDialog({
@@ -676,9 +684,13 @@ function wireInfoPanel(pref) {
       message: 'Tous les messages seront retirés de votre côté.',
       confirmLabel: 'Vider', danger: true
     })) return;
-    msgs = [];
-    renderThread();
-    toast('Conversation vidée', 'ok');
+    try {
+      await api.clearThread(peer.id);
+      msgs = [];
+      renderThread();
+      renderConvList();
+      toast('Conversation vidée', 'ok');
+    } catch { toast('Impossible de vider la conversation', 'err'); }
   });
 
   on($('#optDelete'), 'click', async () => {
@@ -699,17 +711,209 @@ function wireInfoPanel(pref) {
       message: 'Cette personne ne pourra plus vous écrire.',
       confirmLabel: 'Bloquer', danger: true
     })) return;
-    toast('Utilisateur bloqué', 'ok');
+    try {
+      const { profileApi } = await import('../core/api_sm.js');
+      await profileApi.block(peer.id);
+      toast('Utilisateur bloqué', 'ok');
+    } catch { toast('Blocage échoué', 'err'); }
   });
 
-  on($('#optReport'), 'click', () => toast('Signalement envoyé', 'ok'));
+  on($('#optReport'), 'click', async () => {
+    try {
+      const { profileApi } = await import('../core/api_sm.js');
+      await profileApi.report('user', peer.id, 'Signalé depuis la conversation');
+      toast('Signalement envoyé aux administrateurs', 'ok');
+    } catch { toast('Signalement échoué', 'err'); }
+  });
 
   on($('#infoMore'), 'click', e => contextMenu(e, [
     { label: 'Voir le profil', icon: I.user, onClick: () => location.hash = `#/profile/${peer.username}` },
-    { label: 'Exporter',       icon: I.download, onClick: () => toast('Export bientôt disponible') },
+    { label: 'Exporter',       icon: I.download, onClick: exportThread },
     { sep: true },
     { label: 'Supprimer la conversation', icon: I.trash, danger: true, onClick: () => $('#optDelete')?.click() }
   ]));
+}
+
+
+/* ------------------------------------------------------------
+   SEARCH IN CONVERSATION
+   ------------------------------------------------------------ */
+
+function openThreadSearch() {
+  const input = el('input', { class: 'input', placeholder: 'Rechercher dans la conversation…' });
+  const results = el('div', { class: 'col g2', style: 'max-height:46vh;overflow:auto' });
+
+  const run = debounce(async () => {
+    const q = input.value.trim();
+    if (!q) { results.innerHTML = `<div class="tg-empty">${icon('search',{size:22})}<span>Tapez pour chercher</span></div>`; return; }
+
+    // Search the loaded thread first — instant — then ask the database
+    // for anything older that is not in memory.
+    const local = msgs.filter(m => (m.text || '').toLowerCase().includes(q.toLowerCase()));
+    let rows = local;
+    try {
+      const remote = await api.searchInThread(peer.id, q);
+      const seen = new Set(local.map(m => String(m.id)));
+      rows = [...local, ...remote.filter(r => !seen.has(String(r.id)))];
+    } catch { /* the local hits are still useful */ }
+
+    results.innerHTML = rows.length
+      ? rows.slice(0, 40).map(m => `
+          <button class="tg-row" data-goto="${esc(m.id)}" style="text-align:start">
+            <span class="tg-ic">${icon(m.sender_id === me.id ? 'send' : 'message', { size: 15 })}</span>
+            <div class="grow" style="min-width:0">
+              <div class="t-sm truncate">${highlight(m.text || mediaLabel(m.media_type), q)}</div>
+              <div class="t-xs t-dim">${dayLabel(m.created_at)} · ${clockTime(m.created_at)}</div>
+            </div>
+          </button>`).join('')
+      : `<div class="tg-empty">${icon('search',{size:22})}<span>Aucun résultat pour « ${esc(q)} »</span></div>`;
+  }, 220);
+
+  on(input, 'input', run);
+  const m = modal({ title: 'Rechercher', body: el('div', { class: 'col g3' }, input, results) });
+
+  on(results, 'click', e => {
+    const btn = e.target.closest('[data-goto]');
+    if (!btn) return;
+    m.close();
+    jumpTo(btn.dataset.goto);
+  });
+
+  run();
+  setTimeout(() => input.focus(), 80);
+}
+
+const highlight = (text, q) => {
+  const t = esc(String(text || ''));
+  if (!q) return t;
+  const safe = esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return t.replace(new RegExp(safe, 'ig'), hit => `<mark>${hit}</mark>`);
+};
+
+/* ------------------------------------------------------------
+   EXPORT
+   A plain text transcript, downloaded locally. No server involved,
+   so nothing about a private conversation leaves the machine.
+   ------------------------------------------------------------ */
+
+function exportThread() {
+  if (!msgs.length) { toast('Rien à exporter'); return; }
+  const mine = me.get();
+  const lines = [
+    `Conversation Koliya — ${mine?.full_name || 'moi'} et ${peer.full_name}`,
+    `Exportée le ${new Date().toLocaleString('fr')}`,
+    `${msgs.length} message${msgs.length > 1 ? 's' : ''}`,
+    ''.padEnd(56, '-'),
+    ''
+  ];
+
+  let lastDay = '';
+  for (const m of msgs) {
+    const day = dayLabel(m.created_at);
+    if (day !== lastDay) { lines.push('', `— ${day} —`, ''); lastDay = day; }
+    const who = m.sender_id === mine?.id ? (mine?.full_name || 'Moi') : peer.full_name;
+    const what = m.media_type ? `[${mediaLabel(m.media_type)}]${m.text ? ' ' + m.text : ''}` : m.text;
+    lines.push(`${clockTime(m.created_at)}  ${who}: ${what}`);
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: `koliya-${peer.username || peer.id}.txt` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast('Conversation exportée', 'ok');
+}
+
+/* ------------------------------------------------------------
+   FORWARD
+   ------------------------------------------------------------ */
+
+async function forwardMessage(m) {
+  const search = el('input', { class: 'input', placeholder: 'À qui ?' });
+  const list = el('div', { class: 'col g2', style: 'max-height:44vh;overflow:auto' });
+  let people = [];
+
+  const draw = () => {
+    list.innerHTML = people.length
+      ? people.map(u => `
+          <button class="tg-row" data-to="${esc(u.id)}" style="text-align:start">
+            ${u.avatar_url
+              ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+              : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
+            <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(u.full_name)}</div>
+            <div class="t-xs t-dim">@${esc(u.username)}</div></div>
+          </button>`).join('')
+      : `<div class="tg-empty">${icon('user',{size:22})}<span>Personne trouvée</span></div>`;
+  };
+
+  const refresh = debounce(async () => {
+    people = await api.contacts(search.value.trim()).catch(() => []);
+    draw();
+  }, 200);
+
+  on(search, 'input', refresh);
+  list.innerHTML = skeletonList(3, 'conv');
+  const dlg = modal({ title: 'Transférer', body: el('div', { class: 'col g3' }, search, list) });
+
+  on(list, 'click', async e => {
+    const btn = e.target.closest('[data-to]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      await api.sendMessage({
+        receiver_id: btn.dataset.to,
+        text: m.text || '',
+        media_url: m.media_url && !m.media_url.startsWith('blob:') ? m.media_url : null,
+        media_type: m.media_type || null,
+        media_name: m.media_name || null
+      });
+      dlg.close();
+      toast('Message transféré', 'ok');
+      renderConvList();
+    } catch { btn.disabled = false; toast('Transfert échoué', 'err'); }
+  });
+
+  refresh();
+  setTimeout(() => search.focus(), 80);
+}
+
+/* ------------------------------------------------------------
+   NEW CONVERSATION
+   ------------------------------------------------------------ */
+
+async function openNewConversation() {
+  const search = el('input', { class: 'input', placeholder: 'Nom ou @pseudo…' });
+  const list = el('div', { class: 'col g2', style: 'max-height:46vh;overflow:auto' });
+
+  const refresh = debounce(async () => {
+    const people = await api.contacts(search.value.trim()).catch(() => []);
+    list.innerHTML = people.length
+      ? people.map(u => `
+          <button class="tg-row" data-to="${esc(u.id)}" style="text-align:start">
+            ${u.avatar_url
+              ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+              : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
+            <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(u.full_name)}</div>
+            <div class="t-xs t-dim">@${esc(u.username)} · ${esc(u.faculty || '')}</div></div>
+          </button>`).join('')
+      : `<div class="tg-empty">${icon('user',{size:22})}<span>Aucun étudiant trouvé</span></div>`;
+  }, 200);
+
+  on(search, 'input', refresh);
+  list.innerHTML = skeletonList(4, 'conv');
+  const dlg = modal({ title: 'Nouveau message', body: el('div', { class: 'col g3' }, search, list) });
+
+  on(list, 'click', e => {
+    const btn = e.target.closest('[data-to]');
+    if (!btn) return;
+    dlg.close();
+    openThread(btn.dataset.to);
+  });
+
+  refresh();
+  setTimeout(() => search.focus(), 80);
 }
 
 /** Redraw just the header after a nickname or mute change. */
@@ -745,7 +949,7 @@ function msgMenu(e, m) {
     { label: 'Répondre',  icon: I.reply,   kbd: 'R', onClick: () => startReply(m) },
     { label: 'Réagir',    icon: I.smile,   onClick: () => openReactions(e.target, m) },
     { label: 'Copier',    icon: I.copy,    kbd: 'C', onClick: () => copyMsg(m) },
-    { label: 'Transférer', icon: I.forward, onClick: () => toast('Transfert bientôt disponible') },
+    { label: 'Transférer', icon: I.forward, onClick: () => forwardMessage(m) },
     mine ? { label: 'Modifier', icon: I.edit, onClick: () => startEdit(m) } : null,
     { sep: true },
     mine
@@ -766,10 +970,18 @@ async function removeMsg(m) {
     message: 'Il sera retiré pour tout le monde.',
     confirmLabel: 'Supprimer', danger: true
   })) return;
+  const keep = msgs;
   msgs = msgs.filter(x => x.id !== m.id);
-  renderThread();
-  api?.deleteMessage?.(m.id);
-  toast('Message supprimé', 'ok');
+  renderThread({ keepScroll: true });
+  try {
+    await api.deleteMessage(m.id);
+    toast('Message supprimé', 'ok');
+    renderConvList();
+  } catch {
+    msgs = keep;
+    renderThread({ keepScroll: true });
+    toast('Suppression échouée', 'err');
+  }
 }
 
 /* ------------------------------------------------------------
@@ -840,69 +1052,106 @@ async function doSend() {
   if (!text && !pendingFiles.length) return;
 
   if (editing) {
-    editing.text = text;
-    api?.editMessage?.(editing.id, text);
+    const before = editing.text;
+    const target = editing;
+    target.text = text;
     editing = null;
     input.value = ''; autoGrow(input); syncSendState();
     cancelContext();
-    renderThread();
+    renderThread({ keepScroll: true });
+    try { await api.editMessage(target.id, text); }
+    catch { target.text = before; renderThread({ keepScroll: true }); toast('Modification non enregistrée', 'err'); }
     return;
   }
 
-  const payload = {
-    id: uid('m'),
-    sender_id: me.id,
-    receiver_id: peer.id,
-    text,
-    reply_to: replyTo?.id || null,
-    created_at: new Date().toISOString(),
-    reactions: {}
-  };
+  const files = pendingFiles.splice(0);
+  const replyId = replyTo?.id || null;
 
-  // paint immediately, reconcile after
-  msgs.push(payload);
   input.value = ''; autoGrow(input); syncSendState();
   cancelContext();
+  renderAttachStrip();
   draft.clear(peer.id);
+
+  // Attachments go first, each as its own message, then the text.
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const isLast = i === files.length - 1;
+    await sendOne({
+      receiver_id: peer.id,
+      text: isLast ? text : '',
+      reply_to: i === 0 ? replyId : null,
+      file: f,
+      media_name: f.name
+    }, f.type?.startsWith('image/') ? 'image' : 'file');
+  }
+
+  if (!files.length && text) {
+    await sendOne({ receiver_id: peer.id, text, reply_to: replyId });
+  }
+}
+
+/**
+ * Paint a placeholder, write to Neon, then swap in the saved row.
+ * The placeholder carries `_pending` so the bubble can show a clock
+ * instead of a tick — and if the write fails it is removed with a
+ * message, never left behind pretending to have been sent.
+ */
+async function sendOne(payload, mediaType = null) {
+  const temp = {
+    id: uid('tmp'),
+    sender_id: me.id,
+    receiver_id: payload.receiver_id,
+    text: payload.text || '',
+    reply_to: payload.reply_to || null,
+    media_type: mediaType,
+    media_url: payload.file && mediaType === 'image' ? URL.createObjectURL(payload.file) : null,
+    media_name: payload.media_name || null,
+    created_at: new Date().toISOString(),
+    reactions: {},
+    _pending: true
+  };
+  msgs.push(temp);
   renderThread();
 
   try {
-    await sendMessage(payload);
-  } catch (e) {
-    msgs = msgs.filter(x => x.id !== payload.id);
+    const saved = await sendMessage(payload);
+    const i = msgs.findIndex(m => m.id === temp.id);
+    if (i > -1) {
+      if (temp.media_url?.startsWith('blob:')) URL.revokeObjectURL(temp.media_url);
+      msgs[i] = { ...saved, reactions: saved.reactions || {} };
+    }
     renderThread();
-    toast('Message non envoyé', 'err');
+    renderConvList();
+    return saved;
+  } catch (err) {
+    msgs = msgs.filter(m => m.id !== temp.id);
+    renderThread();
+    toast(err?.message?.includes('trop lourd')
+      ? err.message
+      : 'Message non envoyé — rien n\'a été enregistré', 'err');
+    return null;
   }
 }
 
 async function sendGif(gif) {
-  const payload = {
-    id: uid('m'), sender_id: me.id, receiver_id: peer.id, text: '',
-    media_type: 'image', media_url: gif.url, media_name: gif.alt || 'GIF',
-    created_at: new Date().toISOString(), reactions: {}
-  };
-  msgs.push(payload);
-  renderThread();
-  try { await sendMessage(payload); }
-  catch { msgs = msgs.filter(m => m.id !== payload.id); renderThread(); toast('GIF non envoyé', 'err'); }
+  await sendOne({
+    receiver_id: peer.id, text: '',
+    media_url: gif.url, media_type: 'image', media_name: gif.alt || 'GIF'
+  }, 'image');
 }
 
 async function sendVoice(clip) {
-  // A blob URL is fine for local preview. uploadMedia() replaces this
-  // with an R2 URL as soon as the upload worker is configured — audio
-  // must never be written into the database as base64.
-  const payload = {
-    id: uid('m'), sender_id: me.id, receiver_id: peer.id, text: '',
+  // The recording is stored in Postgres as a data: URL, same as any
+  // other media. A blob: URL would have died on the next refresh —
+  // that is exactly why voice notes "disappeared" before.
+  await sendOne({
+    receiver_id: peer.id, text: '',
+    file: clip.blob,
     media_type: 'audio',
-    media_url: URL.createObjectURL(clip.blob),
+    media_name: 'vocal.webm',
     media_duration: clip.seconds,
-    waveform: clip.waveform,
-    created_at: new Date().toISOString(), reactions: {}
-  };
-  msgs.push(payload);
-  renderThread();
-  try { await sendMessage(payload); }
-  catch { msgs = msgs.filter(m => m.id !== payload.id); renderThread(); toast('Vocal non envoyé', 'err'); }
+    waveform: clip.waveform
+  }, 'audio');
 }
 
 function wireComposer() {
@@ -1081,9 +1330,7 @@ function jumpTo(id) {
    ------------------------------------------------------------ */
 
 export async function openThread(peerId) {
-  peer = SAMPLE_PEERS.find(p => p.id === peerId)
-      || convs.find(c => c.peer.id === peerId)?.peer
-      || { id: peerId, full_name: 'Étudiant', username: peerId };
+  peer = convs.find(c => String(c.peer.id) === String(peerId))?.peer || person(peerId);
 
   setState({ activeChat: peerId });
   $('#dm')?.setAttribute('data-open', 'thread');
@@ -1121,7 +1368,18 @@ export async function openThread(peerId) {
 
   clearSelection();
   $('#threadBody').innerHTML = skeletonList(4);
-  msgs = await loadThread(peerId);
+  try {
+    msgs = await loadThread(peerId);
+  } catch (err) {
+    msgs = [];
+    $('#threadBody').innerHTML = '';
+    $('#threadBody').append(emptyState({
+      icon: I.message, title: 'Conversation indisponible',
+      text: err?.message || 'Réessayez dans un instant.',
+      action: { label: 'Réessayer', onClick: () => openThread(peerId) }
+    }));
+    return;
+  }
   renderThread();
   applyChatTheme(getChatPref(peerId).theme);
 
@@ -1132,6 +1390,7 @@ export async function openThread(peerId) {
 
   $('#composerWrap')?.classList.remove('hidden');
   wireComposer();
+  startPolling();
 }
 
 /* ------------------------------------------------------------
@@ -1147,7 +1406,7 @@ function markup() {
           <span class="input-icon">${icon('search', { size: 16 })}</span>
           <input class="input has-icon" id="convSearch" placeholder="Rechercher…" aria-label="Rechercher une conversation">
         </div>
-        <button class="icon-btn" data-tip="Nouveau message">${I.plus}</button>
+        <button class="icon-btn" id="btnNewConv" data-tip="Nouveau message">${I.plus}</button>
       </div>
       <div class="dm-list-scroll" id="convScroll"></div>
     </section>
@@ -1190,6 +1449,8 @@ export function initMessages(mountFn) {
     wireThreadEvents();
     wireDropZone();
 
+    on($('#btnNewConv'), 'click', openNewConversation);
+
     on($('#convSearch'), 'input', debounce(e => {
       const q = e.target.value.trim().toLowerCase();
       for (const n of $$('.conv')) {
@@ -1201,4 +1462,11 @@ export function initMessages(mountFn) {
     await renderConvList();
     if (arg) openThread(arg);
   });
+
+  // Leaving the screen must stop the poll; a chat that keeps querying
+  // Neon from a route you closed is a bill, not a feature.
+  onEvent('route:enter', ({ route: r } = {}) => {
+    if (r !== 'messages') { stopPolling(); peer = null; }
+  });
+  on(document, 'visibilitychange', () => { if (peer) startPolling(); });
 }

@@ -42,6 +42,59 @@
 }
 .app[data-rail="collapsed"] .nav-rail { width: var(--nav-w-collapsed); }
 
+/* --- COLLAPSED GEOMETRY -------------------------------------
+   The bug: 76px rail − 24px rail padding − 24px item padding left
+   28px of room for a 22px icon plus its focus ring, so the icons
+   were crushed against each other and looked like they had vanished.
+
+   Collapsed is now measured from the icon outwards: a 44px square
+   target, centred, with the rail padding reduced to match. Nothing
+   is squeezed because nothing is competing for the width.        */
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) {
+  padding: var(--s4) 6px;
+  align-items: center;
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item,
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-compose .btn,
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-nav {
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  overflow: visible;          /* a scrollbar here would eat 15 of 64px */
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item svg {
+  width: 22px; height: 22px;
+}
+/* the active marker cannot sit at inset-start when the item is
+   centred — it would land under the icon */
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item.on::before {
+  inset-inline-start: -6px;
+  height: 26px;
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item.on {
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-logo {
+  justify-content: center;
+  padding: 0;
+  margin-bottom: var(--s3);
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot {
+  margin-inline: auto;
+  border-top: none;
+}
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot .av {
+  margin: 0;
+}
+
 /* --- peek: the mouse arrived. It floats OVER the content,
        so nothing reflows and no text jumps sideways. */
 .app[data-rail="collapsed"] .nav-rail:hover,
@@ -105,11 +158,15 @@
 .app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot .who {
   opacity: 0; pointer-events: none;
 }
-/* the unread badge shrinks to a dot rather than disappearing */
+/* the unread badge shrinks to a dot rather than disappearing.
+   Positioned from the centre, because the item is centred now. */
 .app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item .count {
-  position: absolute; top: 6px; inset-inline-start: 26px;
-  min-width: 8px; height: 8px; padding: 0;
+  position: absolute; top: 7px; inset-inline-start: 26px;
+  min-width: 9px; height: 9px; padding: 0;
+  margin: 0;
   font-size: 0; color: transparent;
+  border: 2px solid var(--surface);
+  box-sizing: content-box;
 }
 
 .rail-compose { margin: var(--s3) 0; }
@@ -206,9 +263,14 @@
 /* ---------- 5. MESSAGES: LIST + THREAD ---------------------- */
 .dm {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  /* The list is now a clamp, not a fixed 340px. Two columns adding
+     up to 660px of fixed width meant the thread only had room above
+     a ~1300px viewport — which is why the messages screen "only
+     showed when the browser was half the size". */
+  grid-template-columns: clamp(260px, 26vw, 330px) minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 .dm-list {
   display: flex; flex-direction: column;
@@ -448,17 +510,83 @@
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
-.story { flex-shrink: 0; width: 68px; text-align: center; cursor: pointer; }
+.story {
+  flex-shrink: 0; width: 72px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  cursor: pointer;
+}
+
+/* RING GEOMETRY
+   The bug: the child was width:100% *plus* a 2.5px border *inside* a
+   2.5px-padded parent, so it overflowed its own circle and the ring
+   looked cut. Grid centring plus an explicit calc() makes the maths
+   exact instead of approximately right. */
 .story-ring {
-  width: 62px; height: 62px; padding: 2.5px;
+  position: relative;
+  width: 64px; height: 64px;
+  padding: 2.5px;
+  display: grid;
+  place-items: center;
   border-radius: var(--r-full);
   background: conic-gradient(from 210deg, #22D3EE, #7C5BE8, #FB7185, #22D3EE);
   transition: transform var(--t-fast) var(--ease-spring);
+  box-sizing: border-box;
 }
 .story:hover .story-ring { transform: scale(1.06); }
+.story:active .story-ring { transform: scale(.98); }
 .story-ring.seen { background: var(--border-strong); }
-.story-ring > * { border: 2.5px solid var(--bg); width: 100%; height: 100%; }
-.story-name { font-size: var(--fs-xs); color: var(--text-2); margin-top: 4px; }
+.story-ring.add  { background: var(--border); }
+
+.story-ring > .av {
+  width: calc(100% - 5px);
+  height: calc(100% - 5px);
+  border: 2.5px solid var(--bg);
+  box-sizing: border-box;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  font-size: var(--fs-md);
+}
+.story-ring > .av img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+
+/* the "+" badge on your own tile, clipped to the ring */
+.story-plus {
+  position: absolute;
+  inset-block-end: -1px; inset-inline-end: -1px;
+  width: 21px; height: 21px;
+  display: grid; place-items: center;
+  border-radius: var(--r-full);
+  background: var(--brand); color: #fff;
+  border: 2.5px solid var(--bg);
+  box-sizing: border-box;
+}
+
+.story-name {
+  font-size: var(--fs-xs); color: var(--text-2);
+  max-width: 100%;
+}
+
+/* Preview inside the story composer. */
+.story-preview {
+  aspect-ratio: 9 / 16;
+  max-height: 46vh;
+  margin-inline: auto;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.story-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Viewer: a story that cannot load says so. */
+.sv-loading {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s2);
+  color: rgba(255,255,255,.62);
+  font-size: var(--fs-sm);
+}
+.sv-loading.failed { color: rgba(255,255,255,.85); }
+.sv-media img { transition: opacity .25s var(--ease); }
+.sv-head .av img { width: 100%; height: 100%; object-fit: cover; }
 
 /* segmented progress, one bar per story */
 .story-progress { display: flex; gap: 3px; padding: var(--s3); }
@@ -495,10 +623,7 @@
   .view-inner { max-width: none; }
 
   /* list and thread become two screens instead of two columns */
-  .dm { grid-template-columns: 1fr; }
   .dm-list { border-inline-end: none; }
-  .dm[data-open="thread"] .dm-list { display: none; }
-  .dm:not([data-open="thread"]) .thread { display: none; }
 
   .bubble { max-width: 82%; }
   .post-actions { gap: var(--s5); }
@@ -577,7 +702,15 @@
    ============================================================ */
 
 .dm { transition: grid-template-columns var(--t) var(--ease); }
-.dm.info-open { grid-template-columns: 340px minmax(0, 1fr) 320px; }
+
+/* Three real columns only when there is genuinely room for three.
+   Below that the info panel floats over the thread instead of
+   stealing 320px from it. */
+@media (min-width: 1400px) {
+  .dm.info-open {
+    grid-template-columns: clamp(260px, 24vw, 330px) minmax(420px, 1fr) 320px;
+  }
+}
 
 .info-panel {
   display: none;
@@ -662,18 +795,41 @@
 .bubble-row.is-active { border-radius: var(--r); }
 .bubble-row .action-bar { top: -16px; }
 
-@media (max-width: 1280px) {
-  /* not enough room for three columns — the panel overlays the thread */
-  .dm.info-open { grid-template-columns: 340px minmax(0, 1fr); }
+/* Under 1400px the panel is an overlay, so the conversation never
+   shrinks below a readable width. */
+@media (max-width: 1399.98px) {
+  .dm.info-open { grid-template-columns: clamp(260px, 26vw, 330px) minmax(0, 1fr); }
   .dm.info-open .info-panel {
     position: absolute; inset-block: 0; inset-inline-end: 0;
-    width: 320px; z-index: var(--z-sticky);
+    width: min(340px, 92vw); z-index: var(--z-sticky);
     box-shadow: var(--shadow-lg);
+    animation: kl-slide-in .22s var(--ease);
   }
-  .thread { position: relative; }
 }
-@media (max-width: 900px) {
+
+/* Under 1024px the conversation list becomes a drawer: the thread
+   gets the whole width, which is what you actually want when you are
+   reading one. The back arrow in the thread header brings it back. */
+@media (max-width: 1023.98px) {
+  .dm,
+  .dm.info-open { grid-template-columns: 1fr; }
+  .dm-list {
+    position: absolute; inset-block: 0; inset-inline-start: 0;
+    width: min(320px, 86vw); z-index: calc(var(--z-sticky) + 1);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    transition: transform var(--t) var(--ease);
+  }
+  .dm[data-open="thread"] .dm-list { transform: translateX(-102%); }
+  [dir="rtl"] .dm[data-open="thread"] .dm-list { transform: translateX(102%); }
+  .dm:not([data-open="thread"]) .thread { visibility: hidden; }
+  .thread-back { display: inline-flex !important; }
   .dm.info-open .info-panel { width: 100%; }
+}
+
+@keyframes kl-slide-in {
+  from { transform: translateX(12px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
 }
 
 
@@ -1625,4 +1781,360 @@ button.pf-stat:hover span { text-decoration: underline; }
 @media (max-width: 560px) {
   .lb-filters { flex-direction: column; }
   .lb-podium { padding: var(--s5) var(--s2) 0; }
+}
+
+
+/* ============================================================
+   CAMPUS HEROES — Events & Q&A
+   Restored from the original Koliya: a tall gradient card with the
+   create button living on it. This is the thing that told you which
+   screen you were on at a glance; the flat toolbar that replaced it
+   made every campus screen look identical.
+   ============================================================ */
+
+.events-hero,
+.qa-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  gap: var(--s4);
+  border-radius: 28px;
+  padding: 26px;
+  margin: var(--s3) var(--s4) var(--s4);
+  color: #fff;
+  background: linear-gradient(135deg, #4F46E5, #7C3AED 55%, #EC4899);
+  box-shadow: 0 22px 70px rgba(79, 70, 229, .28);
+}
+.qa-hero {
+  background: linear-gradient(135deg, #0EA5E9, #6366F1 52%, #7C3AED);
+  box-shadow: 0 22px 70px rgba(14, 165, 233, .26);
+}
+
+/* the soft circle bleeding off the corner — the original's signature */
+.events-hero::after,
+.qa-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -40px -70px auto;
+  width: 220px; height: 220px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .14);
+  pointer-events: none;
+}
+.events-hero::before,
+.qa-hero::before {
+  content: '';
+  position: absolute;
+  inset: -60px auto auto -50px;
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  pointer-events: none;
+}
+
+.hero-body { position: relative; z-index: 1; flex: 1; min-width: 0; }
+
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, .18);
+  font-size: var(--fs-xs); font-weight: 600;
+  letter-spacing: .02em;
+  margin-bottom: var(--s3);
+}
+.hero-eyebrow svg { width: 14px; height: 14px; }
+
+.hero-title {
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  font-weight: 750;
+  letter-spacing: -.025em;
+  line-height: 1.12;
+  margin: 0 0 6px;
+}
+.hero-sub {
+  font-size: var(--fs-sm);
+  opacity: .88;
+  max-width: 42ch;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.hero-stats { display: flex; gap: var(--s5); margin-top: var(--s4); }
+.hero-stat { display: flex; flex-direction: column; line-height: 1.15; }
+.hero-stat b { font-size: var(--fs-xl); font-weight: 750; font-variant-numeric: tabular-nums; }
+.hero-stat span { font-size: var(--fs-xs); opacity: .8; }
+
+/* The create button: a square on the hero, exactly like the original. */
+.hero-cta {
+  position: relative; z-index: 1;
+  flex-shrink: 0;
+  width: 132px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: var(--s2);
+  padding: var(--s4) var(--s3);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .28);
+  color: #fff;
+  font-size: var(--fs-sm); font-weight: 620;
+  line-height: 1.25; text-align: center;
+  backdrop-filter: blur(8px);
+  transition: transform var(--t-fast) var(--ease-spring),
+              background var(--t-fast) var(--ease);
+}
+.hero-cta:hover {
+  background: rgba(255, 255, 255, .26);
+  transform: translateY(-2px);
+}
+.hero-cta:active { transform: translateY(0) scale(.98); }
+.hero-cta-ic {
+  display: grid; place-items: center;
+  width: 44px; height: 44px;
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, .22);
+}
+
+@media (max-width: 720px) {
+  .events-hero, .qa-hero {
+    flex-direction: column;
+    padding: 22px;
+    margin-inline: var(--s3);
+    border-radius: 24px;
+  }
+  .hero-cta { width: 100%; flex-direction: row; justify-content: flex-start; gap: var(--s3); }
+  .hero-cta-txt br { display: none; }
+}
+
+/* event cover inside its detail modal */
+.ev-cover { border-radius: var(--r-lg); overflow: hidden; max-height: 220px; }
+.ev-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* a taller empty state, so a hero screen never looks truncated */
+.tg-empty.tall { padding: var(--s8) var(--s4); }
+
+
+/* ============================================================
+   PROFILE EDIT SHEET
+   The two-field box is gone. You edit against a live preview of the
+   banner and avatar, because that is the only way to know what other
+   people will actually see.
+   ============================================================ */
+
+.pe-modal .modal-body { padding: 0; }
+
+.pe { display: block; }
+
+.pe-media { position: relative; margin-bottom: 54px; }
+
+.pe-banner {
+  position: relative;
+  height: 148px;
+  background: var(--surface-2);
+  background-size: cover;
+  background-position: center;
+}
+
+.pe-avatar {
+  position: absolute;
+  inset-block-end: -46px;
+  inset-inline-start: var(--s5);
+}
+.pe-avatar .av {
+  width: 96px; height: 96px;
+  border: 4px solid var(--surface);
+  border-radius: var(--r-full);
+  overflow: hidden;
+  font-size: var(--fs-2xl);
+  box-shadow: var(--shadow);
+}
+.pe-avatar .av img { width: 100%; height: 100%; object-fit: cover; }
+
+.pe-cam {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--r-full);
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: var(--fs-xs); font-weight: 600;
+  backdrop-filter: blur(6px);
+  transition: background var(--t-fast) var(--ease);
+}
+.pe-cam:hover { background: rgba(0, 0, 0, .72); }
+
+.pe-cam-banner { position: absolute; inset-block-end: var(--s3); inset-inline-end: var(--s3); }
+.pe-cam-avatar {
+  position: absolute;
+  inset-block-end: 2px; inset-inline-end: 2px;
+  width: 30px; height: 30px;
+  padding: 0;
+  justify-content: center;
+  border: 2px solid var(--surface);
+}
+
+.pe-clear {
+  position: absolute; inset-block-start: var(--s3); inset-inline-end: var(--s3);
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: var(--r-full);
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+}
+.pe-clear:hover { background: var(--danger); }
+.pe-clear svg { width: 15px; height: 15px; }
+
+.pe-body { padding: 0 var(--s5) var(--s5); }
+
+.pe-sec {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: var(--s5) 0 var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--border);
+}
+.pe-sec:first-child { margin-top: var(--s4); }
+
+.pe-field { margin-bottom: var(--s3); }
+.pe-label {
+  display: block;
+  font-size: var(--fs-sm); font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+.pe-hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: 5px; line-height: 1.45; }
+.pe-count { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+.pe-toggle {
+  display: flex; align-items: center; gap: var(--s4);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
+/* profile links row */
+.pf-links { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.pf-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-xs); font-weight: 550;
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.pf-link:hover { border-color: var(--brand); color: var(--brand); }
+
+/* the profile avatar and banner now hold real photos */
+#pfAvatar { overflow: hidden; }
+#pfAvatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* a repost quote inside the composer */
+.repost-quote {
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
+/* a message still on its way to the database */
+.tick.pending { opacity: .55; }
+.tick.pending svg { width: 13px; height: 13px; }
+
+/* search hits inside a conversation */
+.tg-row mark {
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+
+/* ============================================================
+   THE GAME — streak, freeze, rank
+   ============================================================ */
+
+/* A cold flame reads as "you have nothing to lose yet", which is the
+   honest state before the first day is completed. */
+.streak-flame.cold { opacity: .45; filter: grayscale(.7); }
+
+.streak-block { position: relative; display: flex; align-items: center; gap: var(--s3); }
+
+.freeze-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, .18);
+  font-size: 10px; font-weight: 650;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.freeze-chip.spent { opacity: .5; text-decoration: line-through; }
+
+/* Where you stand, and what it buys you. */
+.rank-strip {
+  display: flex; align-items: center; gap: var(--s2);
+  flex-wrap: wrap;
+  padding: var(--s3);
+  margin-bottom: var(--s3);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.rank-strip.in {
+  background: linear-gradient(120deg,
+    color-mix(in srgb, var(--brand) 12%, transparent),
+    color-mix(in srgb, #F59E0B 10%, transparent));
+  border-color: color-mix(in srgb, var(--brand) 30%, transparent);
+  color: var(--text);
+}
+.rank-strip b { font-variant-numeric: tabular-nums; }
+.rank-reward {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-inline-start: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+
+/* The badge that makes topping the leaderboard visible to others. */
+.rank-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.rank-badge.gold {
+  background: linear-gradient(135deg, #FDE68A, #F59E0B);
+  color: #4A2C00; border-color: #F59E0B;
+}
+.rank-badge.silver {
+  background: linear-gradient(135deg, #E5E7EB, #9CA3AF);
+  color: #1F2937; border-color: #9CA3AF;
+}
+.rank-badge.bronze {
+  background: linear-gradient(135deg, #FCD9B6, #C2703D);
+  color: #3A1D08; border-color: #C2703D;
+}
+.rank-badge.top10 {
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 32%, transparent);
+}
+
+/* A featured student in discovery — the actual reward. */
+.cc.featured {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--brand) 7%, transparent), transparent);
+  border-inline-start: 3px solid var(--brand);
 }

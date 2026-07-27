@@ -1,0 +1,3 @@
+# Render / Netlify style rewrites.
+# Hash routing means the server only ever serves the shell.
+/*    /index_sm.html   200

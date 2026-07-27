@@ -16,32 +16,20 @@ import { me, read, write, scoped, on as onEvent } from '../core/store_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, countUp, skeletonList, emptyState, contextMenu } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
+import {
+  XP, xpForLevel, levelFromXp, getQuests, getStreak, isDayComplete,
+  trackQuest, myRank, rankBadge
+} from '../core/game_sm.js';
 
 let api = null;
 export function useApi(impl) { api = impl; }
 
 const store = scoped('hub');
 
-/* ------------------------------------------------------------
-   LEVELS
-   Each level costs a bit more than the last, so early progress is
-   quick and later levels stay meaningful.
-   ------------------------------------------------------------ */
-
-export const xpForLevel = lvl => Math.round(80 * Math.pow(lvl, 1.35));
-
-export function levelFromXp(xp) {
-  let lvl = 1, spent = 0;
-  while (spent + xpForLevel(lvl) <= xp) { spent += xpForLevel(lvl); lvl++; }
-  const into = xp - spent;
-  const need = xpForLevel(lvl);
-  return { level: lvl, into, need, pct: Math.round(into / need * 100) };
-}
-
-export const XP = {
-  post: 12, comment: 5, like_received: 2, story: 8,
-  answer: 10, event_join: 6, daily_complete: 25, streak_day: 15
-};
+/* Levels, XP values and quest rules all live in core/game_sm.js now.
+   They used to be defined here AND applied nowhere, which is how the
+   hub ended up as a scoreboard for a game that was never running. */
+export { xpForLevel, levelFromXp, XP, trackQuest };
 
 /* ------------------------------------------------------------
    BADGES  — thresholds, not manual awards
@@ -63,83 +51,41 @@ export const BADGES = [
 ];
 
 /* ------------------------------------------------------------
-   DAILY QUESTS  — same set for everyone each day, seeded by date
-   ------------------------------------------------------------ */
-
-const QUEST_POOL = [
-  { id:'post',    label:'Publier une fois',            target:1, icon:'edit' },
-  { id:'comment', label:'Commenter 3 publications',    target:3, icon:'comment' },
-  { id:'like',    label:'Aimer 5 publications',        target:5, icon:'fire' },
-  { id:'visit',   label:'Ouvrir Koliya',               target:1, icon:'home' },
-  { id:'answer',  label:'Répondre à une question',     target:1, icon:'help' },
-  { id:'story',   label:'Publier une story',           target:1, icon:'camera' }
-];
-
-const todayKey = () => new Date().toISOString().slice(0, 10);
-
-/** Deterministic pick so everyone sees the same quests on a given day. */
-function dailyQuests() {
-  const key = todayKey();
-  const saved = store.get('daily:' + key);
-  if (saved) return saved;
-
-  let seed = [...key].reduce((a, c) => a + c.charCodeAt(0), 0);
-  const pool = [...QUEST_POOL];
-  const picked = [];
-  while (picked.length < 3 && pool.length) {
-    seed = (seed * 9301 + 49297) % 233280;
-    picked.push(pool.splice(seed % pool.length, 1)[0]);
-  }
-  const quests = picked.map(q => ({ ...q, progress: 0 }));
-  store.set('daily:' + key, quests);
-  return quests;
-}
-
-/** Called by other features when the student does something. */
-export function trackQuest(id, amount = 1) {
-  const key = todayKey();
-  const quests = dailyQuests();
-  const q = quests.find(x => x.id === id);
-  if (!q || q.progress >= q.target) return;
-
-  q.progress = Math.min(q.target, q.progress + amount);
-  store.set('daily:' + key, quests);
-
-  if (q.progress >= q.target) {
-    toast(`Défi accompli : ${q.label}`, { kind: 'ok' });
-    if (quests.every(x => x.progress >= x.target)) completeDay();
-  }
-  if ($('#questList')) renderQuests();
-}
-
-function completeDay() {
-  const key = todayKey();
-  if (store.get('done:' + key)) return;
-  store.set('done:' + key, true);
-
-  const s = stats();
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const streak = store.get('done:' + yesterday) ? (s.streak || 0) + 1 : 1;
-  store.set('streak', streak);
-  store.set('xp', (store.get('xp', 0)) + XP.daily_complete + XP.streak_day);
-
-  celebrate(streak);
-}
-
-/* ------------------------------------------------------------
    STATS
    ------------------------------------------------------------ */
 
+/**
+ * Cached snapshot of the real counters. `stats()` stays synchronous
+ * because a dozen render paths call it inline; `refreshStats()` is
+ * what actually talks to Neon, and it repaints when the numbers land.
+ */
+let statsCache = {
+  posts: 0, comments: 0, likes: 0, answers: 0,
+  followers: 0, events: 0, saved: 0, nightPosts: 0,
+  streak: 0, xp: 0
+};
+
 function stats() {
-  const base = {
-    posts: 14, comments: 31, likes: 62, answers: 12,
-    followers: 38, events: 1, saved: 9, nightPosts: 2,
-    streak: store.get('streak', 7),
-    xp: store.get('xp', 340)
+  const mine = me.get() || {};
+  const st = getStreak();
+  const merged = {
+    ...statsCache,
+    xp: mine.xp ?? statsCache.xp,
+    streak: st.streak || mine.streak || 0,
+    streak_best: st.streak_best || mine.streak_best || 0,
+    freeze_available: st.freeze_available
   };
-  const merged = { ...base, ...(api?.stats?.() || {}) };
   merged.level = levelFromXp(merged.xp).level;
   return merged;
+}
+
+export async function refreshStats() {
+  if (!api?.stats) return statsCache;
+  try {
+    statsCache = { ...statsCache, ...(await api.stats()) };
+    if ($('#badgeGrid')) renderHub();   // the hub is on screen
+  } catch (e) { console.warn('[koliya] stats indisponibles', e.message); }
+  return statsCache;
 }
 
 export const earnedBadges = s => BADGES.filter(b => b.need(s));
@@ -148,7 +94,7 @@ export const earnedBadges = s => BADGES.filter(b => b.need(s));
    CELEBRATION
    ------------------------------------------------------------ */
 
-function celebrate(streak) {
+function celebrate({ streak, grew, xp }) {
   const host = el('div', { class: 'confetti' });
   const colors = ['#2563EB','#F59E0B','#EC4899','#16A34A','#7C3AED'];
   for (let i = 0; i < 28; i++) {
@@ -167,7 +113,8 @@ function celebrate(streak) {
     body: `<div class="col center g4" style="text-align:center;padding:var(--s4) 0">
         <div class="streak-flame big">${icon('fire', { size: 46 })}</div>
         <div style="font-size:var(--fs-2xl);font-weight:700">${streak} jour${streak > 1 ? 's' : ''}</div>
-        <p class="t-dim">Vous avez gagné ${XP.daily_complete + XP.streak_day} XP. Revenez demain pour continuer la série.</p>
+        <p class="t-dim">+${xp} XP.${grew ? ' Votre série continue.' : ''}
+           Revenez demain — une journée manquée la remet à zéro.</p>
       </div>`
   });
 }
@@ -199,11 +146,18 @@ function heroMarkup(s, lv) {
           <div class="t-sm" style="opacity:.85">XP au total</div>
         </div>
         <div class="streak-block">
-          <div class="streak-flame" style="--n:${clamp(s.streak / 30, .3, 1)}">${icon('fire', { size: 30 })}</div>
+          <div class="streak-flame${s.streak ? '' : ' cold'}" style="--n:${clamp(s.streak / 30, .3, 1)}">${icon('fire', { size: 30 })}</div>
           <div>
             <div style="font-size:var(--fs-xl);font-weight:700" id="hubStreak">0</div>
             <div class="t-xs" style="opacity:.85">jours d'affilée</div>
+            ${s.streak_best > s.streak ? `<div class="t-xs" style="opacity:.6">record ${s.streak_best}</div>` : ''}
           </div>
+          <span class="freeze-chip${s.freeze_available ? '' : ' spent'}"
+                data-tip="${s.freeze_available
+                  ? 'Gel disponible : une journée manquée sera rattrapée automatiquement ce mois-ci'
+                  : 'Gel déjà utilisé ce mois-ci'}">
+            ${icon('spark', { size: 12 })} ${s.freeze_available ? 'Gel prêt' : 'Gel utilisé'}
+          </span>
         </div>
       </div>
       <div class="hub-progress">
@@ -221,12 +175,12 @@ function heroMarkup(s, lv) {
 function renderQuests() {
   const host = $('#questList');
   if (!host) return;
-  const quests = dailyQuests();
-  const done = quests.filter(q => q.progress >= q.target).length;
+  const quests = getQuests();
+  const done = quests.filter(q => q.done).length;
 
   host.innerHTML = quests.map(q => {
     const pct = Math.round(q.progress / q.target * 100);
-    const complete = q.progress >= q.target;
+    const complete = q.done;
     return `<div class="quest${complete ? ' done' : ''}">
         <span class="quest-ic">${complete ? icon('check', { size: 16 }) : icon(q.icon, { size: 16 })}</span>
         <div class="grow" style="min-width:0">
@@ -279,26 +233,24 @@ function renderBadges(s) {
    LEADERBOARD
    ------------------------------------------------------------ */
 
-const SAMPLE_BOARD = [
-  { id:'u5', full_name:'Amina Zerrouki', faculty:'Informatique', xp: 812 },
-  { id:'u2', full_name:'Youssef Kader',  faculty:'Physique',     xp: 640 },
-  { id:'u1', full_name:'Sara Benali',    faculty:'Informatique', xp: 340, isMe: true },
-  { id:'u3', full_name:'Leila Mansouri', faculty:'Biologie',     xp: 295 },
-  { id:'u4', full_name:'Omar Kaci',      faculty:'Maths',        xp: 180 }
-];
-
+let boardRows = [];
 let boardScope = 'faculty';
+
+async function refreshBoard() {
+  if (!api?.leaderboard) return;
+  try {
+    boardRows = await api.leaderboard({ scope: boardScope, metric: 'xp' });
+  } catch { boardRows = []; }
+  if ($('#boardList')) renderBoard();
+}
 
 function renderBoard() {
   const host = $('#boardList');
   if (!host) return;
 
   const mine = me.get();
-  let rows = api?.leaderboard?.(boardScope) || SAMPLE_BOARD;
-  if (boardScope === 'faculty') {
-    rows = rows.filter(r => r.faculty === (mine?.faculty || 'Informatique'));
-  }
-  rows = [...rows].sort((a, b) => b.xp - a.xp);
+  let rows = [...boardRows].map(r => ({ ...r, isMe: String(r.id) === String(mine?.id) }));
+  rows.sort((a, b) => (b.xp || 0) - (a.xp || 0));
 
   if (!rows.length) {
     host.innerHTML = `<div class="tg-empty">${icon('trophy', { size: 22 })}<span>Personne pour l'instant</span></div>`;
@@ -315,7 +267,8 @@ function renderBoard() {
         if (!r) return '<div></div>';
         const place = i + 1;
         return `<div class="podium-slot p${place}${r.isMe ? ' me' : ''}">
-            <div class="av lg" style="background:${avatarColor(r.id)}">${esc(initials(r.full_name))}</div>
+            <div class="av lg"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
+              r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</div>
             <div class="podium-rank">${place}</div>
             <div class="t-sm t-bold truncate">${esc(r.full_name.split(' ')[0])}</div>
             <div class="t-xs t-dim t-mono">${compact(r.xp)} XP</div>
@@ -326,7 +279,8 @@ function renderBoard() {
     ${rest.map((r, i) => `
       <div class="board-row${r.isMe ? ' me' : ''}">
         <span class="board-rank t-mono">${i + 4}</span>
-        <span class="av sm" style="background:${avatarColor(r.id)}">${esc(initials(r.full_name))}</span>
+        <span class="av sm"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
+          r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</span>
         <div class="grow" style="min-width:0">
           <div class="t-sm t-bold truncate">${esc(r.full_name)}</div>
           <div class="t-xs t-dim">${esc(r.faculty)}</div>
@@ -335,9 +289,55 @@ function renderBoard() {
       </div>`).join('')}`;
 }
 
+/**
+ * Your standing, stated plainly — and what it buys you.
+ * The reward for reaching the top is visibility: you sort first in
+ * "Étudiants à découvrir", so real students find and follow you.
+ * No invented follower counts.
+ */
+async function showMyRank() {
+  const host = $('#rankStrip');
+  if (!host) return;
+  const rank = await myRank(boardScope);
+  if (!rank) {
+    host.innerHTML = `<div class="rank-strip out">
+        ${icon('trophy', { size: 15 })}
+        <span>Hors du top 50 — publiez et répondez pour y entrer.</span>
+      </div>`;
+    return;
+  }
+  const badge = rankBadge(rank);
+  host.innerHTML = `<div class="rank-strip${badge ? ' in' : ''}">
+      ${icon('trophy', { size: 15 })}
+      <span><b>${rank}${rank === 1 ? 'ᵉʳ' : 'ᵉ'}</b> ${boardScope === 'faculty' ? 'de votre faculté' : 'du campus'}</span>
+      ${badge ? `<span class="rank-reward">${icon('spark', { size: 12 })} Mis en avant dans « Étudiants à découvrir »</span>` : ''}
+    </div>`;
+}
+
 /* ------------------------------------------------------------
    VIEW
    ------------------------------------------------------------ */
+
+/* The hub is a view onto game_sm, so it repaints whenever the engine
+   says something changed — including from another screen. Liking a
+   post in the feed moves the quest bar here without a reload. */
+let gameWired = false;
+function wireGameEvents() {
+  if (gameWired) return;
+  gameWired = true;
+  onEvent('game:quests', () => { if ($('#questList')) renderQuests(); });
+  onEvent('game:streak', () => { if ($('#badgeGrid')) renderHub(); });
+  onEvent('game:xp',     () => { if ($('#badgeGrid')) renderHub(); });
+  onEvent('game:day-complete', payload => celebrate(payload));
+}
+
+/** Repaint the hub from whatever the cache currently holds. */
+function renderHub() {
+  const s = stats();
+  const hero = $('.hub-hero');
+  if (hero) hero.outerHTML = heroMarkup(s, levelFromXp(s.xp));
+  renderBadges(s);
+}
 
 export function initHub(mountFn) {
   route('hub', () => {
@@ -375,16 +375,25 @@ export function initHub(mountFn) {
             <button class="pill board-scope" data-scope="all">Tout le campus</button>
           </div>
         </div>
+        <div id="rankStrip"></div>
         <div id="boardList"></div>
       </section>`;
 
+    wireGameEvents();
     renderQuests();
     renderBadges(s);
     renderBoard();
 
+    // real numbers land a moment later and repaint in place
+    refreshStats();
+    refreshBoard();
+    showMyRank();
+
     for (const btn of $$('.board-scope')) {
       on(btn, 'click', () => {
         boardScope = btn.dataset.scope;
+        refreshBoard();
+        showMyRank();
         for (const b of $$('.board-scope')) b.classList.toggle('on', b === btn);
         renderBoard();
       });

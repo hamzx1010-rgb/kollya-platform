@@ -26,6 +26,9 @@ import { openStories } from './features/stories_sm.js';
 import { renderAuth, renderPending } from './features/auth_ui_sm.js';
 import { initAuth, signOut } from './core/auth_sm.js';
 import { canUseDatabase, missingConfig } from './core/config_sm.js';
+import { connectApi } from './core/api_sm.js';
+import { initGame, wireGame } from './core/game_sm.js';
+import { cachePeople } from './core/people_sm.js';
 
 /* ------------------------------------------------------------
    1. ICON HYDRATION
@@ -66,6 +69,15 @@ const PREVIEW_USER = {
  * With Neon configured this is a real session check; without it the
  * app falls back to sample data so the UI can still be reviewed.
  */
+/** Reject after `ms` so a stalled request can never hang the boot. */
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms))
+  ]);
+}
+
 async function resolveSession() {
   if (!canUseDatabase()) {
     console.info('[koliya] mode aperçu — base de données non configurée:', missingConfig());
@@ -73,24 +85,41 @@ async function resolveSession() {
     return 'preview';
   }
 
+
   try {
-    const state = await initAuth();
+    // A boot screen that never resolves is worse than a login screen
+    // shown too early: the student can still act on the second one.
+    // Eight seconds is generous for a cold Neon compute.
+    const state = await withTimeout(initAuth(), 8000, 'auth');
     if (state === 'authenticated') return 'authenticated';
     if (state === 'pending') return 'pending';
     return 'anonymous';
   } catch (e) {
-    console.error('[koliya] échec de la vérification de session', e);
+    console.error('[koliya] échec de la vérification de session:', e.message);
+    bootProblem = e.message;
     return 'anonymous';
   }
 }
 
+let bootProblem = null;
+
 function showAuthScreen() {
+  bootDone();
   show('auth');
+  if (bootProblem) {
+    toast(
+      /timeout/i.test(bootProblem)
+        ? 'Serveur lent à répondre. Vous pouvez vous connecter.'
+        : 'Connexion au serveur difficile.',
+      { kind: 'err', duration: 5000 }
+    );
+    bootProblem = null;
+  }
   renderAuth(async () => {
     const state = await resolveSession();
     if (state === 'pending') { renderPending(handleSignOut); return; }
     if (state === 'anonymous') return;
-    enterApp();
+    await enterApp();
   });
 }
 
@@ -100,9 +129,36 @@ async function handleSignOut() {
   showAuthScreen();
 }
 
-function enterApp() {
+function bootDone() {
+  // window.dispatchEvent, not the bare global: `dispatchEvent` alone is
+  // undefined in some module scopes and throws, which would kill boot
+  // and leave the spinner turning forever.
+  try { window.dispatchEvent(new Event('koliya:ready')); } catch {}
+}
+
+async function enterApp() {
+  bootDone();
   $('#auth')?.classList.add('hidden');
   show('app');
+
+  // THE call that was missing. Until this runs, every feature module
+  // is holding an `api` of null and falls back to nothing. It has to
+  // happen before the first route renders, or the feed paints an
+  // empty state a fraction of a second before the data arrives.
+  try {
+    await connectApi();
+    cachePeople(me.get());
+  } catch (err) {
+    console.error('[koliya] connexion API échouée', err);
+    toast('Impossible de joindre la base de données. Les écrans resteront vides.',
+          { kind: 'err', duration: 8000 });
+  }
+
+  // The game engine listens for 'game:action' events, so it must be
+  // wired before the first screen can fire one.
+  wireGame();
+  initGame().catch(err => console.warn('[koliya] jeu non initialisé', err.message));
+
   initRouter();
   refreshNotificationBadge();
 }
@@ -156,6 +212,13 @@ function wireGlobalKeys() {
    when a new version is waiting. Without this they stay on stale
    code until they happen to close every tab.
    ------------------------------------------------------------ */
+
+/** Rolling past midnight with the tab open must re-read the day. */
+function wireVisibility() {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) emit('app:visible');
+  });
+}
 
 function registerSW() {
   if (!('serviceWorker' in navigator)) return;
@@ -223,6 +286,7 @@ async function boot() {
   initShell();
   registerPlaceholders();
   wireGlobalKeys();
+  wireVisibility();
 
   initMessages(mount);        // real feature modules replace their placeholders
   initFeed(mount);
@@ -240,9 +304,9 @@ async function boot() {
   const state = await resolveSession();
 
   if (state === 'anonymous') { showAuthScreen(); registerSW(); return; }
-  if (state === 'pending')   { show('auth'); renderPending(handleSignOut); registerSW(); return; }
+  if (state === 'pending')   { bootDone(); show('auth'); renderPending(handleSignOut); registerSW(); return; }
 
-  enterApp();
+  await enterApp();
   registerSW();
 
   onEvent('route:enter', () => hydrateIcons());

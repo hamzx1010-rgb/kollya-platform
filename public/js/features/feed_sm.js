@@ -17,6 +17,8 @@ import {
   uid, safeUrl, cssEscape, onVisible, rafThrottle, debounce, env, copyText
 } from '../core/utils_sm.js';
 import { me, on as onEvent, emit, frequency } from '../core/store_sm.js';
+import { person, cachePeople } from '../core/people_sm.js';
+import { act } from '../core/game_sm.js';
 import { I, icon, reactionIcon } from '../core/icons_sm.js';
 import {
   toast, contextMenu, confirmDialog, modal, lightbox,
@@ -24,7 +26,7 @@ import {
 } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
 import { openImageEditor } from './editor_sm.js';
-import { openStories, loadStories } from './stories_sm.js';
+import { openStories, loadStories, openStoryComposer } from './stories_sm.js';
 
 /* ------------------------------------------------------------
    STATE
@@ -42,61 +44,22 @@ export function useApi(impl) { api = impl; }
    SAMPLE DATA  (replaced by db_sm.js)
    ------------------------------------------------------------ */
 
-const PEOPLE = {
-  u2: { id:'u2', username:'youssef',  full_name:'Youssef Kader',   faculty:'Physique' },
-  u3: { id:'u3', username:'leila',    full_name:'Leila Mansouri',  faculty:'Biologie' },
-  u4: { id:'u4', username:'omar.k',   full_name:'Omar Kaci',       faculty:'Maths' },
-  u5: { id:'u5', username:'amina.z',  full_name:'Amina Zerrouki',  faculty:'Informatique' }
-};
-
-function samplePosts() {
-  const now = Date.now();
-  const mk = (o, minsAgo) => ({
-    id: uid('p'), likes: [], saves: [], comments: [],
-    created_at: new Date(now - minsAgo * 60000).toISOString(), ...o
-  });
-  return [
-    mk({ user_id:'u5', text:'Quelqu\'un a le corrigé de la série 4 en #algo ? Je bloque sur le tri fusion 😅',
-         likes:['u2','u3'], comments:[
-           { id:uid('c'), user_id:'u2', text:'Je te l\'envoie ce soir', created_at:new Date(now-20*60000).toISOString() },
-           { id:uid('c'), user_id:'u4', text:'Pareil, ça m\'intéresse', created_at:new Date(now-15*60000).toISOString() }
-         ] }, 34),
-    mk({ user_id:'u3', text:'Le labo de bio ce matin. Les cultures ont enfin pris 🔬',
-         image_url:'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&q=75',
-         likes:['u2','u4','u5'] }, 96),
-    mk({ user_id:null, anonymous:true, text:'Est-ce que quelqu\'un d\'autre trouve que le rythme du semestre est intenable ? J\'ai l\'impression d\'être le seul à galérer.',
-         likes:['u2','u3','u4','u5'], comments:[
-           { id:uid('c'), user_id:'u3', text:'Tu n\'es pas seul, franchement.', created_at:new Date(now-100*60000).toISOString() }
-         ] }, 140),
-    mk({ user_id:'u4', text:'Sondage : quel jour pour la séance de révision ?',
-         poll:{ options:[
-           { label:'Mercredi 14h', votes:['u2','u5'] },
-           { label:'Jeudi 16h',    votes:['u3'] },
-           { label:'Samedi matin', votes:[] }
-         ] } }, 210),
-    mk({ user_id:'u2', text:'Rappel : la biblio ferme à 18h pendant les partiels. Prévoyez large.\n\nLien officiel https://univ-alger.dz/biblio',
-         likes:['u5'] }, 320)
-  ];
-}
-
-const STORIES = [
-  { id:'s1', user_id:'u2', seen:false },
-  { id:'s2', user_id:'u3', seen:false },
-  { id:'s3', user_id:'u5', seen:true  }
-];
-
-const person = id => PEOPLE[id] || me.get() || { id, full_name:'Étudiant', username:'?' };
+/* Stories come from the database; this is filled by loadStoryRail(). */
+let storyGroups = [];
 
 /* ------------------------------------------------------------
    DATA
    ------------------------------------------------------------ */
 
 async function loadPosts(which) {
-  if (api?.listPosts) return api.listPosts(which);
-  const all = samplePosts();
-  if (which === 'following') return all.filter(p => ['u2','u3'].includes(p.user_id));
-  if (which === 'faculty')   return all.filter(p => person(p.user_id).faculty === (me.get()?.faculty || 'Informatique'));
-  return all;
+  if (!api?.listPosts) {
+    // No database bound. Say so plainly instead of showing invented
+    // posts that vanish on refresh — that was the old lie.
+    throw new Error('not-connected');
+  }
+  const rows = await api.listPosts(which);
+  cachePeople(rows.map(r => r.profiles).filter(Boolean));
+  return rows;
 }
 
 /* ------------------------------------------------------------
@@ -104,9 +67,15 @@ async function loadPosts(which) {
    ------------------------------------------------------------ */
 
 function postMedia(p) {
-  if (!p.image_url) return '';
-  return `<div class="post-media media-zoom" data-zoom="${esc(safeUrl(p.image_url))}">
-      <img src="${esc(safeUrl(p.image_url))}" alt="" loading="lazy">
+  if (p.media_type === 'video' && p.media_url) {
+    return `<div class="post-media">
+        <video src="${esc(safeUrl(p.media_url))}" controls preload="metadata" playsinline></video>
+      </div>`;
+  }
+  const src = p.image_url || (p.media_type === 'image' ? p.media_url : null);
+  if (!src) return '';
+  return `<div class="post-media media-zoom" data-zoom="${esc(safeUrl(src))}">
+      <img src="${esc(safeUrl(src))}" alt="" loading="lazy">
     </div>`;
 }
 
@@ -134,7 +103,9 @@ function commenterFaces(p) {
   return `<button class="commenters" data-open-comments>
       <span class="av-stack">${ids.map(id => {
         const u = person(id);
-        return `<span class="av xs" style="background:${avatarColor(id)}">${esc(initials(u.full_name))}</span>`;
+        return u.avatar_url
+          ? `<span class="av xs"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+          : `<span class="av xs" style="background:${avatarColor(id)}">${esc(initials(u.full_name))}</span>`;
       }).join('')}</span>
       <span class="t-sm t-dim">${p.comments.length} commentaire${p.comments.length > 1 ? 's' : ''}</span>
     </button>`;
@@ -150,9 +121,9 @@ function postCard(p) {
   const node = el('article', { class: 'post hover-host', 'data-id': p.id, tabindex: '0' });
   node.innerHTML = `
     <div class="post-head">
-      <div class="av" style="background:${anon ? 'var(--text-3)' : avatarColor(u.id)}">
-        ${anon ? icon('user', { size: 18 }) : esc(initials(u.full_name))}
-      </div>
+      ${anon
+        ? `<div class="av" style="background:var(--text-3)">${icon('user', { size: 18 })}</div>`
+        : avatarMarkup(u)}
       <div class="grow" style="min-width:0">
         <div class="row g2" style="flex-wrap:wrap">
           <span class="post-name">${esc(u.full_name)}</span>
@@ -188,6 +159,13 @@ function postCard(p) {
   return node;
 }
 
+/** Real photo when the profile has one, coloured initials otherwise. */
+function avatarMarkup(u, cls = 'av') {
+  const src = u?.avatar_url;
+  if (src) return `<div class="${cls}"><img src="${esc(safeUrl(src))}" alt="" loading="lazy"></div>`;
+  return `<div class="${cls}" style="background:${avatarColor(u?.id)}">${esc(initials(u?.full_name || ''))}</div>`;
+}
+
 const heartOutline = () =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.7 4.3 13a4.9 4.9 0 0 1 0-7 4.9 4.9 0 0 1 7 0l.7.7.7-.7a4.9 4.9 0 0 1 7 0 4.9 4.9 0 0 1 0 7z"/></svg>`;
 
@@ -216,7 +194,14 @@ function toggleLike(p, node, viaDoubleClick = false) {
       btn.classList.toggle('on', was);
       count.textContent = p.likes.length || '';
     },
-    () => api?.like?.(p.id, !was) ?? Promise.resolve(),
+    async () => {
+      await api.like(p.id, !was);
+      // liking moves your quest; the author earns the point, capped
+      if (!was) {
+        act('like_given', p.id);
+        if (p.user_id && p.user_id !== me.id) act('like_received', p.id);
+      }
+    },
     'Impossible d\'aimer cette publication'
   );
 }
@@ -231,16 +216,23 @@ function toggleSave(p, node) {
             toast(was ? 'Retiré des enregistrés' : 'Enregistré', { duration: 1500 }); },
     () => { p.saves = was ? [...p.saves, me.id] : p.saves.filter(x => x !== me.id);
             btn.classList.toggle('on', was); },
-    () => api?.save?.(p.id, !was) ?? Promise.resolve()
+    () => api.save(p.id, !was)
   );
 }
 
-function votePoll(p, index, node) {
+async function votePoll(p, index, node) {
   if (p.poll.options.some(o => o.votes.includes(me.id))) { toast('Vous avez déjà voté'); return; }
+  const before = JSON.parse(JSON.stringify(p.poll));
   p.poll.options[index].votes.push(me.id);
-  const holder = node.querySelector('.poll');
-  holder.outerHTML = pollMarkup(p);
-  api?.vote?.(p.id, index);
+  node.querySelector('.poll').outerHTML = pollMarkup(p);
+
+  try {
+    await api.vote(p.id, index);
+  } catch {
+    p.poll = before;
+    node.querySelector('.poll').outerHTML = pollMarkup(p);
+    toast('Vote non enregistré', 'err');
+  }
 }
 
 function postMenu(e, p) {
@@ -275,48 +267,102 @@ async function deletePost(p) {
     title: 'Supprimer la publication ?', message: 'Cette action est définitive.',
     confirmLabel: 'Supprimer', danger: true
   })) return;
+  const keep = posts;
   posts = posts.filter(x => x.id !== p.id);
   render();
-  api?.deletePost?.(p.id);
-  toast('Publication supprimée', 'ok');
+  try {
+    await api.deletePost(p.id);
+    toast('Publication supprimée', 'ok');
+  } catch {
+    posts = keep;
+    render();
+    toast('Suppression échouée', 'err');
+  }
 }
 
 /* ------------------------------------------------------------
    COMMENTS
    ------------------------------------------------------------ */
 
-function openComments(p) {
+async function openComments(p) {
   const list = el('div', { class: 'cmt-list' });
+  let busy = false;
+
   const draw = () => {
     list.innerHTML = p.comments?.length
       ? p.comments.map(c => {
           const u = person(c.user_id);
-          return `<div class="cmt">
-              <span class="av sm" style="background:${avatarColor(c.user_id)}">${esc(initials(u.full_name))}</span>
+          const mine = c.user_id === me.id;
+          return `<div class="cmt" data-cid="${esc(c.id)}">
+              ${u.avatar_url
+                ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+                : `<span class="av sm" style="background:${avatarColor(c.user_id)}">${esc(initials(u.full_name))}</span>`}
               <div class="grow" style="min-width:0">
                 <div class="row g2"><span class="t-bold t-sm">${esc(u.full_name)}</span>
                 <span class="t-xs t-dim">${timeAgo(c.created_at)}</span></div>
                 <div class="t-sm">${richText(c.text)}</div>
               </div>
+              ${mine ? `<button class="icon-btn sm" data-del-cmt data-tip="Supprimer">${I.trash}</button>` : ''}
             </div>`;
         }).join('')
       : `<div class="tg-empty">${icon('comment', { size: 22 })}<span>Aucun commentaire</span></div>`;
   };
+
+  // Show what we already have, then refresh from the database so the
+  // list is never a stale snapshot from the feed request.
   draw();
+  if (api?.listComments) {
+    try {
+      p.comments = await api.listComments(p.id);
+      draw();
+    } catch { /* keep what we had */ }
+  }
 
   const input = el('input', { class: 'input', placeholder: 'Écrire un commentaire…' });
-  const send = el('button', { class: 'btn btn-primary', onclick: add }, 'Publier');
+  const send = el('button', { class: 'btn btn-primary', onclick: () => add() }, 'Publier');
   on(input, 'keydown', e => { if (e.key === 'Enter') add(); });
 
-  function add() {
+  on(list, 'click', async e => {
+    const btn = e.target.closest('[data-del-cmt]');
+    if (!btn) return;
+    const id = btn.closest('[data-cid]').dataset.cid;
+    const keep = p.comments;
+    p.comments = p.comments.filter(c => String(c.id) !== String(id));
+    draw(); render();
+    try { await api?.deleteComment?.(id); }
+    catch { p.comments = keep; draw(); render(); toast('Suppression échouée', 'err'); }
+  });
+
+  async function add() {
     const text = input.value.trim();
-    if (!text) return;
-    p.comments ||= [];
-    p.comments.push({ id: uid('c'), user_id: me.id, text, created_at: new Date().toISOString() });
+    if (!text || busy) return;
+    busy = true;
+    send.disabled = true;
+
+    // optimistic row, replaced by the real one once Postgres answers
+    const temp = { id: uid('c'), user_id: me.id, text, created_at: new Date().toISOString(), _pending: true };
+    p.comments = [...(p.comments || []), temp];
     input.value = '';
     draw();
-    render();
-    api?.comment?.(p.id, text);
+
+    try {
+      const saved = await api?.comment?.(p.id, text);
+      // the id from the database is what delete and reply will use
+      p.comments = p.comments.map(c => (c.id === temp.id ? { ...temp, ...saved, _pending: false } : c));
+      draw();
+      render();
+      act('comment', saved?.id);
+    } catch (err) {
+      p.comments = p.comments.filter(c => c.id !== temp.id);
+      draw();
+      toast(err?.status === 401
+        ? 'Session expirée — reconnectez-vous'
+        : 'Commentaire non enregistré', 'err');
+    } finally {
+      busy = false;
+      send.disabled = false;
+      input.focus();
+    }
   }
 
   const body = el('div', { class: 'col g4' }, list, el('div', { class: 'row g2' }, input, send));
@@ -413,27 +459,33 @@ export function openComposer(kind = 'post') {
     if (!text && !composerFiles.length) return;
     if (text.length > 500) { toast('500 caractères maximum', 'err'); return; }
 
-    const post = {
-      id: uid('p'),
-      user_id: anonymous ? null : me.id,
-      anonymous,
-      text,
-      likes: [], saves: [], comments: [],
-      created_at: new Date().toISOString()
-    };
-    if (composerFiles[0]) post.image_url = URL.createObjectURL(composerFiles[0]);
+    const draft = { anonymous, text, file: composerFiles[0] || null };
     if (pollMode) {
       const opts = pollInputs.map(i => i.value.trim()).filter(Boolean);
       if (opts.length < 2) { toast('Ajoutez au moins deux options', 'err'); return; }
-      post.poll = { options: opts.map(label => ({ label, votes: [] })) };
+      draft.poll = { options: opts };
     }
 
-    posts.unshift(post);
-    render();
-    m.close();
-    toast('Publié', 'ok');
-    try { await api?.createPost?.(post); }
-    catch { posts = posts.filter(p => p.id !== post.id); render(); toast('Publication échouée', 'err'); }
+    publish.disabled = true;
+    publish.textContent = draft.file ? 'Envoi de l\'image…' : 'Publication…';
+
+    // The post is written to Neon FIRST and only then painted. An
+    // optimistic card that quietly failed to save is exactly the bug
+    // that made the old build feel broken.
+    try {
+      const saved = await api.createPost(draft);
+      posts.unshift(saved);
+      render();
+      m.close();
+      toast('Publié', 'ok');
+      act('post', saved.id);
+    } catch (err) {
+      publish.disabled = false;
+      publish.textContent = 'Publier';
+      toast(err?.status === 413 || /trop lourd/i.test(err?.message || '')
+        ? err.message
+        : 'Publication échouée — rien n\'a été enregistré', 'err');
+    }
   }
 }
 
@@ -443,23 +495,55 @@ export function openComposer(kind = 'post') {
 
 function storiesBar() {
   const mine = me.get();
+  const mineGroup = storyGroups.find(g => g.user_id === mine?.id);
+  const others = storyGroups.filter(g => g.user_id !== mine?.id);
+
+  const ringFor = (u, seen) => u?.avatar_url
+    ? `<span class="story-ring${seen ? ' seen' : ''}"><span class="av lg"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span></span>`
+    : `<span class="story-ring${seen ? ' seen' : ''}"><span class="av lg" style="background:${avatarColor(u?.id)}">${esc(initials(u?.full_name || ''))}</span></span>`;
+
   return `<div class="stories">
-    <button class="story" data-story="new">
-      <span class="story-ring" style="background:var(--border-strong)">
-        <span class="av lg" style="background:${avatarColor(mine?.id)}">${icon('plus', { size: 20 })}</span>
+    <button class="story" data-story="new" data-tip="Ajouter à votre story">
+      <span class="story-ring add">
+        ${mineGroup || mine?.avatar_url
+          ? `<span class="av lg">${mine?.avatar_url
+              ? `<img src="${esc(safeUrl(mine.avatar_url))}" alt="">`
+              : esc(initials(mine?.full_name || ''))}</span>`
+          : `<span class="av lg" style="background:${avatarColor(mine?.id)}">${esc(initials(mine?.full_name || ''))}</span>`}
+        <span class="story-plus">${icon('plus', { size: 13 })}</span>
       </span>
       <span class="story-name">Votre story</span>
     </button>
-    ${STORIES.map(s => {
-      const u = person(s.user_id);
-      return `<button class="story" data-story="${s.id}" data-user="${s.user_id}">
-          <span class="story-ring${s.seen ? ' seen' : ''}">
-            <span class="av lg" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>
-          </span>
-          <span class="story-name truncate">${esc(u.full_name.split(' ')[0])}</span>
+    ${mineGroup ? `<button class="story" data-story="${esc(mineGroup.items[0].id)}" data-user="${esc(mineGroup.user_id)}">
+        ${ringFor(mineGroup.user, mineGroup.seen)}
+        <span class="story-name truncate">Vous</span>
+      </button>` : ''}
+    ${others.map(g => {
+      const u = g.user || person(g.user_id);
+      return `<button class="story" data-story="${esc(g.items[0].id)}" data-user="${esc(g.user_id)}">
+          ${ringFor(u, g.seen)}
+          <span class="story-name truncate">${esc((u.full_name || '').split(' ')[0])}</span>
         </button>`;
     }).join('')}
   </div>`;
+}
+
+async function refreshStoryRail() {
+  try { storyGroups = await loadStories(); }
+  catch { storyGroups = []; }
+  const bar = $('.stories');
+  if (bar) bar.outerHTML = storiesBar();
+  wireStoriesBar();
+}
+
+function wireStoriesBar() {
+  on($('.stories'), 'click', async e => {
+    const s = e.target.closest('[data-story]');
+    if (!s) return;
+    if (s.dataset.story === 'new') { await openStoryComposer(); refreshStoryRail(); return; }
+    await openStories(s.dataset.user);
+    refreshStoryRail();
+  });
 }
 
 /* ------------------------------------------------------------
@@ -524,7 +608,7 @@ function wireFeed() {
       if (act === 'save')    toggleSave(p, card);
       if (act === 'comment') openComments(p);
       if (act === 'share')   sharePost(p);
-      if (act === 'repost')  toast('Repartage bientôt disponible');
+      if (act === 'repost')  repost(p);
       if (act === 'menu')    postMenu(e, p);
       return;
     }
@@ -602,6 +686,51 @@ const TABS = [
   { id:'faculty',   label:'Ma faculté' }
 ];
 
+/** Repost: a new post that points at the original. */
+async function repost(p) {
+  const note = el('textarea', { class: 'textarea', rows: '2', placeholder: 'Ajouter un mot (facultatif)…' });
+  const foot = el('div', { class: 'row g2' });
+  const orig = person(p.user_id);
+
+  const m = modal({
+    title: 'Repartager',
+    body: el('div', { class: 'col g3' }, note,
+      el('div', { class: 'repost-quote', html:
+        `<div class="row g2"><span class="t-sm t-bold">${esc(p.anonymous ? 'Anonyme' : orig.full_name)}</span>
+         <span class="t-xs t-dim">${timeAgo(p.created_at)}</span></div>
+         <div class="t-sm t-dim">${esc(truncateText(p.text || '', 160))}</div>` })),
+    footer: foot
+  });
+
+  foot.append(
+    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, 'Annuler'),
+    el('button', { class: 'btn btn-primary', onclick: async e => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        const saved = await api.createPost({
+          text: note.value.trim(),
+          repost_id: p.id,
+          image_url: p.image_url || null
+        });
+        posts.unshift(saved);
+        render();
+        m.close();
+        toast('Repartagé', 'ok');
+      } catch {
+        btn.disabled = false;
+        toast('Repartage échoué', 'err');
+      }
+    }}, 'Repartager')
+  );
+}
+
+const truncateText = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+/* ------------------------------------------------------------
+   VIEW ENTRY
+   ------------------------------------------------------------ */
+
 export function initFeed(mountFn) {
   route('feed', async () => {
     const host = mountFn();
@@ -621,20 +750,34 @@ export function initFeed(mountFn) {
         frequency.bump('feedtab', tab);
         for (const b of $$('.sub-tab')) b.classList.toggle('on', b === btn);
         $('#feedList').innerHTML = skeletonList(3);
-        posts = await loadPosts(tab);
-        render();
+        await reload();
       });
     }
 
-    on($('.stories'), 'click', e => {
-      const s = e.target.closest('[data-story]');
-      if (!s) return;
-      if (s.dataset.story === 'new') { toast('Création de story bientôt'); return; }
-      openStories(s.dataset.user);
-    });
-
+    wireStoriesBar();
     wireFeed();
+    await reload();
+    refreshStoryRail();
+  });
+}
+
+/** Load from Neon, and say honestly what happened if it fails. */
+async function reload() {
+  const list = $('#feedList');
+  try {
     posts = await loadPosts(tab);
     render();
-  });
+  } catch (err) {
+    if (!list) return;
+    list.innerHTML = '';
+    const offline = err?.message === 'not-connected' || err?.status === 401;
+    list.append(emptyState({
+      icon: I.inbox,
+      title: offline ? 'Non connecté à la base' : 'Chargement impossible',
+      text: offline
+        ? 'Reconnectez-vous pour voir le fil de votre campus.'
+        : (err?.message || 'Réessayez dans un instant.'),
+      action: { label: 'Réessayer', onClick: () => { list.innerHTML = skeletonList(3); reload(); } }
+    }));
+  }
 }

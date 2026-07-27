@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Koliya</title>
+<!--
+  The real app lives in index_sm.html (the _sm suffix is the naming
+  convention for this project). Static hosts serve index.html for "/",
+  so this file forwards to it. It also keeps the site working if a
+  rewrite rule is ever missing or misconfigured.
+-->
+<meta http-equiv="refresh" content="0; url=index_sm.html">
+<link rel="canonical" href="index_sm.html">
+<style>
+  body{margin:0;height:100vh;display:grid;place-items:center;
+       font-family:system-ui,-apple-system,sans-serif;background:#FAFAF9;color:#16181C}
+  @media (prefers-color-scheme:dark){body{background:#0F1115;color:#E9EBEE}}
+  a{color:#2563EB}
+</style>
+</head>
+<body>
+  <p>Chargement de Koliya… <a href="index_sm.html">Continuer</a></p>
+  <script>location.replace('index_sm.html' + location.hash);</script>
+</body>
+</html>

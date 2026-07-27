@@ -68,7 +68,7 @@
   /* layout */
   --r-tail: 5px;
   --nav-w: 248px;
-  --nav-w-collapsed: 76px;
+  --nav-w-collapsed: 64px;   /* 44px target + 2×6px padding + 8px breathing */
   --rail-w: 320px;
   --feed-w: 620px;
   --topbar-h: 56px;

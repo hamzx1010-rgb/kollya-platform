@@ -18,7 +18,7 @@
 
 import { CONFIG } from './config_sm.js';
 import { getToken } from './auth_sm.js';
-import { assertNotBase64 } from './utils_sm.js';
+import { MEDIA_BUDGET } from './media_sm.js';
 
 const base = () => CONFIG.DATA_API_URL.replace(/\/$/, '');
 
@@ -79,14 +79,42 @@ function qs(params = {}) {
 
 /* ------------------------------------------------------------
    GUARD
-   The one rule of this project, enforced on the way out.
+   Media now lives in Postgres as data: URLs (see media_sm.js), so
+   base64 is expected rather than forbidden. What still has to be
+   enforced is SIZE — a 12 MB row would time out the Data API long
+   before Postgres complained, and the error would be unreadable.
+   The same limits exist as CHECK constraints in 05_upgrade_sm.sql;
+   this copy just fails faster and in French.
    ------------------------------------------------------------ */
 
-const URL_FIELDS = ['avatar_url','banner_url','image_url','media_url','icon_url','cover_url'];
+const FIELD_BUDGET = {
+  avatar_url: MEDIA_BUDGET.avatar.maxBytes,
+  banner_url: MEDIA_BUDGET.banner.maxBytes,
+  image_url:  MEDIA_BUDGET.post.maxBytes,
+  cover_url:  MEDIA_BUDGET.banner.maxBytes,
+  icon_url:   MEDIA_BUDGET.avatar.maxBytes,
+  media_url:  4_000_000
+};
 
 function guard(row) {
   if (!row || typeof row !== 'object') return row;
-  for (const f of URL_FIELDS) if (f in row) assertNotBase64(row[f], f);
+  for (const [field, max] of Object.entries(FIELD_BUDGET)) {
+    const v = row[field];
+    if (typeof v !== 'string' || !v.length) continue;
+    if (v.length > max) {
+      throw new DbError(
+        `Média trop lourd pour « ${field} » : ${Math.round(v.length / 1024)} Ko ` +
+        `(maximum ${Math.round(max / 1024)} Ko). Passez par toStorable().`, 413);
+    }
+    if (!/^(data:image\/|data:audio\/|data:video\/|https?:\/\/|blob:)/.test(v)) {
+      throw new DbError(`Valeur de média invalide pour « ${field} »`, 400);
+    }
+    if (v.startsWith('blob:')) {
+      throw new DbError(
+        `« ${field} » contient une URL blob: temporaire, qui n'existera plus ` +
+        `après un rafraîchissement. Utilisez toStorable() avant d'enregistrer.`, 400);
+    }
+  }
   return row;
 }
 

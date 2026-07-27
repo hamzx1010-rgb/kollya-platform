@@ -16,6 +16,8 @@ import {
   $, $$, el, on, esc, timeAgo, initials, avatarColor, truncate, onVisible
 } from '../core/utils_sm.js';
 import { me, setState, state, scoped } from '../core/store_sm.js';
+import { person, cachePeople } from '../core/people_sm.js';
+import { safeUrl } from '../core/utils_sm.js';
 import { I, icon, reactionIcon } from '../core/icons_sm.js';
 import { toast, emptyState, skeletonList, contextMenu } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
@@ -27,36 +29,17 @@ const store = scoped('notif');
 let items = [];
 let filter = 'all';
 
-const PEOPLE = {
-  u2:{ id:'u2', full_name:'Youssef Kader', username:'youssef' },
-  u3:{ id:'u3', full_name:'Leila Mansouri', username:'leila' },
-  u4:{ id:'u4', full_name:'Omar Kaci', username:'omar.k' },
-  u5:{ id:'u5', full_name:'Amina Zerrouki', username:'amina.z' }
-};
-const person = id => PEOPLE[id] || { id, full_name:'Étudiant', username:'?' };
-
 /* ------------------------------------------------------------
    DATA
+   Read state lives in the database (notifications.read_at), not in
+   localStorage — otherwise a notification you read on your laptop is
+   still bold on your phone.
    ------------------------------------------------------------ */
 
-function sample() {
-  const ago = m => new Date(Date.now() - m * 60000).toISOString();
-  return [
-    { id:'n1', kind:'like',    actor:'u2', target:'p1', text:'votre publication sur l\'algo', at:ago(8) },
-    { id:'n2', kind:'like',    actor:'u3', target:'p1', text:'votre publication sur l\'algo', at:ago(12) },
-    { id:'n3', kind:'like',    actor:'u5', target:'p1', text:'votre publication sur l\'algo', at:ago(20) },
-    { id:'n4', kind:'comment', actor:'u4', target:'p1', text:'Je te l\'envoie ce soir', at:ago(26) },
-    { id:'n5', kind:'follow',  actor:'u5', at:ago(90) },
-    { id:'n6', kind:'mention', actor:'u3', target:'p2', text:'@sara.b tu viens à la révision ?', at:ago(150) },
-    { id:'n7', kind:'request', actor:'u4', at:ago(220) },
-    { id:'n8', kind:'badge',   text:'Une semaine', at:ago(400) },
-    { id:'n9', kind:'event',   actor:'u2', text:'Révision Algo — mercredi 14h', at:ago(700) }
-  ];
-}
-
 async function load() {
-  const raw = api?.listNotifications ? await api.listNotifications() : sample();
-  return raw.map(n => ({ ...n, read: store.get('read:' + n.id, false) }));
+  if (!api?.listNotifications) return [];
+  try { return await api.listNotifications(); }
+  catch (e) { console.warn('[koliya] notifications indisponibles', e.message); return []; }
 }
 
 /* ------------------------------------------------------------
@@ -114,13 +97,18 @@ function row(g) {
   const node = el('div', {
     class: 'notif' + (g.read ? '' : ' unread'),
     'data-ids': g.ids.join(','),
+    'data-kind': g.kind,
+    'data-actor': g.actors[0] || '',
+    'data-target': g.target ?? '',
     tabindex: '0'
   });
 
   const faces = g.actors.length
     ? `<span class="av-stack">${g.actors.slice(0, 3).map(a => {
         const u = person(a);
-        return `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`;
+        return u.avatar_url
+          ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+          : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`;
       }).join('')}</span>`
     : `<span class="av sm" style="background:var(--surface-2);color:var(--text-2)">${icon(meta.icon, { size: 15 })}</span>`;
 
@@ -170,10 +158,12 @@ function render() {
   // read when actually seen, not when the page opens
   for (const node of $$('#notifList .notif.unread')) {
     onVisible(node, () => {
-      node.dataset.ids.split(',').forEach(id => store.set('read:' + id, true));
-      items.forEach(n => { if (node.dataset.ids.includes(n.id)) n.read = true; });
+      const ids = node.dataset.ids.split(',').filter(Boolean);
+      items.forEach(n => { if (ids.includes(String(n.id))) n.read = true; });
       node.classList.remove('unread');
       updateBadge();
+      // persist, so it stays read on the next device you open
+      api?.markRead?.(ids).catch(() => {});
     }, { threshold: 0.9 });
   }
   updateBadge();
@@ -203,29 +193,65 @@ export function initNotifications(mountFn) {
     host.innerHTML = `
       <div class="sub-tabs blur-bar">
         ${FILTERS.map(f => `<button class="sub-tab${f.id === filter ? ' on' : ''}" data-f="${f.id}">${f.label}</button>`).join('')}
+        <button class="sub-tab" id="notifAllRead" style="margin-inline-start:auto">${icon('check', { size: 14 })} Tout marquer lu</button>
       </div>
       <div id="notifList">${skeletonList(5, 'conv')}</div>`;
 
-    for (const b of $$('.sub-tab')) {
+    on($('#notifAllRead'), 'click', async () => {
+      items = items.map(n => ({ ...n, read: true }));
+      render();
+      try { await api.markAllRead(); toast('Tout marqué comme lu', 'ok'); }
+      catch { toast('Action échouée', 'err'); }
+    });
+
+    for (const b of $$('.sub-tab[data-f]')) {
       on(b, 'click', () => {
         filter = b.dataset.f;
-        for (const x of $$('.sub-tab')) x.classList.toggle('on', x === b);
+        for (const x of $$('.sub-tab[data-f]')) x.classList.toggle('on', x === b);
         render();
       });
     }
 
-    on($('#notifList'), 'click', e => {
+    on($('#notifList'), 'click', async e => {
       const node = e.target.closest('.notif');
       if (!node) return;
 
+      const ids = (node.dataset.ids || '').split(',').filter(Boolean);
+
       if (e.target.closest('[data-dismiss]')) {
-        node.dataset.ids.split(',').forEach(id => { items = items.filter(n => n.id !== id); });
+        const keep = items;
+        items = items.filter(n => !ids.includes(String(n.id)));
         node.remove();
         updateBadge();
+        try { await api.dismiss(ids); }
+        catch { items = keep; render(); toast('Suppression échouée', 'err'); }
         return;
       }
-      if (e.target.closest('[data-accept]'))  { toast('Demande acceptée', 'ok'); node.remove(); return; }
-      if (e.target.closest('[data-decline]')) { toast('Demande refusée'); node.remove(); return; }
+
+      const accept = e.target.closest('[data-accept]');
+      const decline = e.target.closest('[data-decline]');
+      if (accept || decline) {
+        const actor = node.dataset.actor;
+        node.remove();
+        try {
+          await api.respondToRequest(actor, !!accept);
+          await api.dismiss(ids);
+          toast(accept ? 'Demande acceptée' : 'Demande refusée', accept ? 'ok' : undefined);
+        } catch { render(); toast('Action échouée', 'err'); }
+        return;
+      }
+
+      // opening a notification marks it read, then goes where it points
+      if (ids.length) { api.markRead(ids).catch(() => {}); }
+      items = items.map(n => (ids.includes(String(n.id)) ? { ...n, read: true } : n));
+      updateBadge();
+
+      const target = node.dataset.target;
+      const actor = node.dataset.actor;
+      if (node.dataset.kind === 'follow' || node.dataset.kind === 'request') {
+        const u = person(actor);
+        if (u.username) { go('profile', u.username); return; }
+      }
       go('feed');
     });
 
@@ -236,6 +262,15 @@ export function initNotifications(mountFn) {
 
 /** Unread count for the rail badge, without opening the screen. */
 export async function refreshNotificationBadge() {
+  // A count query, not the whole list: the badge runs on every boot
+  // and after every route change, so it has to be cheap.
+  if (api?.unreadCount) {
+    const n = await api.unreadCount().catch(() => 0);
+    setState({ unread: n });
+    const badge = document.querySelector('[data-nav="notifications"] .count');
+    if (badge) { badge.textContent = n > 99 ? '99+' : String(n); badge.hidden = !n; }
+    return n;
+  }
   items = await load();
   updateBadge();
 }

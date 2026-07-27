@@ -1,20 +1,29 @@
 /**
  * KOLIYA — features/stories_sm.js
  * ============================================================
- * Story viewer.
+ * Story ring, viewer and composer — all backed by Neon.
  *
- * Two decisions worth naming:
+ * Three decisions worth naming:
  *   - the timer is derived from how much there is to read, not a
  *     flat 5 seconds for everyone
  *   - hovering pauses it. On the web, a cursor resting on a story
- *     means the person is reading, so advancing would be rude.
+ *     means the person is reading, so advancing would be rude
+ *   - an image that fails to load says so. The previous build showed
+ *     "Chargement" forever because the URLs pointed at an external
+ *     host; stories now live in the database, and a broken one is
+ *     reported instead of hidden.
  * ============================================================
  */
 
-import { $, $$, el, on, esc, initials, avatarColor, timeAgo, clamp, env } from '../core/utils_sm.js';
+import {
+  $, $$, el, on, esc, initials, avatarColor, timeAgo, clamp, env, safeUrl, uid
+} from '../core/utils_sm.js';
 import { me, scoped } from '../core/store_sm.js';
+import { person } from '../core/people_sm.js';
+import { act } from '../core/game_sm.js';
 import { I, icon, reactionIcon, REACTION_KEYS, reactionLabel } from '../core/icons_sm.js';
-import { toast } from '../core/ui_sm.js';
+import { toast, modal, confirmDialog } from '../core/ui_sm.js';
+import { openImageEditor } from './editor_sm.js';
 
 const seenStore = scoped('story');
 const BASE_MS = 4200;
@@ -25,47 +34,103 @@ let api = null;
 export function useApi(impl) { api = impl; }
 
 /* ------------------------------------------------------------
-   SAMPLE
+   DATA
    ------------------------------------------------------------ */
 
-const PEOPLE = {
-  u2: { id:'u2', username:'youssef', full_name:'Youssef Kader' },
-  u3: { id:'u3', username:'leila',   full_name:'Leila Mansouri' },
-  u5: { id:'u5', username:'amina.z', full_name:'Amina Zerrouki' }
-};
-
-const SAMPLE = [
-  { user_id:'u2', items:[
-    { id:'s1a', media_url:'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&q=70',
-      text:'Amphi plein ce matin', created_at:new Date(Date.now()-2*3600000).toISOString() },
-    { id:'s1b', media_url:'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=800&q=70',
-      text:'Révision jusqu\'à la fermeture de la biblio. Courage à tous ceux qui préparent les partiels de la semaine prochaine.',
-      created_at:new Date(Date.now()-1*3600000).toISOString() }
-  ]},
-  { user_id:'u3', items:[
-    { id:'s2a', media_url:'https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&q=70',
-      text:'Le labo', created_at:new Date(Date.now()-5*3600000).toISOString() }
-  ]},
-  { user_id:'u5', items:[
-    { id:'s3a', media_url:'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800&q=70',
-      text:'', created_at:new Date(Date.now()-9*3600000).toISOString() }
-  ]}
-];
-
+/**
+ * Groups of active stories, newest last within each group.
+ * Returns [] rather than throwing: an empty ring is a fine answer,
+ * a crashed feed is not.
+ */
 export async function loadStories() {
-  const groups = api?.listStories ? await api.listStories() : SAMPLE;
-  return groups.map(g => ({
+  if (!api?.listStories) return [];
+  let groups = [];
+  try {
+    groups = await api.listStories();
+  } catch (e) {
+    console.warn('[koliya] stories indisponibles', e.message);
+    return [];
+  }
+  return (groups || []).map(g => ({
     ...g,
-    user: PEOPLE[g.user_id] || { id:g.user_id, full_name:'Étudiant', username:'?' },
-    seen: g.items.every(i => seenStore.get(i.id, false))
+    user: g.user || person(g.user_id),
+    seen: g.items.every(i => seenStore.get(String(i.id), false))
   }));
 }
 
-export const markSeen = id => seenStore.set(id, true);
+export const markSeen = id => {
+  seenStore.set(String(id), true);
+  api?.markSeen?.(id);
+};
 
 /** Reading time scales with the caption. */
 const durationFor = item =>
   clamp(BASE_MS + (item.text?.length || 0) * PER_CHAR, BASE_MS, MAX_MS);
+
+/* ------------------------------------------------------------
+   COMPOSER
+   The "Création de story bientôt" placeholder, implemented.
+   ------------------------------------------------------------ */
+
+export async function openStoryComposer() {
+  const pick = el('input', { type: 'file', accept: 'image/*', hidden: true });
+  document.body.append(pick);
+
+  const file = await new Promise(resolve => {
+    on(pick, 'change', () => resolve(pick.files?.[0] || null), { once: true });
+    // cancelling the OS dialog fires no event, so a focus return with
+    // no file selected resolves null instead of hanging forever
+    on(window, 'focus', () => setTimeout(() => resolve(pick.files?.[0] || null), 400), { once: true });
+    pick.click();
+  });
+  pick.remove();
+  if (!file) return null;
+
+  // 9:16 is suggested because that is what a story is
+  const edited = await openImageEditor(file, 'story');
+  if (!edited) return null;
+
+  const caption = el('input', { class: 'input', placeholder: 'Légende (facultatif)…', maxlength: '140' });
+  const previewUrl = URL.createObjectURL(edited);
+  const foot = el('div', { class: 'row g2' });
+
+  return new Promise(resolve => {
+    let settled = false;
+    const done = v => { if (settled) return; settled = true; URL.revokeObjectURL(previewUrl); resolve(v); };
+
+    const m = modal({
+      title: 'Nouvelle story',
+      body: el('div', { class: 'col g3' },
+        el('div', { class: 'story-preview', html: `<img src="${previewUrl}" alt="">` }),
+        caption,
+        el('div', { class: 't-xs t-dim' }, 'Visible 24 heures par les étudiants approuvés.')),
+      footer: foot,
+      onClose: () => done(null)
+    });
+
+    foot.append(
+      el('button', { class: 'btn btn-ghost', onclick: () => { m.close(); done(null); } }, 'Annuler'),
+      el('button', { class: 'btn btn-primary', onclick: async e => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Publication…';
+        try {
+          const row = await api.createStory({ file: edited, text: caption.value.trim() });
+          act('story', row?.id);
+          m.close();
+          toast('Story publiée — visible 24 h', 'ok');
+          done(row);
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = 'Publier';
+          toast(err?.message || 'Story non publiée', 'err');
+        }
+      }}, 'Publier')
+    );
+
+    setTimeout(() => caption.focus(), 80);
+  });
+}
 
 /* ------------------------------------------------------------
    VIEWER
@@ -76,11 +141,16 @@ let viewer = null;
 export async function openStories(startUserId) {
   if (viewer) return;
   const groups = await loadStories();
-  if (!groups.length) { toast('Aucune story pour le moment'); return; }
+  if (!groups.length) {
+    toast('Aucune story pour le moment', {
+      action: { label: 'En créer une', fn: () => openStoryComposer() }
+    });
+    return;
+  }
 
-  // begin at the first unseen group unless one was named
+  // begin at the named group, else at the first unseen one
   let gi = startUserId
-    ? Math.max(0, groups.findIndex(g => g.user_id === startUserId))
+    ? Math.max(0, groups.findIndex(g => String(g.user_id) === String(startUserId)))
     : Math.max(0, groups.findIndex(g => !g.seen));
   let ii = 0;
   let raf = 0, startedAt = 0, elapsed = 0, paused = false;
@@ -113,20 +183,78 @@ export async function openStories(startUserId) {
 
   function paint() {
     const g = groups[gi], item = g.items[ii];
+    const u = g.user || person(g.user_id);
+    const isMine = String(g.user_id) === String(me.id);
 
     bars.innerHTML = g.items.map((_, i) =>
       `<i><span style="width:${i < ii ? '100%' : '0%'}"></span></i>`).join('');
 
     head.innerHTML = `
-      <span class="av sm" style="background:${avatarColor(g.user.id)}">${esc(initials(g.user.full_name))}</span>
+      ${u.avatar_url
+        ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+        : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
       <div class="grow" style="min-width:0">
-        <div class="t-sm t-bold truncate">${esc(g.user.full_name)}</div>
+        <div class="t-sm t-bold truncate">${esc(u.full_name)}</div>
         <div class="t-xs" style="opacity:.75">${timeAgo(item.created_at)}</div>
-      </div>`;
+      </div>
+      ${isMine ? `<button class="icon-btn sv-viewers" id="svViewers" aria-label="Vues">${I.user}</button>
+                  <button class="icon-btn sv-del" id="svDelete" aria-label="Supprimer">${I.trash}</button>` : ''}`;
 
+    // A story that cannot load says so, instead of a black rectangle
+    // with a spinner that never resolves.
     media.innerHTML = `
-      <img src="${esc(item.media_url)}" alt="">
+      <div class="sv-loading">${icon('image', { size: 26 })}<span>Chargement…</span></div>
+      <img src="${esc(safeUrl(item.media_url))}" alt="" style="opacity:0">
       ${item.text ? `<div class="sv-caption">${esc(item.text)}</div>` : ''}`;
+
+    const img = media.querySelector('img');
+    const spinner = media.querySelector('.sv-loading');
+    on(img, 'load', () => { img.style.opacity = '1'; spinner?.remove(); });
+    on(img, 'error', () => {
+      spinner.innerHTML = `${icon('eyeOff', { size: 26 })}<span>Image indisponible</span>`;
+      spinner.classList.add('failed');
+    });
+    if (img.complete && img.naturalWidth) { img.style.opacity = '1'; spinner?.remove(); }
+
+    on($('#svDelete'), 'click', async () => {
+      pause(true);
+      const ok = await confirmDialog({
+        title: 'Supprimer cette story ?', message: 'Elle disparaîtra immédiatement.',
+        confirmLabel: 'Supprimer', danger: true
+      });
+      if (!ok) { pause(false); return; }
+      try {
+        await api.deleteStory(item.id);
+        g.items.splice(ii, 1);
+        if (!g.items.length) {
+          groups.splice(gi, 1);
+          if (!groups.length) { close(); return; }
+          gi = Math.min(gi, groups.length - 1);
+        }
+        ii = 0;
+        toast('Story supprimée', 'ok');
+        paint();
+      } catch { toast('Suppression échouée', 'err'); pause(false); }
+    });
+
+    on($('#svViewers'), 'click', async () => {
+      pause(true);
+      const list = await api.viewers(item.id).catch(() => []);
+      modal({
+        title: `Vues · ${list.length}`,
+        body: list.length
+          ? `<div class="col g3">${list.map(v => `
+              <div class="row g3">
+                ${v.user.avatar_url
+                  ? `<span class="av sm"><img src="${esc(safeUrl(v.user.avatar_url))}" alt=""></span>`
+                  : `<span class="av sm" style="background:${avatarColor(v.user_id)}">${esc(initials(v.user.full_name))}</span>`}
+                <div class="grow"><div class="t-sm t-bold">${esc(v.user.full_name)}</div>
+                <div class="t-xs t-dim">${timeAgo(v.viewed_at)}</div></div>
+              </div>`).join('')}</div>`
+          : `<div class="tg-empty">${icon('user', { size: 22 })}<span>Personne pour l'instant</span></div>`,
+        onClose: () => pause(false)
+      });
+    });
 
     markSeen(item.id);
     restart();
@@ -168,7 +296,7 @@ export async function openStories(startUserId) {
 
   const pause = v => { paused = v; root.classList.toggle('paused', v); };
 
-  on($('.sv-next') || root.querySelector('.sv-nav.next'), 'click', next);
+  on(root.querySelector('.sv-nav.next'), 'click', next);
   on(root.querySelector('.sv-nav.prev'), 'click', prev);
   on(root.querySelector('.sv-close'), 'click', close);
 
@@ -177,21 +305,31 @@ export async function openStories(startUserId) {
   on(stage, 'mouseenter', () => pause(true));
   on(stage, 'mouseleave', () => pause(false));
 
-  // typing a reply must not let the story run away
+  /** A story reply is a normal DM, which is what it always was. */
+  async function sendReply(text) {
+    const g = groups[gi];
+    if (!text.trim()) return;
+    if (String(g.user_id) === String(me.id)) { toast('C\'est votre propre story'); return; }
+    try {
+      await api.reply(g.user_id, text.trim());
+      toast(`Réponse envoyée à ${g.user.full_name}`, 'ok');
+    } catch { toast('Réponse non envoyée', 'err'); }
+  }
+
   const reply = $('#svReply');
   on(reply, 'focus', () => pause(true));
   on(reply, 'blur', () => pause(false));
   on(reply, 'keydown', e => {
     e.stopPropagation();
     if (e.key === 'Enter' && reply.value.trim()) {
-      toast('Réponse envoyée', 'ok');
+      sendReply(reply.value);
       reply.value = '';
       reply.blur();
     }
   });
   on($('#svSend'), 'click', () => {
     if (!reply.value.trim()) return;
-    toast('Réponse envoyée', 'ok');
+    sendReply(reply.value);
     reply.value = '';
   });
 
@@ -200,7 +338,7 @@ export async function openStories(startUserId) {
     if (!b) return;
     b.classList.add('burst');
     setTimeout(() => b.classList.remove('burst'), 500);
-    toast(`${reactionLabel(b.dataset.k)} envoyé`, { duration: 1400 });
+    sendReply(reactionLabel(b.dataset.k));
   });
 
   const offKeys = on(document, 'keydown', e => {
