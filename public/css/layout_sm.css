@@ -214,7 +214,28 @@
   scrollbar-gutter: stable;
 }
 .view-inner { max-width: var(--feed-w); margin: 0 auto; padding-bottom: var(--s12); }
-.view.full .view-inner { max-width: none; }
+
+/* FULL-BLEED VIEWS (messages) — THE HEIGHT CHAIN
+   The bug: .view-inner had no height at all, so `.dm { height:100% }`
+   resolved against `auto` and collapsed. .thread-body then had
+   nothing to fill, grew with every message, pushed the composer
+   below the fold, and the newest message scrolled off screen.
+   The original app got this right with an explicit height
+   (`.msg-l { height: calc(100vh - 52px) }`) — same idea here, but
+   with dvh so a mobile URL bar cannot cut the composer off. */
+.view.full {
+  overflow: hidden;           /* the thread scrolls, not the page */
+  display: flex;
+}
+.view.full .view-inner {
+  max-width: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  padding-bottom: 0;          /* the feed's bottom gutter is wrong here */
+  display: flex;
+  flex-direction: column;
+}
 
 /* tabs that slide away as you read, and come back when you scroll up */
 .sub-tabs {
@@ -268,11 +289,17 @@
      a ~1300px viewport — which is why the messages screen "only
      showed when the browser was half the size". */
   grid-template-columns: clamp(260px, 26vw, 330px) minmax(0, 1fr);
-  height: 100%;
+  /* Explicit, not inherited: `height:100%` only works when every
+     ancestor has a height, and one of them did not. dvh accounts for
+     the mobile browser chrome that vh ignores. */
+  height: calc(100dvh - var(--topbar-h));
+  max-height: calc(100dvh - var(--topbar-h));
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
 .dm-list {
+  min-height: 0;
   display: flex; flex-direction: column;
   border-inline-end: 1px solid var(--border);
   overflow: hidden;
@@ -298,7 +325,12 @@
 .conv.unread .conv-last { color: var(--text); font-weight: 600; }
 
 /* ---------- 6. THREAD --------------------------------------- */
-.thread { display: flex; flex-direction: column; height: 100%; min-width: 0; position: relative; }
+.thread {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;      /* min-height:0 lets the body shrink */
+  min-width: 0; position: relative;
+  overflow: hidden;
+}
 
 .thread-head {
   display: flex; align-items: center; gap: var(--s3);
@@ -623,7 +655,8 @@
   .view-inner { max-width: none; }
 
   /* list and thread become two screens instead of two columns */
-  .dm-list { border-inline-end: none; }
+  .dm-list {
+  min-height: 0; border-inline-end: none; }
 
   .bubble { max-width: 82%; }
   .post-actions { gap: var(--s5); }
@@ -814,14 +847,17 @@
   .dm,
   .dm.info-open { grid-template-columns: 1fr; }
   .dm-list {
+  min-height: 0;
     position: absolute; inset-block: 0; inset-inline-start: 0;
     width: min(320px, 86vw); z-index: calc(var(--z-sticky) + 1);
     background: var(--surface);
     box-shadow: var(--shadow-lg);
     transition: transform var(--t) var(--ease);
   }
-  .dm[data-open="thread"] .dm-list { transform: translateX(-102%); }
-  [dir="rtl"] .dm[data-open="thread"] .dm-list { transform: translateX(102%); }
+  .dm[data-open="thread"] .dm-list {
+  min-height: 0; transform: translateX(-102%); }
+  [dir="rtl"] .dm[data-open="thread"] .dm-list {
+  min-height: 0; transform: translateX(102%); }
   .dm:not([data-open="thread"]) .thread { visibility: hidden; }
   .thread-back { display: inline-flex !important; }
   .dm.info-open .info-panel { width: 100%; }
@@ -2205,3 +2241,182 @@ button.pf-stat:hover span { text-decoration: underline; }
 .contact-row:hover { background: var(--hover); }
 .tg-empty.failed { color: var(--danger); gap: var(--s3); }
 .tg-empty.failed .btn { margin-top: var(--s2); }
+
+
+/* ============================================================
+   FOLDABLE RAIL — the behaviour from the original app
+   Fold is a state YOU set and the app remembers. Hovering only
+   reveals the labels; it does not change the state. Mine used to
+   fold and unfold by route with no way to pin it, which is why it
+   felt like it was fighting you.
+   ============================================================ */
+
+.rail-fold {
+  margin-inline-start: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease), transform var(--t) var(--ease);
+}
+.nav-rail:hover .rail-fold,
+.nav-rail:focus-within .rail-fold { opacity: .75; }
+.rail-fold:hover { opacity: 1 !important; }
+.rail-fold svg { transform: rotate(180deg); transition: transform var(--t) var(--ease); }
+.rail-fold.is-folded svg { transform: none; }
+
+/* When folded, the button sits under the logo mark rather than
+   crushing it — 44px of centred target, same as the nav items. */
+.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-fold {
+  display: none;
+}
+
+/* PEEK — labels reveal on hover WITHOUT reflowing the page.
+   The rail floats over the content while peeking, so the thread and
+   the feed never jump sideways under the cursor. */
+.app[data-rail="collapsed"] .nav-rail[data-peek] {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--nav-w);
+  z-index: calc(var(--z-nav) + 5);
+  box-shadow: var(--shadow-lg);
+}
+.app[data-rail="collapsed"] .nav-rail[data-peek] .lbl,
+.app[data-rail="collapsed"] .nav-rail[data-peek] .rail-logo .word,
+.app[data-rail="collapsed"] .nav-rail[data-peek] .rail-foot .who {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+
+/* ============================================================
+   LANGUAGE SWITCHER
+   ============================================================ */
+
+.lang-btn { font-weight: 700; }
+.lang-code {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  line-height: 1;
+}
+
+.lang-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--s2);
+}
+.lang-card {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+  text-align: start;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.lang-card:hover { border-color: var(--border-strong); background: var(--hover); }
+.lang-card.on {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+}
+.lang-badge {
+  display: grid; place-items: center;
+  min-width: 30px; height: 24px;
+  padding: 0 7px;
+  margin-bottom: 4px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: 11px; font-weight: 800; letter-spacing: .04em;
+}
+.lang-card.on .lang-badge { background: var(--brand); color: #fff; }
+.lang-native { font-size: var(--fs-base); font-weight: 650; }
+.lang-en { font-size: var(--fs-xs); color: var(--text-3); }
+.lang-check {
+  position: absolute; top: var(--s2); inset-inline-end: var(--s2);
+  color: var(--brand);
+}
+
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+
+.settings { padding: var(--s4) 0 var(--s12); display: flex; flex-direction: column; gap: var(--s4); }
+
+.set-sec {
+  padding: var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.set-head { display: flex; align-items: flex-start; gap: var(--s3); margin-bottom: var(--s3); }
+.set-ic {
+  display: grid; place-items: center;
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.set-title { font-size: var(--fs-base); font-weight: 650; }
+.set-hint { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.45; margin-top: 2px; }
+.set-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+.set-warn {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  display: flex; align-items: flex-start; gap: 6px;
+}
+
+.perm-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs); font-weight: 650;
+  white-space: nowrap;
+}
+.perm-chip.ok   { background: color-mix(in srgb, var(--ok) 15%, transparent);     color: var(--ok); }
+.perm-chip.bad  { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.perm-chip.warn { background: color-mix(in srgb, #F59E0B 16%, transparent);       color: #B45309; }
+.perm-chip.off  { background: var(--surface-2);                                   color: var(--text-3); }
+
+/* segmented control */
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r); background: var(--surface-2); }
+.seg-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px;
+  border-radius: calc(var(--r) - 3px);
+  font-size: var(--fs-sm); font-weight: 600;
+  color: var(--text-2);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+
+
+/* ============================================================
+   RTL — Arabic
+   Logical properties carry most of this; these are the leftovers
+   that are genuinely directional.
+   ============================================================ */
+
+[dir="rtl"] .rail-fold svg { transform: none; }
+[dir="rtl"] .rail-fold.is-folded svg { transform: rotate(180deg); }
+[dir="rtl"] .nav-item.on::before { border-radius: var(--r-full) 0 0 var(--r-full); }
+[dir="rtl"] .cf-count,
+[dir="rtl"] .lang-badge { font-feature-settings: normal; }
+
+/* Numbers and code stay left-to-right inside Arabic text, otherwise
+   "CS-042" renders as "042-CS". */
+[dir="rtl"] .t-mono,
+[dir="rtl"] .conv-time,
+[dir="rtl"] .bubble-meta,
+[dir="rtl"] .hero-stat b,
+[dir="rtl"] .cf-count { direction: ltr; unicode-bidi: embed; }
+
+[dir="rtl"] .story-plus { inset-inline-end: auto; inset-inline-start: -1px; }

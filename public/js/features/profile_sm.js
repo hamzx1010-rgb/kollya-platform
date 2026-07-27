@@ -564,6 +564,25 @@ function openEditProfile(u) {
   async function submit() {
     const username = userInput.value.trim().toLowerCase();
     if (nameInput.value.trim().length < 2) { toast('Le nom est trop court', 'err'); nameInput.focus(); return; }
+
+    // Changing your display name twice in 15 days confuses everyone
+    // who knows you. Warn with the real number of days, then allow —
+    // blocking outright is easy to work around by editing a profile
+    // you control anyway, and it punishes honest typo fixes.
+    if (nameInput.value.trim() !== (u.full_name || '')) {
+      const st = await api.nameChangeStatus?.() || { will_warn: false };
+      if (st.will_warn) {
+        const okToGo = await confirmDialog({
+          title: 'Changer votre nom à nouveau ?',
+          message: `Vous avez déjà changé de nom il y a moins de 15 jours. ` +
+                   `Vos camarades risquent de ne plus vous reconnaître. ` +
+                   `Le compteur se réinitialise dans ${st.days_left} jour${st.days_left > 1 ? 's' : ''}.`,
+          confirmLabel: 'Changer quand même',
+          cancelLabel: 'Garder mon nom'
+        });
+        if (!okToGo) { nameInput.value = u.full_name || ''; paintMedia(); return; }
+      }
+    }
     if (!/^[a-z0-9._]{3,24}$/.test(username)) {
       toast("Nom d'utilisateur invalide (3–24, lettres, chiffres, . et _)", 'err');
       userInput.focus();
@@ -598,12 +617,20 @@ function openEditProfile(u) {
     } catch (err) {
       save.disabled = false;
       save.textContent = 'Enregistrer';
-      const msg = /duplicate|unique|23505/i.test(err?.message || '')
-        ? "Ce nom d'utilisateur est déjà pris."
-        : /trop lourd|413/i.test(err?.message || '')
-          ? err.message
-          : 'Enregistrement échoué — rien n\'a été modifié.';
-      toast(msg, 'err');
+      // Report what actually happened. The old catch-all said
+      // "rien n'a été modifié" for every failure — including cases
+      // where the user HAD changed something — which is why the
+      // button looked like it was lying.
+      const raw = err?.message || '';
+      const msg =
+        /duplicate|unique|23505/i.test(raw) ? "Ce nom d'utilisateur est déjà pris."
+      : /trop lourd|413/i.test(raw)         ? raw
+      : err?.status === 401                 ? 'Session expirée — reconnectez-vous.'
+      : err?.status === 403                 ? raw
+      : raw                                 ? `Échec : ${raw}`
+      : 'Échec inconnu — regardez la console.';
+      console.error('[koliya] échec de la sauvegarde du profil', err);
+      toast(msg, { kind: 'err', duration: 7000 });
     }
   }
 

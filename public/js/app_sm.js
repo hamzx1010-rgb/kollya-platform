@@ -17,17 +17,20 @@ import { toast, modal } from './core/ui_sm.js';
 import { icon, I } from './core/icons_sm.js';
 import { initMessages } from './features/messages_sm.js';
 import { initFeed, openComposer } from './features/feed_sm.js';
-import { initHub } from './features/hub_sm.js';
+import { initHub, wireGameEvents } from './features/hub_sm.js';
 import { initProfile } from './features/profile_sm.js';
 import { initNotifications, refreshNotificationBadge } from './features/notifications_sm.js';
 import { initCampus } from './features/campus_sm.js';
 import { initLeaderboard } from './features/leaderboard_sm.js';
+import { initSettings } from './features/settings_sm.js';
 import { openStories } from './features/stories_sm.js';
 import { renderAuth, renderPending } from './features/auth_ui_sm.js';
 import { initAuth, signOut } from './core/auth_sm.js';
 import { canUseDatabase, missingConfig } from './core/config_sm.js';
 import { connectApi } from './core/api_sm.js';
+import { initI18n, applyI18n } from './core/i18n_sm.js';
 import { initGame, wireGame } from './core/game_sm.js';
+import { initNotify } from './core/notify_sm.js';
 import { cachePeople } from './core/people_sm.js';
 
 /* ------------------------------------------------------------
@@ -157,10 +160,14 @@ async function enterApp() {
   // The game engine listens for 'game:action' events, so it must be
   // wired before the first screen can fire one.
   wireGame();
+  wireGameEvents();     // listeners live for the whole session, not just on /hub
   initGame().catch(err => console.warn('[koliya] jeu non initialisé', err.message));
 
   initRouter();
   refreshNotificationBadge();
+
+  // Explains itself first, asks the browser second — see notify_sm.
+  initNotify();
 }
 
 /* ------------------------------------------------------------
@@ -168,9 +175,8 @@ async function enterApp() {
    Each feature module will replace these as it lands.
    ------------------------------------------------------------ */
 
-const PLACEHOLDERS = {
-  settings:      ['settings', 'Réglages',         'Préférences du compte.']
-};
+// Every screen now has a real module; nothing is a placeholder.
+const PLACEHOLDERS = {};
 
 function registerPlaceholders() {
   for (const [name, [ic, title, text]] of Object.entries(PLACEHOLDERS)) {
@@ -282,7 +288,12 @@ export function purgeCaches() {
 async function boot() {
   const { hasStorage } = initStore();
 
+  // Language before the first paint, or the shell renders in one
+  // language and relabels itself a frame later.
+  initI18n();
+
   hydrateIcons();
+  applyI18n();
   initShell();
   registerPlaceholders();
   wireGlobalKeys();
@@ -295,6 +306,7 @@ async function boot() {
   initNotifications(mount);
   initCampus(mount);
   initLeaderboard(mount);
+  initSettings(mount);
 
   if (!hasStorage) {
     toast('Stockage indisponible — votre session ne survivra pas au rafraîchissement',

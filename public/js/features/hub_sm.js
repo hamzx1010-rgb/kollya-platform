@@ -322,13 +322,34 @@ async function showMyRank() {
    says something changed — including from another screen. Liking a
    post in the feed moves the quest bar here without a reload. */
 let gameWired = false;
-function wireGameEvents() {
+
+/**
+ * Bound once at BOOT, not when the hub opens.
+ *
+ * The bug: this used to be called inside route('hub'), so liking a
+ * post from the feed advanced the quest in memory, emitted
+ * 'game:quests' — and nothing was listening, because the hub had
+ * never been opened. Progress only appeared after you visited the
+ * hub, which read as "the quests are not dynamic".
+ *
+ * The render calls are guarded by element checks, so wiring early is
+ * free when the hub is not on screen.
+ */
+export function wireGameEvents() {
   if (gameWired) return;
   gameWired = true;
   onEvent('game:quests', () => { if ($('#questList')) renderQuests(); });
   onEvent('game:streak', () => { if ($('#badgeGrid')) renderHub(); });
   onEvent('game:xp',     () => { if ($('#badgeGrid')) renderHub(); });
   onEvent('game:day-complete', payload => celebrate(payload));
+
+  // A quest finishing anywhere in the app is worth saying out loud,
+  // even when the hub is closed — that is the feedback loop.
+  onEvent('game:quest-done', ({ label, remaining }) => {
+    toast(`Défi accompli · ${label}` +
+          (remaining ? ` — encore ${remaining}` : ' — journée complète !'),
+          { kind: 'ok', duration: 3500 });
+  });
 }
 
 /** Repaint the hub from whatever the cache currently holds. */

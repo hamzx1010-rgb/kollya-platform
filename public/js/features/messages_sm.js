@@ -142,17 +142,39 @@ async function beat(force = false) {
       const fresh = incoming.filter(m => !known.has(String(m.id)));
 
       if (fresh.length) {
-        const stick = atBottom;
+        const body = $('#threadBody');
+        const stick = body ? nearBottom(body) : true;
         msgs.push(...fresh);
         renderThread({ keepScroll: !stick });
-        if (stick) scrollToBottom(true);
+
+        if (stick) {
+          scrollToBottom(true);
+          showNewBelow(0);
+        } else {
+          // Reading history: do NOT move them. Offer the jump instead.
+          const theirsCount = fresh.filter(m => String(m.sender_id) !== String(me.id)).length;
+          showNewBelow(unseenBelow + theirsCount);
+        }
 
         // A message that arrived while you are reading is read.
         const theirs = fresh.filter(m => String(m.sender_id) !== String(me.id));
         if (theirs.length && !document.hidden) {
           for (const m of theirs) api.markRead?.(m.id);
         }
-        if (theirs.length) { pingArrival(); renderConvList(); }
+        if (theirs.length) {
+          pingArrival();
+          renderConvList();
+          // Let notify_sm decide whether this deserves a browser
+          // notification — it knows the permission and the route.
+          const last = theirs[theirs.length - 1];
+          emit('dm:incoming', {
+            from: peer.id,
+            name: peer.full_name,
+            text: last.text || mediaLabel(last.media_type),
+            avatar: peer.avatar_url,
+            muted: folderOf(peer.id) === 'muted' || getChatPref(peer.id).muted
+          });
+        }
       }
     }
 
@@ -589,6 +611,9 @@ function renderThread({ keepScroll = false } = {}) {
   });
   body.append(frag);
 
+  // A social app opens at the NEWEST message, never the first one.
+  // `keepScroll` is what protects someone reading history from being
+  // dragged to the bottom by an arriving message.
   if (keepScroll) body.scrollTop = prevTop;
   else scrollToBottom(false);
   markVisibleAsRead();
@@ -596,10 +621,52 @@ function renderThread({ keepScroll = false } = {}) {
   if (infoOpen) renderInfoPanel();
 }
 
+/**
+ * Pin to the newest message.
+ *
+ * `scrollHeight` is only correct once the browser has laid the
+ * bubbles out, and images change the height again when they decode.
+ * A single scrollTo therefore lands short and the last message sits
+ * half off screen — which looked like "the chat won't stay put".
+ * So: set it now, again after layout, and again after any image in
+ * the thread finishes loading.
+ */
 function scrollToBottom(smooth = true) {
   const body = $('#threadBody');
   if (!body) return;
-  body.scrollTo({ top: body.scrollHeight, behavior: smooth && !env.reducedMotion ? 'smooth' : 'auto' });
+  const jump = () => body.scrollTo({
+    top: body.scrollHeight,
+    behavior: smooth && !env.reducedMotion ? 'smooth' : 'auto'
+  });
+
+  jump();
+  requestAnimationFrame(jump);                 // after layout
+  setTimeout(jump, 60);                        // after fonts settle
+
+  // images resize the thread when they decode
+  for (const img of body.querySelectorAll('img')) {
+    if (img.complete) continue;
+    img.addEventListener('load', () => { if (atBottom) jump(); }, { once: true });
+  }
+}
+
+/** True when the reader is close enough to the end to follow along. */
+function nearBottom(body, slack = 120) {
+  return body.scrollHeight - body.scrollTop - body.clientHeight < slack;
+}
+
+/** Count of messages that arrived while the reader was scrolled up. */
+let unseenBelow = 0;
+
+function showNewBelow(n) {
+  unseenBelow = n;
+  const btn = $('#toBottom');
+  if (!btn) return;
+  btn.classList.toggle('show', n > 0 || !atBottom);
+  btn.dataset.count = n > 0 ? String(n) : '';
+  btn.setAttribute('aria-label', n > 0
+    ? `${n} nouveau${n > 1 ? 'x' : ''} message${n > 1 ? 's' : ''}`
+    : 'Aller en bas');
 }
 
 /**
@@ -1617,12 +1684,17 @@ function wireThreadEvents() {
 
   // show "scroll to bottom" only when it would actually help
   on(body, 'scroll', rafThrottle(() => {
-    const near = body.scrollHeight - body.scrollTop - body.clientHeight < 120;
+    const near = nearBottom(body);
     atBottom = near;
-    $('#toBottom')?.classList.toggle('show', !near);
+    if (near && unseenBelow) showNewBelow(0);   // caught up
+    else $('#toBottom')?.classList.toggle('show', !near);
   }), { passive: true });
 
-  on($('#toBottom'), 'click', () => scrollToBottom(true));
+  on($('#toBottom'), 'click', () => {
+    scrollToBottom(true);
+    showNewBelow(0);
+    atBottom = true;
+  });
 }
 
 function jumpTo(id) {
@@ -1692,6 +1764,12 @@ export async function openThread(peerId) {
   }
   renderThread();
   applyChatTheme(getChatPref(peerId).theme);
+
+  // Land on the newest message immediately. Animating through 200
+  // messages is motion for its own sake — you want to see the end.
+  atBottom = true;
+  unseenBelow = 0;
+  scrollToBottom(false);
 
   // The panel is part of the conversation view, not a thing you hunt
   // for in a menu — it opens with the thread on wide screens.

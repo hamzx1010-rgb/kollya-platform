@@ -250,13 +250,20 @@ export const prefs = {
     emit('theme', v);
   },
 
-  get locale() { return read(KEYS.LOCALE, 'fr'); },
+  // English is the official language of the app. i18n_sm.initI18n()
+  // may still pick the browser's language on a first visit, but the
+  // fallback when nothing is known is 'en', not 'fr'.
+  get locale() { return read(KEYS.LOCALE, 'en'); },
   set locale(v) {
     write(KEYS.LOCALE, v);
     document.documentElement.lang = v;
     document.documentElement.dir = v === 'ar' ? 'rtl' : 'ltr';
     emit('locale', v);
   },
+
+  /** null = let the route decide · true = folded · false = pinned open */
+  get railFolded() { return read('pref:railFolded', null); },
+  set railFolded(v) { write('pref:railFolded', v); },
 
   get guideDone() { return read(KEYS.GUIDE_DONE, false); },
   set guideDone(v) { write(KEYS.GUIDE_DONE, !!v); }

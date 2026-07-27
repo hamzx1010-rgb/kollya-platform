@@ -623,13 +623,25 @@ export const profileApi = {
     // Say so instead.
     if (!updated) {
       throw new DbError(
-        'Modification refusée par la base de données. ' +
-        'Vérifiez que votre compte est approuvé.', 403);
+        'La base de données a refusé la modification (aucune ligne mise à jour). ' +
+        'Exécutez db/08_fixes_sm.sql : la politique profiles_update_self ' +
+        'bloque les comptes dont le rôle n\'est pas « student ».', 403);
     }
 
     me.set({ ...me.get(), ...updated });
     cachePeople(updated);
     return updated;
+  },
+
+  /** How many times the name changed inside the 15-day window. */
+  async nameChangeStatus() {
+    try {
+      const rows = await db.rpc('name_change_status', {});
+      const r = Array.isArray(rows) ? rows[0] : rows;
+      return r || { changes: 0, days_left: 0, will_warn: false };
+    } catch {
+      return { changes: 0, days_left: 0, will_warn: false };
+    }
   },
 
   async block(userId) {

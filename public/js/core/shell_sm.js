@@ -19,7 +19,8 @@
 import { $, $$, on, throttle, rafThrottle, env, initials, avatarColor, modKey } from './utils_sm.js';
 import { state, setState, on as onEvent, emit, prefs, applyTheme, me } from './store_sm.js';
 import { ROUTES, go, back, currentRoute, SHORTCUTS } from './router_sm.js';
-import { modal, toast, closeMenu } from './ui_sm.js';
+import { modal, toast, closeMenu, contextMenu } from './ui_sm.js';
+import { t, lang, setLang, LANGS, applyI18n } from './i18n_sm.js';
 
 /* ------------------------------------------------------------
    1. RAIL  — context-driven, never asked
@@ -28,14 +29,53 @@ import { modal, toast, closeMenu } from './ui_sm.js';
 /** Routes where screen width matters more than navigation labels. */
 const FOCUS_ROUTES = new Set(['messages', 'channel', 'post']);
 
+/**
+ * Rail state.
+ *
+ * Your original app let YOU decide with `body.classList.toggle
+ * ('side-folded')` and remembered it. Mine only auto-collapsed on
+ * certain routes, so it folded and unfolded under you with no way to
+ * pin it — which is why it felt broken.
+ *
+ * Now: an explicit preference wins; routes only suggest. Hovering
+ * reveals the labels without changing the state, exactly like before.
+ */
+function railPref() {
+  return prefs.railFolded;             // null = follow the route
+}
+
 function syncRail(routeName) {
   const app = $('#app');
   if (!app) return;
 
-  // On a phone the rail is a bottom bar; collapsing is meaningless.
+  // On a phone the rail is a bottom bar; folding is meaningless.
   if (env.narrow) { app.dataset.rail = 'expanded'; return; }
 
+  const pinned = railPref();
+  if (pinned === true)  { app.dataset.rail = 'collapsed'; return; }
+  if (pinned === false) { app.dataset.rail = 'expanded';  return; }
+
   app.dataset.rail = FOCUS_ROUTES.has(routeName) ? 'collapsed' : 'expanded';
+  syncFoldButton();
+}
+
+/** The fold button — a state you own, not one the app guesses. */
+export function toggleRail() {
+  const app = $('#app');
+  if (!app) return;
+  const nowCollapsed = app.dataset.rail !== 'collapsed';
+  app.dataset.rail = nowCollapsed ? 'collapsed' : 'expanded';
+  prefs.railFolded = nowCollapsed;
+  syncFoldButton();
+  emit('rail:toggle', nowCollapsed);
+}
+
+function syncFoldButton() {
+  const btn = $('#btnFold');
+  if (!btn) return;
+  const collapsed = $('#app')?.dataset.rail === 'collapsed';
+  btn.setAttribute('aria-label', collapsed ? 'Expand' : 'Collapse');
+  btn.classList.toggle('is-folded', collapsed);
 }
 
 /**
@@ -148,6 +188,46 @@ export function renderMe() {
    6. BADGES
    ------------------------------------------------------------ */
 
+/* ------------------------------------------------------------
+   LANGUAGE
+   Top-right, next to the theme toggle. A menu rather than a cycle:
+   three options is one too many to guess by clicking.
+   ------------------------------------------------------------ */
+
+function syncLangButton() {
+  const node = $('#langCode');
+  if (!node) return;
+  const l = LANGS.find(x => x.id === lang());
+  node.textContent = l ? l.flag : 'EN';
+  $('#btnLang')?.setAttribute('aria-label', t('settings.language'));
+  $('#btnLang')?.setAttribute('data-tip', t('settings.language'));
+}
+
+function openLangMenu(e) {
+  contextMenu(e, [
+    { title: t('settings.language') },
+    ...LANGS.map(l => ({
+      label: l.native,
+      kbd: l.id === lang() ? '✓' : '',
+      onClick: () => { setLang(l.id); syncLangButton(); }
+    }))
+  ]);
+}
+
+// The whole shell relabels itself when the language changes; no reload.
+onEvent('i18n:changed', () => {
+  syncLangButton();
+  applyI18n(document);
+  // Nav labels and the page title come from ROUTES, so re-run the
+  // two syncs that read them. No reload — the whole point of keeping
+  // the strings in memory.
+  const r = currentRoute();
+  syncNav(r?.name);
+  syncTopbar(r?.name, r?.arg);
+  renderMe();
+  emit('route:relabel');
+});
+
 export function setBadge(which, n) {
   const node = $(which === 'messages' ? '#badgeMessages' : '#badgeNotifs');
   if (!node) return;
@@ -217,6 +297,9 @@ export function initShell() {
   $('#btnBack')   && on($('#btnBack'), 'click', () => back());
   $('#btnTheme')  && on($('#btnTheme'), 'click', cycleTheme);
   $('#btnHelp')   && on($('#btnHelp'), 'click', showShortcuts);
+  $('#btnLang')   && on($('#btnLang'), 'click', openLangMenu);
+  $('#btnFold')   && on($('#btnFold'), 'click', toggleRail);
+  syncLangButton();
   $('#btnSearch') && on($('#btnSearch'), 'click', () => emit('key:search'));
   $('#btnCompose')&& on($('#btnCompose'), 'click', () => emit('key:compose'));
   $('#railMe')    && on($('#railMe'), 'click', () => go('profile', me.get()?.username || null));

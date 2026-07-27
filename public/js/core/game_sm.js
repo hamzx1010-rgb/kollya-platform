@@ -231,7 +231,12 @@ export async function trackQuest(id, amount = 1) {
     emit('game:quests', getQuests());
 
     if (row.just_done) {
-      toast(`Défi accompli · ${q.label}`, { kind: 'ok', duration: 3000 });
+      // The hub owns the presentation; the engine only reports facts.
+      emit('game:quest-done', {
+        id: q.id,
+        label: q.label,
+        remaining: quests.filter(x => !x.done).length
+      });
     }
     if (row.day_complete && !dayComplete) {
       dayComplete = true;
