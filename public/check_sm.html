@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Koliya — Diagnostic</title>
+<style>
+  body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0F1115;color:#E9EBEE;
+       margin:0;padding:24px;line-height:1.6;font-size:14px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:#6B7480;font-size:13px;margin-bottom:20px}
+  .row{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #1E222A;align-items:flex-start}
+  .ok{color:#22C55E}.bad{color:#EF4444}.warn{color:#F59E0B}.dim{color:#6B7480}
+  .name{flex:1;word-break:break-all}
+  h2{font-size:15px;margin:26px 0 8px;color:#9BA3AE;border-bottom:1px solid #262A31;padding-bottom:6px}
+  #verdict{margin-top:26px;padding:18px;border-radius:12px;background:#171A1F;border:1px solid #262A31}
+  code{background:#22262D;padding:2px 6px;border-radius:4px;font-size:13px}
+  .big{font-size:16px;font-weight:700;margin-bottom:10px}
+</style>
+</head>
+<body>
+<h1>Koliya — Diagnostic</h1>
+<div class="sub">Vérifie chaque fichier et chaque connexion, puis dit ce qui bloque.</div>
+
+<h2>1 · Environnement</h2><div id="env"></div>
+<h2>2 · Fichiers</h2><div id="files"></div>
+<h2>3 · Modules JavaScript</h2><div id="mods"></div>
+<h2>4 · Serveurs Neon</h2><div id="net"></div>
+<div id="verdict"></div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const problems = [];
+
+function line(host, name, state, note = '') {
+  const cls = state === true ? 'ok' : state === false ? 'bad' : 'warn';
+  const mark = state === true ? '✓' : state === false ? '✗' : '!';
+  host.insertAdjacentHTML('beforeend',
+    `<div class="row"><span class="${cls}">${mark}</span>
+     <span class="name">${name}</span><span class="dim">${note}</span></div>`);
+}
+
+/* ---------- 1. environment ---------- */
+const proto = location.protocol;
+const fileMode = proto === 'file:';
+line($('env'), `Protocole : ${proto}//`, !fileMode,
+     fileMode ? 'Les modules ES ne marchent pas en file://' : '');
+if (fileMode) problems.push({
+  t: 'Vous avez ouvert le fichier directement',
+  f: 'Lancez <code>python3 -m http.server 8099</code> dans le dossier <code>public</code>, puis ouvrez <code>http://localhost:8099/check_sm.html</code>'
+});
+
+line($('env'), `Origine : ${location.origin}`, true);
+line($('env'), 'Modules ES supportés', true);
+line($('env'), `localStorage`, (() => {
+  try { localStorage.setItem('_t','1'); localStorage.removeItem('_t'); return true; }
+  catch { return false; }
+})(), 'sinon la session ne survit pas');
+
+/* ---------- 2. files ---------- */
+const FILES = [
+  'index_sm.html','manifest_sm.json','sw_sm.js','offline_sm.html',
+  'css/base_sm.css','css/components_sm.css','css/layout_sm.css',
+  'js/app_sm.js',
+  'js/core/utils_sm.js','js/core/store_sm.js','js/core/router_sm.js','js/core/ui_sm.js',
+  'js/core/shell_sm.js','js/core/icons_sm.js','js/core/config_sm.js',
+  'js/core/auth_sm.js','js/core/db_sm.js',
+  'js/features/feed_sm.js','js/features/messages_sm.js','js/features/stories_sm.js',
+  'js/features/hub_sm.js','js/features/profile_sm.js','js/features/leaderboard_sm.js',
+  'js/features/campus_sm.js','js/features/notifications_sm.js','js/features/auth_ui_sm.js',
+  'js/features/editor_sm.js','js/features/gif_sm.js','js/features/voice_sm.js',
+  'icons/icon-192.png'
+];
+
+let missing = [], empty = [];
+for (const f of FILES) {
+  try {
+    const r = await fetch(f, { cache: 'no-store' });
+    const size = (await r.clone().blob()).size;
+    if (!r.ok) { missing.push(f); line($('files'), f, false, `HTTP ${r.status}`); }
+    else if (size < 40) { empty.push(f); line($('files'), f, 'warn', `${size} octets — vide ?`); }
+    else line($('files'), f, true, `${(size/1024).toFixed(0)} Ko`);
+  } catch (e) {
+    missing.push(f);
+    line($('files'), f, false, 'introuvable');
+  }
+}
+if (missing.length) problems.push({
+  t: `${missing.length} fichier(s) manquant(s)`,
+  f: 'Retéléchargez-les et vérifiez le nom exact et le dossier :<br><code>' + missing.join('</code><br><code>') + '</code>'
+});
+if (empty.length) problems.push({
+  t: `${empty.length} fichier(s) vide(s)`,
+  f: 'Le téléchargement a échoué pour :<br><code>' + empty.join('</code><br><code>') + '</code>'
+});
+
+/* ---------- 3. modules actually parse and run ---------- */
+const MODS = [
+  ['utils',   './js/core/utils_sm.js',   'esc'],
+  ['store',   './js/core/store_sm.js',   'initStore'],
+  ['icons',   './js/core/icons_sm.js',   'icon'],
+  ['router',  './js/core/router_sm.js',  'initRouter'],
+  ['ui',      './js/core/ui_sm.js',      'toast'],
+  ['shell',   './js/core/shell_sm.js',   'initShell'],
+  ['config',  './js/core/config_sm.js',  'CONFIG'],
+  ['auth',    './js/core/auth_sm.js',    'signIn'],
+  ['db',      './js/core/db_sm.js',      'db'],
+  ['auth-ui', './js/features/auth_ui_sm.js', 'renderAuth'],
+  ['feed',    './js/features/feed_sm.js',    'initFeed'],
+  ['messages','./js/features/messages_sm.js','initMessages'],
+  ['hub',     './js/features/hub_sm.js',     'initHub'],
+  ['profile', './js/features/profile_sm.js', 'initProfile'],
+  ['board',   './js/features/leaderboard_sm.js','initLeaderboard'],
+  ['campus',  './js/features/campus_sm.js',  'initCampus'],
+  ['notifs',  './js/features/notifications_sm.js','initNotifications'],
+  ['stories', './js/features/stories_sm.js', 'openStories']
+];
+
+let cfg = null, broken = [];
+for (const [name, path, expect] of MODS) {
+  try {
+    const m = await import(path);
+    if (name === 'config') cfg = m.CONFIG;
+    line($('mods'), name, expect in m, expect in m ? '' : `n'exporte pas ${expect}`);
+  } catch (e) {
+    broken.push([name, e.message]);
+    line($('mods'), name, false, e.message.slice(0, 90));
+  }
+}
+if (broken.length) problems.push({
+  t: `${broken.length} module(s) ne se chargent pas`,
+  f: broken.map(([n, m]) => `<code>${n}</code> : ${m}`).join('<br>')
+});
+
+/* ---------- 4. network ---------- */
+if (cfg) {
+  const bad = Object.entries(cfg).filter(([, v]) => typeof v === 'string' && v.startsWith('__'));
+  line($('net'), 'Configuration remplie', bad.length === 0,
+       bad.length ? bad.map(([k]) => k).join(', ') : '');
+
+  // auth service
+  try {
+    const t0 = performance.now();
+    const r = await fetch(cfg.AUTH_URL + '/ok', { credentials: 'include' });
+    const ms = Math.round(performance.now() - t0);
+    line($('net'), 'Service Auth joignable', r.ok, `${ms} ms`);
+    if (ms > 3000) problems.push({ t: 'Serveur lent', f: `Auth a mis ${ms} ms — connexion faible ou compute Neon endormi.` });
+  } catch (e) {
+    line($('net'), 'Service Auth joignable', false, e.message);
+    problems.push({
+      t: 'Impossible de joindre Neon Auth',
+      f: /cors|fetch/i.test(e.message)
+        ? `Ajoutez <code>${location.origin}</code> dans <b>Neon → Auth → Trusted domains</b>.`
+        : 'Vérifiez votre connexion internet.'
+    });
+  }
+
+  // session probe — the exact call that hangs the boot
+  try {
+    const t0 = performance.now();
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(cfg.AUTH_URL + '/get-session',
+      { credentials: 'include', signal: ctrl.signal });
+    const ms = Math.round(performance.now() - t0);
+    line($('net'), 'Vérification de session', true, `${r.status} en ${ms} ms`);
+  } catch (e) {
+    const aborted = e.name === 'AbortError';
+    line($('net'), 'Vérification de session', false, aborted ? 'délai dépassé (8 s)' : e.message);
+    problems.push({
+      t: aborted ? "La vérification de session ne répond jamais" : 'Session : requête bloquée',
+      f: `C'est exactement ce qui bloque l'écran de chargement.<br>
+          Ajoutez <code>${location.origin}</code> dans <b>Neon → Auth → Trusted domains</b>.`
+    });
+  }
+
+  // data api
+  try {
+    const r = await fetch(cfg.DATA_API_URL + '/profiles?select=id&limit=1');
+    line($('net'), 'Data API joignable', r.status === 400 || r.status === 401 || r.ok,
+         `HTTP ${r.status} (401/400 = normal sans session)`);
+  } catch (e) {
+    line($('net'), 'Data API joignable', false, e.message);
+  }
+}
+
+/* ---------- verdict ---------- */
+const v = $('verdict');
+if (!problems.length) {
+  v.innerHTML = `<div class="big ok">✓ Tout est correct</div>
+    <div class="dim">Ouvrez <code>index_sm.html</code> — l'application devrait démarrer.
+    Si l'écran reste bloqué, ouvrez la console (F12) et envoyez-moi l'erreur en rouge.</div>`;
+} else {
+  v.innerHTML = `<div class="big bad">${problems.length} problème(s) détecté(s)</div>` +
+    problems.map((p, i) => `<div style="margin-top:14px">
+      <b>${i + 1}. ${p.t}</b><div class="dim" style="margin-top:4px">${p.f}</div></div>`).join('');
+}
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f"}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a21bbe7f79a0ba93',t:'MTc4NTE1NjM1Nw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
