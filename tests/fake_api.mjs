@@ -46,15 +46,15 @@ export function makeState() {
       { id:'p8', user_id:'u1', text:'Les notes du semestre sont sorties.', created_at:ago(4320),
         likes:[], saves:[], comments:[], poll:null }
     ],
-    messages: {
-      u2: [
-        { id:'m1', sender_id:'u2', receiver_id:'u1', text:"Tu as les notes d'algo ?", created_at:ago(190), reactions:{} },
-        { id:'m2', sender_id:'u1', receiver_id:'u2', text:'Oui je les ai scannées', created_at:ago(186), reactions:{} },
-        { id:'m3', sender_id:'u2', receiver_id:'u1', text:'14h en salle B12', created_at:ago(12), reactions:{ u1:'love' } }
-      ],
-      u3: [{ id:'m4', sender_id:'u3', receiver_id:'u1', text:'TP reporté à vendredi', created_at:ago(1440), reactions:{} }],
-      u4: [{ id:'m5', sender_id:'u4', receiver_id:'u1', text:'Corrigé de la série 3 ?', created_at:ago(60), reactions:{} }]
-    },
+    // ONE flat table, exactly like Postgres. Anything else cannot
+    // model "what does the other person see".
+    messages: [
+      { id:'m1', sender_id:'u2', receiver_id:'u1', text:"Tu as les notes d'algo ?", created_at:ago(190), reactions:{} },
+      { id:'m2', sender_id:'u1', receiver_id:'u2', text:'Oui je les ai scannées',   created_at:ago(186), reactions:{} },
+      { id:'m3', sender_id:'u2', receiver_id:'u1', text:'14h en salle B12',         created_at:ago(12),  reactions:{ u1:'love' } },
+      { id:'m4', sender_id:'u3', receiver_id:'u1', text:'TP reporté à vendredi',    created_at:ago(1440), reactions:{} },
+      { id:'m5', sender_id:'u4', receiver_id:'u1', text:'Corrigé de la série 3 ?',  created_at:ago(60),  reactions:{} }
+    ],
     stories: [
       { user_id:'u2', items:[
         { id:'s1a', media_url:'data:image/gif;base64,R0lGODlhAQABAAAAACw=', text:'Amphi plein ce matin', created_at:ago(120) },
@@ -96,6 +96,7 @@ export function makeState() {
       ...p, bio:`Bio de ${p.full_name}`, followers:38, following:52, posts:3,
       followState:'none', private:!!p.is_private
     }])),
+    chatFolders: {},    // peerId -> folder
     writes: []          // every mutation is recorded so tests can assert
   };
 }
@@ -161,13 +162,26 @@ export function fakeApi(st, myId = 'u1') {
 
     /* ---- messages ---- */
     async listConversations() {
-      return Object.entries(st.messages).map(([peerId, thread]) => ({
-        peer: PEOPLE.find(p => p.id === peerId),
-        last: thread[thread.length - 1],
-        unread: peerId === 'u4' ? 1 : 0
+      const mine = st.messages.filter(m => m.sender_id === myId || m.receiver_id === myId);
+      const latest = new Map(), unread = new Map();
+      for (const m of [...mine].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))) {
+        const peerId = m.sender_id === myId ? m.receiver_id : m.sender_id;
+        if (!latest.has(peerId)) latest.set(peerId, m);
+        if (m.receiver_id === myId && !m.seen_at) unread.set(peerId, (unread.get(peerId) || 0) + 1);
+      }
+      return [...latest.entries()].map(([peerId, last]) => ({
+        peer: PEOPLE.find(p => p.id === peerId) || { id: peerId, full_name: 'Étudiant', username: peerId },
+        last,
+        unread: unread.get(peerId) || 0
       })).sort((a, b) => new Date(b.last.created_at) - new Date(a.last.created_at));
     },
-    async listMessages(peerId) { return clone(st.messages[peerId] || []); },
+
+    async listMessages(peerId) {
+      return clone(st.messages
+        .filter(m => (m.sender_id === myId && m.receiver_id === peerId) ||
+                     (m.sender_id === peerId && m.receiver_id === myId))
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
+    },
     async sendMessage(payload) {
       const row = {
         id: 'm' + Date.now() + Math.random().toString(36).slice(2, 6),
@@ -178,34 +192,40 @@ export function fakeApi(st, myId = 'u1') {
         media_name: payload.media_name || null,
         created_at: new Date().toISOString(), reactions: {}
       };
-      (st.messages[payload.receiver_id] ||= []).push(row);
+      st.messages.push(row);
       log('sendMessage', row);
       return clone(row);
     },
     async react(id, key) {
-      for (const thread of Object.values(st.messages)) {
-        const m = thread.find(x => x.id === id);
-        if (m) { m.reactions ||= {}; if (key) m.reactions[myId] = key; else delete m.reactions[myId]; }
-      }
+      const m = st.messages.find(x => String(x.id) === String(id));
+      if (m) { m.reactions ||= {}; if (key) m.reactions[myId] = key; else delete m.reactions[myId]; }
       log('react', { id, key });
     },
-    async markRead(id) { log('markRead', id); },
+    async markRead(id) {
+      const m = st.messages.find(x => String(x.id) === String(id));
+      if (m && m.receiver_id === myId) m.seen_at = new Date().toISOString();
+      log('markRead', id);
+    },
     async editMessage(id, text) {
-      for (const thread of Object.values(st.messages)) {
-        const m = thread.find(x => x.id === id);
-        if (m) m.text = text;
-      }
+      const m = st.messages.find(x => String(x.id) === String(id) && x.sender_id === myId);
+      if (m) { m.text = text; m.edited_at = new Date().toISOString(); }
       log('editMessage', { id, text });
     },
     async deleteMessage(id) {
-      for (const k of Object.keys(st.messages)) st.messages[k] = st.messages[k].filter(m => m.id !== id);
+      st.messages = st.messages.filter(m => !(String(m.id) === String(id) && m.sender_id === myId));
       log('deleteMessage', id);
     },
-    async clearThread(peerId) { st.messages[peerId] = []; log('clearThread', peerId); },
+    async clearThread(peerId) {
+      st.messages = st.messages.filter(m =>
+        !((m.sender_id === myId && m.receiver_id === peerId) ||
+          (m.sender_id === peerId && m.receiver_id === myId)));
+      log('clearThread', peerId);
+    },
     async setTyping() {},
     async isTyping() { return false; },
     async searchInThread(peerId, q) {
-      return clone((st.messages[peerId] || []).filter(m => (m.text || '').toLowerCase().includes(q.toLowerCase())));
+      const thread = await this.listMessages(peerId);
+      return thread.filter(m => (m.text || '').toLowerCase().includes(q.toLowerCase()));
     },
     async contacts(q = '') {
       return PEOPLE.filter(p => p.id !== myId &&
@@ -237,7 +257,30 @@ export function fakeApi(st, myId = 'u1') {
       const key = username || 'sara.b';
       const row = st.profiles[key];
       if (!row) return null;
-      return { ...clone(row), isMe: row.id === myId };
+      const isMe = row.id === myId;
+      // Mirrors can_message(): public accounts yes, private only if
+      // there is a follow relationship either way.
+      const canMessage = !isMe && (!row.is_private || row.followState === 'following');
+      return { ...clone(row), isMe, canMessage };
+    },
+
+    async canMessage(userId) {
+      const row = Object.values(st.profiles).find(p => p.id === userId);
+      if (!row || row.id === myId) return false;
+      return !row.is_private || row.followState === 'following';
+    },
+    async listFolders() { return clone(st.chatFolders || {}); },
+    async setFolder(peerId, folder) {
+      st.chatFolders ||= {};
+      if (folder === 'all') delete st.chatFolders[String(peerId)];
+      else st.chatFolders[String(peerId)] = folder;
+      log('setFolder', { peerId, folder });
+      return folder;
+    },
+    async listNewMessages(peerId, since) {
+      const all = await this.listMessages(peerId);
+      if (!since) return all;
+      return all.filter(m => new Date(m.created_at) > new Date(since));
     },
     async listPosts_(userId) { return clone(st.posts.filter(p => p.user_id === userId)); },
     async listLiked(userId) { return clone(st.posts.filter(p => p.likes.includes(userId))); },

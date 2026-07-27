@@ -66,6 +66,25 @@ async function request(path, { method = 'GET', body, prefer, retry = true } = {}
   return data;
 }
 
+/**
+ * Which column to count on. Tables with a composite primary key have
+ * no `id`, so counting must name a real column.
+ */
+const COUNT_KEY = {
+  follows:          'follower_id',
+  blocks:           'blocker_id',
+  post_likes:       'post_id',
+  post_saves:       'post_id',
+  channel_members:  'channel_id',
+  message_reactions:'message_id',
+  story_views:      'story_id',
+  event_attendees:  'event_id',
+  poll_votes:       'post_id',
+  qa_answer_votes:  'answer_id',
+  typing:           'user_id',
+  quests:           'user_id'
+};
+
 /** Turn a filter object into a PostgREST query string. */
 function qs(params = {}) {
   const out = new URLSearchParams();
@@ -138,13 +157,27 @@ export const db = {
     return Array.isArray(rows) ? rows[0] ?? null : rows;
   },
 
-  /** Row count without transferring the rows. */
+  /**
+   * Row count without transferring the rows.
+   *
+   * This used to hardcode `select=id`, which quietly broke every
+   * junction table: follows, post_likes, post_saves and
+   * event_attendees have a COMPOSITE primary key and no `id` column
+   * at all. PostgREST answered 400, the caller's .catch swallowed it,
+   * and the follower counter sat at 0 forever — not because following
+   * failed, but because the question was malformed.
+   */
   async count(table, params = {}) {
     const token = await getToken();
-    const res = await fetch(base() + `/${table}${qs({ select: 'id', ...params })}`, {
+    const column = COUNT_KEY[table] || 'id';
+    const res = await fetch(base() + `/${table}${qs({ select: column, ...params })}`, {
       method: 'HEAD',
       headers: { Authorization: `Bearer ${token}`, Prefer: 'count=exact' }
     });
+    if (!res.ok) {
+      console.warn(`[koliya] count(${table}) a échoué: ${res.status}`);
+      return 0;
+    }
     const range = res.headers.get('content-range') || '';
     return Number(range.split('/')[1]) || 0;
   },

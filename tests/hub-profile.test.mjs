@@ -128,7 +128,10 @@ await new Promise(r=>setTimeout(r,150));
 ok('other profile loads', D.querySelector('#pfRoot').textContent.includes('Youssef'));
 ok('follow button present', !!D.getElementById('pfFollow'));
 ok('no edit button', !D.getElementById('pfEdit'));
-ok('message button', !!D.getElementById('pfMessage'));
+// The Message button follows can_message(): shown on public accounts,
+// hidden on private ones you do not follow. A button that opens a
+// conversation the database will refuse is worse than no button.
+ok('message button on a public account', !!D.getElementById('pfMessage'));
 
 const fb=D.getElementById('pfFollow');
 ok('starts unfollowed', fb.dataset.state==='none');
@@ -147,6 +150,7 @@ ok('private explains why', D.getElementById('pfBody').textContent.includes('priv
 // user has no relation yet — 'none' is the correct answer here.
 const pfb=D.getElementById('pfFollow');
 ok('private profile still offers follow', !!pfb);
+ok('no message button on an unfollowed private account', !D.getElementById('pfMessage'));
 ok('follow state is read from the database', ['none','requested','following'].includes(pfb.dataset.state));
 
 // unknown profile

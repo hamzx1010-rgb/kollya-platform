@@ -352,8 +352,30 @@ export function assertNotBase64(value, field = 'value') {
   return value;
 }
 
-/** Never let a bad URL become an XSS vector via href/src. */
+/**
+ * Never let a bad URL become an XSS vector via href/src.
+ *
+ * `data:` MUST be allowed here. Media now lives inside Postgres as
+ * data: URLs (media_sm.js + db/05_upgrade_sm.sql), so blocking the
+ * scheme blanked every avatar, banner, story and chat photo in the
+ * app — 44 render sites, all silently empty. That was the single
+ * worst bug in this project and it was one missing word.
+ *
+ * What must still be refused is anything that can EXECUTE:
+ *   javascript:  ·  vbscript:  ·  data:text/html  ·  data:image/svg+xml
+ *
+ * SVG is excluded deliberately even though it is an image: an SVG
+ * can carry <script>, so a "profile picture" would be code.
+ */
+const SAFE_DATA = /^data:(image\/(png|jpe?g|gif|webp|avif|bmp)|video\/(mp4|webm|ogg)|audio\/(mpeg|mp3|ogg|wav|webm|mp4|aac))[;,]/i;
+
 export function safeUrl(url) {
   const s = String(url ?? '').trim();
-  return /^(https?:|blob:|\/)/i.test(s) ? s : '';
+  if (!s) return '';
+  if (/^(https?:|blob:|\/)/i.test(s)) return s;
+  if (SAFE_DATA.test(s)) return s;
+  return '';
 }
+
+/** True when a value is renderable media. Used by the guards. */
+export const isRenderableMedia = v => !!safeUrl(v);

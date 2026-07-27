@@ -445,7 +445,9 @@ button.pill:hover:not(.on) { background: var(--hover); color: var(--text); }
 
 /* lightbox background — the strongest blur in the system */
 .lightbox {
-  position: fixed; inset: 0; z-index: var(--z-max);
+  /* one step above the story viewer, so tapping a story photo zooms
+     over it instead of racing it in DOM order */
+  position: fixed; inset: 0; z-index: calc(var(--z-immersive) + 10);
   display: grid; place-items: center;
   background: var(--scrim);
   backdrop-filter: blur(var(--blur-media));

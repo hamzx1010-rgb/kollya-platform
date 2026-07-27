@@ -285,6 +285,27 @@ export const messagesApi = {
     return rows.map(m => shapeMessage(m, rx));
   },
 
+  /**
+   * Only the messages newer than `since`. This is what makes a 1.5s
+   * cadence cheap: the answer is usually an empty array, not the
+   * whole conversation.
+   */
+  async listNewMessages(peerId, since) {
+    if (!since) return messagesApi.listMessages(peerId);
+    const rows = await db.select('messages', {
+      or: `(and(sender_id.eq.${myId()},receiver_id.eq.${peerId}),` +
+          `and(sender_id.eq.${peerId},receiver_id.eq.${myId()}))`,
+      created_at: `gt.${since}`,
+      order: 'created_at.asc',
+      limit: 60
+    });
+    if (!rows.length) return [];
+    const rx = await db.select('message_reactions', {
+      message_id: inList(rows.map(r => r.id)), select: 'message_id,user_id,emoji', limit: 200
+    }).catch(() => []);
+    return rows.map(m => shapeMessage(m, rx));
+  },
+
   async sendMessage(payload) {
     const row = {
       sender_id: myId(),
@@ -369,18 +390,53 @@ export const messagesApi = {
     });
   },
 
-  /** People I can start a conversation with. */
+  /**
+   * People I can start a conversation with.
+   *
+   * Uses messageable(), which orders by "who you already talk to,
+   * then mutuals, then everyone" and excludes anyone the database
+   * would refuse the message from anyway. Listing someone you cannot
+   * write to is a trap, not a feature.
+   *
+   * Errors are NOT swallowed here. The previous version ended in
+   * `.catch(() => [])`, so a failed query looked identical to an
+   * empty campus — which is exactly why "Nouveau message" showed
+   * nothing with no explanation.
+   */
   async contacts(query = '') {
-    const q = String(query || '').trim();
-    const rows = await db.select('profiles', {
-      status: 'eq.approved',
-      select: PROFILE_COLS,
-      order: 'full_name.asc',
-      limit: 60,
-      ...(q ? { or: `(full_name.ilike.*${q}*,username.ilike.*${q}*)` } : {})
-    });
-    cachePeople(rows);
-    return rows.filter(r => r.id !== myId());
+    const rows = await db.rpc('messageable', { p_query: String(query || '').trim() });
+    cachePeople(rows || []);
+    return rows || [];
+  },
+
+  /** May I message this person? Drives the Message button. */
+  async canMessage(userId) {
+    if (!userId || String(userId) === String(myId())) return false;
+    try { return !!(await db.rpc('can_message', { p_user: String(userId) })); }
+    catch { return false; }
+  },
+
+  /* ---- folders ----
+     Same set your original app had, but stored server-side so they
+     follow you between devices instead of dying with localStorage. */
+  async listFolders() {
+    const rows = await db.select('chat_folders', {
+      user_id: `eq.${myId()}`, select: 'peer_id,folder', limit: 500
+    }).catch(() => []);
+    return Object.fromEntries((rows || []).map(r => [String(r.peer_id), r.folder]));
+  },
+
+  async setFolder(peerId, folder) {
+    if (folder === 'all') {
+      await db.remove('chat_folders', {
+        user_id: `eq.${myId()}`, peer_id: `eq.${peerId}`
+      }).catch(() => {});
+      return 'all';
+    }
+    await db.insert('chat_folders', {
+      user_id: myId(), peer_id: peerId, folder, updated_at: new Date().toISOString()
+    }, { upsert: true });
+    return folder;
   }
 };
 
@@ -470,20 +526,27 @@ export const profileApi = {
     if (!row) return null;
     cachePeople(row);
 
-    const [followers, following, postCount, rel] = await Promise.all([
-      db.count('follows', { followee_id: `eq.${row.id}`, state: 'eq.accepted' }).catch(() => 0),
-      db.count('follows', { follower_id: `eq.${row.id}`, state: 'eq.accepted' }).catch(() => 0),
-      db.count('posts',   { user_id: `eq.${row.id}` }).catch(() => 0),
+    // profile_counts() is SECURITY DEFINER, so the numbers are right
+    // even on a private account whose follow rows RLS hides from me.
+    // Instagram shows "142 abonnés" on a locked profile and hides the
+    // list; this is that, done honestly.
+    const [counts, rel, mayMessage] = await Promise.all([
+      db.rpc('profile_counts', { p_user: row.id }).catch(() => null),
       isSelf ? Promise.resolve(null)
              : db.one('follows', { follower_id: `eq.${myId()}`, followee_id: `eq.${row.id}`,
-                                   select: 'state' }).catch(() => null)
+                                   select: 'state' }).catch(() => null),
+      isSelf ? Promise.resolve(false) : messagesApi.canMessage(row.id)
     ]);
+    const c = Array.isArray(counts) ? counts[0] : counts;
 
     return {
       ...row,
       isMe: row.id === myId(),
       private: !!row.is_private,
-      followers, following, posts: postCount,
+      followers: c?.followers ?? 0,
+      following: c?.following ?? 0,
+      posts: c?.posts ?? 0,
+      canMessage: !!mayMessage,
       followState: rel ? (rel.state === 'accepted' ? 'following' : 'requested') : 'none'
     };
   },
@@ -553,7 +616,19 @@ export const profileApi = {
     if (!Object.keys(row).length) return me.get();
 
     const [updated] = await db.update('profiles', row, { id: `eq.${myId()}` });
-    if (updated) { me.set({ ...me.get(), ...updated }); cachePeople(updated); }
+
+    // PostgREST answers 200 with an EMPTY array when RLS silently
+    // filtered the row out. That looked like success and the change
+    // vanished on refresh — the "profile editing is not saving" bug.
+    // Say so instead.
+    if (!updated) {
+      throw new DbError(
+        'Modification refusée par la base de données. ' +
+        'Vérifiez que votre compte est approuvé.', 403);
+    }
+
+    me.set({ ...me.get(), ...updated });
+    cachePeople(updated);
     return updated;
   },
 

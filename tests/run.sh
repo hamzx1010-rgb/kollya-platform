@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 [ -d node_modules/jsdom ] || npm install --silent jsdom
 total=0; passed=0; failed=0
 for f in tests/*.test.mjs; do
-  out=$(node "$f" 2>&1 | grep -vE "MODULE_TYPELESS|Reparsing|eliminate|trace-warnings|localStorage indisponible")
+  out=$(node --experimental-vm-modules "$f" 2>&1 | grep -vE "MODULE_TYPELESS|Reparsing|eliminate|trace-warnings|localStorage indisponible|ExperimentalWarning|VM Modules")
   line=$(echo "$out" | grep -E "^[0-9]+/[0-9]+ passed" | tail -1)
   fails=$(echo "$out" | grep -c "^FAIL")
   name=$(basename "$f" .test.mjs)

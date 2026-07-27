@@ -77,7 +77,9 @@ function headerMarkup(u) {
                    id="pfFollow" data-state="${u.followState || 'none'}">
              ${followLabel(u.followState)}
            </button>
-           <button class="icon-btn" id="pfMessage" data-tip="Message">${I.message}</button>
+           ${u.canMessage
+             ? `<button class="btn btn-outline" id="pfMessage">${icon('message', { size: 16 })} Message</button>`
+             : ''}
            <button class="icon-btn" id="pfMore" data-tip="Plus">${I.moreH}</button>`}
     </div>
   </div>

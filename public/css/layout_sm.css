@@ -1443,7 +1443,9 @@ button.pf-stat:hover span { text-decoration: underline; }
    STORY VIEWER
    ============================================================ */
 .sv {
-  position: fixed; inset: 0; z-index: var(--z-max);
+  /* immersive, not max: the delete confirm and the viewers list open
+     from inside this and have to appear ON TOP of it */
+  position: fixed; inset: 0; z-index: var(--z-immersive);
   display: grid; place-items: center;
   background: rgba(8,10,14,.94);
   backdrop-filter: blur(var(--blur-media));
@@ -2138,3 +2140,68 @@ button.pf-stat:hover span { text-decoration: underline; }
     color-mix(in srgb, var(--brand) 7%, transparent), transparent);
   border-inline-start: 3px solid var(--brand);
 }
+
+
+/* ============================================================
+   CHAT FOLDERS
+   The set from the original app — Tous · Non lus · Épinglés ·
+   Études · Muets · Archivés — as a scrolling strip above the
+   conversation list.
+   ============================================================ */
+
+.chat-folders {
+  display: flex;
+  gap: 4px;
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.chat-folders::-webkit-scrollbar { display: none; }
+
+.chat-folder {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 10px;
+  flex-shrink: 0;
+  border-radius: var(--r-full);
+  color: var(--text-2);
+  font-size: var(--fs-xs); font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.chat-folder:hover { background: var(--hover); color: var(--text); }
+.chat-folder.on {
+  background: color-mix(in srgb, var(--brand) 13%, transparent);
+  color: var(--brand);
+}
+.chat-folder svg { width: 14px; height: 14px; }
+
+.cf-count {
+  min-width: 17px; height: 17px;
+  padding: 0 5px;
+  display: grid; place-items: center;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  font-size: 10px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.chat-folder.on .cf-count { background: var(--brand); color: #fff; }
+
+/* narrow rail: icons only, labels would wrap */
+@media (max-width: 1180px) {
+  .cf-label { display: none; }
+  .chat-folder { padding: 7px 9px; }
+}
+
+/* a filed conversation carries a quiet mark */
+.conv-mark { display: inline-flex; color: var(--text-3); flex-shrink: 0; }
+.conv.pinned { background: color-mix(in srgb, var(--brand) 4%, transparent); }
+.conv.muted .conv-name { opacity: .72; }
+
+/* contact picker in "Nouveau message" */
+.contact-list { max-height: 46vh; overflow-y: auto; }
+.contact-row { width: 100%; }
+.contact-row:hover { background: var(--hover); }
+.tg-empty.failed { color: var(--danger); gap: var(--s3); }
+.tg-empty.failed .btn { margin-top: var(--s2); }

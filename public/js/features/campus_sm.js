@@ -519,7 +519,11 @@ async function renderExplore(q = '') {
             ${avatarChip(u, 'av')}
             <div class="grow" style="min-width:0"><div class="t-bold truncate">${esc(u.full_name)}</div>
             <div class="t-sm t-dim">@${esc(u.username)} · ${esc(u.faculty || '')}</div></div>
-            <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
+            <div class="row g1">
+              ${u.is_private === false || u.i_follow !== false
+                ? `<button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message">${icon('message', { size: 15 })}</button>` : ''}
+              <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
+            </div>
           </div>`).join('') : ''}
       ${posts.length ? `<div class="hub-sec-head" style="margin:var(--s4) 0 var(--s3)">Publications · ${posts.length}</div>` +
         posts.map(p => {
@@ -564,7 +568,10 @@ async function renderExplore(q = '') {
                 </div>
                 <div class="t-sm t-dim">${esc(u.faculty || '')} · ${compact(u.xp || 0)} XP</div>
               </div>
-              <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
+              <div class="row g1">
+                <button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message">${icon('message', { size: 15 })}</button>
+                <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
+              </div>
             </div>`;
           }).join('')
         : `<div class="tg-empty">${icon('user', { size: 22 })}<span>Personne à afficher</span></div>`}
@@ -659,6 +666,10 @@ function mountScreen(name, mountFn) {
 }
 
 async function handleListClick(screen, e) {
+  // Message button, available from discovery and search alike.
+  const msg = e.target.closest('[data-msg]');
+  if (msg) { e.preventDefault(); go('messages', msg.dataset.msg); return; }
+
   if (screen === 'channels') {
     const card = e.target.closest('.cc');
     if (!card) return;

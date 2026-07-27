@@ -72,8 +72,20 @@
   --rail-w: 320px;
   --feed-w: 620px;
   --topbar-h: 56px;
-  --z-base: 1; --z-sticky: 50; --z-nav: 100; --z-overlay: 200;
-  --z-menu: 300; --z-toast: 400; --z-max: 500;
+  /* LAYERING — ordered by "what can open on top of what".
+     The old scale had the story viewer at the very top (500), so the
+     delete confirm (201), the viewers list (201), every context menu
+     (300) and every toast (400) opened UNDERNEATH it and looked like
+     nothing happened. Fullscreen surfaces now sit BELOW the things
+     they are allowed to spawn. */
+  --z-base: 1;
+  --z-sticky: 50;
+  --z-nav: 100;
+  --z-immersive: 450;   /* story viewer, lightbox — fullscreen readers */
+  --z-overlay: 600;     /* scrim + modal, may open from immersive */
+  --z-menu: 700;        /* context menus, may open from a modal */
+  --z-toast: 800;       /* confirmations, always visible */
+  --z-max: 900;         /* skip-link, nothing above this */
 }
 
 /* ---------- 2. THEMES -------------------------------------- */

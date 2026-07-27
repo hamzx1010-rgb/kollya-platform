@@ -264,13 +264,23 @@ export function initNotifications(mountFn) {
 export async function refreshNotificationBadge() {
   // A count query, not the whole list: the badge runs on every boot
   // and after every route change, so it has to be cheap.
-  if (api?.unreadCount) {
-    const n = await api.unreadCount().catch(() => 0);
-    setState({ unread: n });
-    const badge = document.querySelector('[data-nav="notifications"] .count');
-    if (badge) { badge.textContent = n > 99 ? '99+' : String(n); badge.hidden = !n; }
-    return n;
+  //
+  // `unread` is an OBJECT — { messages, notifications }. Writing a
+  // bare number here (which is what the previous version did) made
+  // shell_sm.js compute `undefined + undefined` and the bell went
+  // permanently blank. One shape, everywhere.
+  if (!api?.unreadCount) {
+    items = await load();
+    updateBadge();
+    return state.unread.notifications;
   }
-  items = await load();
-  updateBadge();
+
+  const n = await api.unreadCount().catch(err => {
+    console.warn('[koliya] compteur de notifications indisponible', err.message);
+    return null;
+  });
+  if (n === null) return state.unread.notifications;
+
+  setState({ unread: { ...state.unread, notifications: n } });
+  return n;
 }

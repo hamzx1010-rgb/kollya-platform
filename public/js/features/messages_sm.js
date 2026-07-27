@@ -30,7 +30,7 @@ import {
   toast, contextMenu, reactionPicker, actionBar, lightbox,
   confirmDialog, skeletonList, emptyState, optimistic, closeMenu
 } from '../core/ui_sm.js';
-import { route } from '../core/router_sm.js';
+import { route, go } from '../core/router_sm.js';
 import { openGifPicker, closeGifPicker } from './gif_sm.js';
 import { startRecording, cancelRecording, isRecording, wireVoicePlayers } from './voice_sm.js';
 import { openImageEditor } from './editor_sm.js';
@@ -48,6 +48,8 @@ let atBottom = true;
 let pendingFiles = [];
 let selectedId = null;     // message whose toolbar is open
 let infoOpen = true;       // right-hand info panel — open by default
+let folder = 'all';        // active chat folder
+let folders = {};          // peerId -> folder name
 
 /* Injected by db_sm.js once the keys arrive. Until then the screen
    runs on sample data so the interaction can be built and reviewed. */
@@ -57,8 +59,6 @@ export function useApi(impl) { api = impl; }
 /* ------------------------------------------------------------
    DATA ACCESS  — every call goes to Neon, nothing is invented here
    ------------------------------------------------------------ */
-
-let pollTimer = 0;
 
 async function loadConversations() {
   if (!api?.listConversations) return [];
@@ -82,48 +82,254 @@ async function persistReaction(msgId, key) {
   return api.react(msgId, key);
 }
 
-/**
- * Neon has no realtime channel, so the open conversation is polled.
- * Slower when the tab is hidden, stopped when it is closed — a chat
- * app that keeps hammering a database in a background tab is how you
- * burn a free tier in a week.
- */
+/* ------------------------------------------------------------
+   NEAR-LIVE UPDATES
+
+   Your original app used Supabase Realtime — a real WebSocket:
+       .on('postgres_changes', { event:'INSERT', table:'messages' })
+   Neon's Data API has no equivalent. There is no socket to open.
+
+   So this is the honest best approximation, and I am naming it
+   plainly rather than calling it "instant":
+
+     · your own message appears immediately (optimistic), then is
+       confirmed by the row the database returns
+     · the open thread asks only for messages NEWER than the last one
+       it has — a tiny query, not a reload of the conversation
+     · 1.5s while you are looking, 15s when the tab is hidden
+     · your other tabs update through BroadcastChannel with no
+       network call at all
+   ------------------------------------------------------------ */
+
+const FAST_MS = 1500;
+const SLOW_MS = 15000;
+
+let pollTimer = 0;
+let pollBusy = false;
+let bc = null;
+
+/** Cross-tab sync: sending in one tab updates the others for free. */
+function channel() {
+  if (bc !== null) return bc;
+  try { bc = new BroadcastChannel('koliya-dm'); }
+  catch { bc = false; }              // Safari private mode, older webviews
+  if (bc) {
+    bc.onmessage = e => {
+      const { type, peerId } = e.data || {};
+      if (type === 'sent' && peer && String(peerId) === String(peer.id)) beat(true);
+      if (type === 'sent') renderConvList();
+    };
+  }
+  return bc;
+}
+
+const announce = (type, peerId) => { try { channel()?.postMessage({ type, peerId }); } catch {} };
+
+/** One refresh cycle. Only asks for what it does not already have. */
+async function beat(force = false) {
+  if (pollBusy || !peer || !api?.listMessages) return;
+  if (document.hidden && !force) return;
+  pollBusy = true;
+
+  try {
+    const since = msgs.length ? msgs[msgs.length - 1].created_at : null;
+    const incoming = api.listNewMessages
+      ? await api.listNewMessages(peer.id, since)
+      : await api.listMessages(peer.id);
+
+    if (incoming?.length) {
+      const known = new Set(msgs.map(m => String(m.id)));
+      const fresh = incoming.filter(m => !known.has(String(m.id)));
+
+      if (fresh.length) {
+        const stick = atBottom;
+        msgs.push(...fresh);
+        renderThread({ keepScroll: !stick });
+        if (stick) scrollToBottom(true);
+
+        // A message that arrived while you are reading is read.
+        const theirs = fresh.filter(m => String(m.sender_id) !== String(me.id));
+        if (theirs.length && !document.hidden) {
+          for (const m of theirs) api.markRead?.(m.id);
+        }
+        if (theirs.length) { pingArrival(); renderConvList(); }
+      }
+    }
+
+    // Read receipts and reactions change existing rows, so refresh the
+    // tail of the thread periodically rather than on every beat.
+    if (force || Math.random() < 0.25) await refreshTail();
+
+    const typing = await api.isTyping?.(peer.id);
+    showTyping(!!typing);
+  } catch { /* a failed beat is not worth a toast */ }
+  finally { pollBusy = false; }
+}
+
+/** Re-read the last few messages so ticks and reactions stay true. */
+async function refreshTail() {
+  if (!peer || !msgs.length) return;
+  const tail = await api.listMessages(peer.id).catch(() => null);
+  if (!tail) return;
+  const byId = new Map(tail.map(m => [String(m.id), m]));
+  let changed = false;
+  msgs = msgs.map(m => {
+    const fresh = byId.get(String(m.id));
+    if (!fresh) return m;
+    if (fresh.seen_at !== m.seen_at ||
+        JSON.stringify(fresh.reactions) !== JSON.stringify(m.reactions) ||
+        fresh.text !== m.text) { changed = true; return { ...m, ...fresh }; }
+    return m;
+  });
+  // messages deleted by the other side disappear
+  const alive = msgs.filter(m => m._pending || byId.has(String(m.id)));
+  if (alive.length !== msgs.length) { msgs = alive; changed = true; }
+  if (changed) renderThread({ keepScroll: !atBottom });
+}
+
+/** A soft chime for an arriving message, muted if you muted the chat. */
+function pingArrival() {
+  if (!peer || folderOf(peer.id) === 'muted') return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 660;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.06, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
+    setTimeout(() => ctx.close(), 400);
+  } catch {}
+}
+
 function startPolling() {
   stopPolling();
-  const beat = async () => {
-    if (document.hidden || !peer || !api?.listMessages) return;
-    try {
-      const fresh = await api.listMessages(peer.id);
-      // only repaint when something actually changed
-      const changed = fresh.length !== msgs.length ||
-        fresh.some((m, i) => String(m.id) !== String(msgs[i]?.id) || m.seen_at !== msgs[i]?.seen_at);
-      if (changed) {
-        const stick = atBottom;
-        msgs = fresh;
-        renderThread({ keepScroll: !stick });
-      }
-      const typing = await api.isTyping?.(peer.id);
-      showTyping(!!typing);
-    } catch { /* a failed poll is not worth a toast */ }
-  };
-  pollTimer = setInterval(beat, document.hidden ? 20000 : 5000);
+  channel();
+  pollTimer = setInterval(beat, document.hidden ? SLOW_MS : FAST_MS);
+  // Node keeps the process alive for a pending interval; browsers do
+  // not care. Harmless either way, and it stops a headless test from
+  // hanging for the length of the timer.
+  pollTimer?.unref?.();
 }
 
 function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = 0;
+  try { bc && bc.close?.(); } catch {}
+  bc = null;
+}
+
+/** Switch cadence when the tab is hidden, instead of hammering Neon. */
+function retune() {
+  if (!peer) return;
+  stopPolling();
+  pollTimer = setInterval(beat, document.hidden ? SLOW_MS : FAST_MS);
+  pollTimer?.unref?.();
+  if (!document.hidden) beat(true);
 }
 
 function showTyping(on) {
   const body = $('#threadBody');
   if (!body) return;
-  let node = $('#typingRow');
+  const node = $('#typingRow');
   if (on && !node) {
     body.insertAdjacentHTML('beforeend',
       `<div class="bubble-row" id="typingRow"><div class="av sm" style="background:${avatarColor(peer.id)}">${esc(initials(peer.full_name))}</div>
        <div class="typing"><i></i><i></i><i></i></div></div>`);
     if (atBottom) scrollToBottom(false);
   } else if (!on && node) node.remove();
+}
+
+/* ------------------------------------------------------------
+   CHAT FOLDERS
+   The same set your original app had — all · pinned · unread ·
+   study · muted · archived — with one difference: it lived in
+   localStorage there, so clearing the browser wiped it and your
+   phone disagreed with your laptop. Now it is a table.
+   ------------------------------------------------------------ */
+
+const FOLDERS = [
+  { id: 'all',      label: 'Tous',     icon: 'message'  },
+  { id: 'unread',   label: 'Non lus',  icon: 'inbox'    },
+  { id: 'pinned',   label: 'Épinglés', icon: 'pin'      },
+  { id: 'study',    label: 'Études',   icon: 'graduation' },
+  { id: 'muted',    label: 'Muets',    icon: 'mute'     },
+  { id: 'archived', label: 'Archivés', icon: 'bookmark' }
+];
+
+const folderOf = peerId => folders[String(peerId)] || 'all';
+
+/** Which conversations belong in the open folder. */
+function inFolder(c) {
+  const f = folderOf(c.peer.id);
+  if (folder === 'all')    return f !== 'archived';   // archive is out of the way
+  if (folder === 'unread') return c.unread > 0 && f !== 'archived';
+  return f === folder;
+}
+
+function folderBar() {
+  return `<div class="chat-folders" id="chatFolders">
+    ${FOLDERS.map(f => {
+      const n = f.id === 'all'
+        ? convs.filter(c => folderOf(c.peer.id) !== 'archived').length
+        : f.id === 'unread'
+          ? convs.filter(c => c.unread > 0 && folderOf(c.peer.id) !== 'archived').length
+          : convs.filter(c => folderOf(c.peer.id) === f.id).length;
+      return `<button class="chat-folder${f.id === folder ? ' on' : ''}" data-folder="${f.id}"
+                      data-tip="${esc(f.label)}">
+          ${icon(f.icon, { size: 14 })}
+          <span class="cf-label">${esc(f.label)}</span>
+          ${n ? `<span class="cf-count">${n}</span>` : ''}
+        </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function wireFolders() {
+  const bar = $('#chatFolders');
+  if (!bar) return;
+  on(bar, 'click', e => {
+    const btn = e.target.closest('[data-folder]');
+    if (!btn) return;
+    folder = btn.dataset.folder;
+    paintConvList();
+  });
+}
+
+/** Right-click a conversation to file it. */
+function convMenu(e, c) {
+  e.preventDefault();
+  const current = folderOf(c.peer.id);
+  contextMenu(e, [
+    { title: c.peer.full_name },
+    ...FOLDERS.filter(f => f.id !== 'unread').map(f => ({
+      label: f.id === 'all' ? 'Retirer du dossier' : `Déplacer vers ${f.label}`,
+      icon: I[f.icon] || I.message,
+      kbd: current === f.id ? '✓' : '',
+      onClick: async () => {
+        const before = folders[String(c.peer.id)];
+        if (f.id === 'all') delete folders[String(c.peer.id)];
+        else folders[String(c.peer.id)] = f.id;
+        paintConvList();
+        try {
+          await api.setFolder(c.peer.id, f.id);
+          toast(f.id === 'all' ? 'Retiré du dossier' : `Déplacé vers ${f.label}`, 'ok');
+        } catch {
+          if (before) folders[String(c.peer.id)] = before;
+          else delete folders[String(c.peer.id)];
+          paintConvList();
+          toast('Déplacement échoué', 'err');
+        }
+      }
+    })),
+    { sep: true },
+    { label: 'Ouvrir le profil', icon: I.user,
+      onClick: () => { location.hash = `#/profile/${c.peer.username}`; } }
+  ]);
 }
 
 /* ------------------------------------------------------------
@@ -139,10 +345,13 @@ function convRow(c) {
       (last.media_type ? mediaLabel(last.media_type) : last.text)
     : 'Nouvelle conversation';
 
+  const f = folderOf(p.id);
   const node = el('button', {
-    class: 'conv' + (isOpen ? ' on' : '') + (c.unread ? ' unread' : ''),
+    class: 'conv' + (isOpen ? ' on' : '') + (c.unread ? ' unread' : '') +
+           (f === 'pinned' ? ' pinned' : '') + (f === 'muted' ? ' muted' : ''),
     'data-peer': p.id,
-    onclick: () => openThread(p.id)
+    onclick: () => openThread(p.id),
+    oncontextmenu: e => convMenu(e, c)
   });
 
   const av = p.avatar_url
@@ -154,6 +363,8 @@ function convRow(c) {
   node.append(av, el('div', { class: 'conv-body' },
     el('div', { class: 'conv-top' },
       el('span', { class: 'conv-name truncate' }, p.full_name),
+      f === 'pinned' ? el('span', { class: 'conv-mark', html: icon('pin', { size: 12 }) }) : null,
+      f === 'muted'  ? el('span', { class: 'conv-mark', html: icon('mute', { size: 12 }) }) : null,
       el('span', { class: 'conv-time' }, last ? timeAgo(last.created_at) : '')
     ),
     el('div', { class: 'row g2' },
@@ -178,8 +389,14 @@ async function renderConvList() {
   const box = $('#convScroll');
   if (!box) return;
   box.innerHTML = skeletonList(5, 'conv');
+
   try {
-    convs = await loadConversations();
+    const [rows, f] = await Promise.all([
+      loadConversations(),
+      api?.listFolders ? api.listFolders() : Promise.resolve({})
+    ]);
+    convs = rows;
+    folders = f || {};
   } catch (err) {
     box.innerHTML = '';
     box.append(emptyState({
@@ -191,19 +408,52 @@ async function renderConvList() {
     return;
   }
 
-  if (!convs.length) {
-    box.innerHTML = '';
+  paintConvList();
+
+  // Feed the rail badge. Nothing was setting the messages half of
+  // `unread`, so the sidebar counter could only ever show
+  // notifications.
+  const totalUnread = convs.reduce((n, c) => n + (c.unread || 0), 0);
+  setState({ unread: { ...state.unread, messages: totalUnread } });
+}
+
+/** Repaint from memory — no network, so folders switch instantly. */
+function paintConvList() {
+  const box = $('#convScroll');
+  if (!box) return;
+
+  const bar = $('#chatFolders');
+  if (bar) bar.outerHTML = folderBar();
+  else box.insertAdjacentHTML('beforebegin', folderBar());
+  wireFolders();
+
+  const visible = convs.filter(inFolder).sort((a, b) => {
+    // pinned first, then most recent
+    const pa = folderOf(a.peer.id) === 'pinned' ? 1 : 0;
+    const pb = folderOf(b.peer.id) === 'pinned' ? 1 : 0;
+    if (pa !== pb) return pb - pa;
+    return new Date(b.last?.created_at || 0) - new Date(a.last?.created_at || 0);
+  });
+
+  box.innerHTML = '';
+
+  if (!visible.length) {
+    const f = FOLDERS.find(x => x.id === folder);
     box.append(emptyState({
       icon: I.message,
-      title: 'Aucune conversation',
-      text: 'Commencez à discuter avec les étudiants de votre faculté.',
-      action: { label: 'Nouveau message', onClick: openNewConversation }
+      title: folder === 'all' ? 'Aucune conversation' : `Rien dans « ${f?.label || folder} »`,
+      text: folder === 'all'
+        ? 'Commencez à discuter avec les étudiants de votre faculté.'
+        : 'Clic droit sur une conversation pour la classer ici.',
+      action: folder === 'all'
+        ? { label: 'Nouveau message', onClick: () => openNewConversation() }
+        : { label: 'Voir tout', onClick: () => { folder = 'all'; paintConvList(); } }
     }));
     return;
   }
-  box.innerHTML = '';
+
   const frag = document.createDocumentFragment();
-  convs.forEach(c => frag.append(convRow(c)));
+  visible.forEach(c => frag.append(convRow(c)));
   box.append(frag);
 }
 
@@ -883,27 +1133,69 @@ async function forwardMessage(m) {
    NEW CONVERSATION
    ------------------------------------------------------------ */
 
-async function openNewConversation() {
-  const search = el('input', { class: 'input', placeholder: 'Nom ou @pseudo…' });
-  const list = el('div', { class: 'col g2', style: 'max-height:46vh;overflow:auto' });
+/* ------------------------------------------------------------
+   NEW CONVERSATION
+   The previous version loaded through a 200ms debounce and ended in
+   `.catch(() => [])`, so a failed query and an empty campus looked
+   identical: a skeleton that never resolved, or "Aucun étudiant"
+   with no reason. It now loads immediately and reports what happened.
+   ------------------------------------------------------------ */
 
-  const refresh = debounce(async () => {
-    const people = await api.contacts(search.value.trim()).catch(() => []);
-    list.innerHTML = people.length
-      ? people.map(u => `
-          <button class="tg-row" data-to="${esc(u.id)}" style="text-align:start">
-            ${u.avatar_url
-              ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
-              : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
-            <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(u.full_name)}</div>
-            <div class="t-xs t-dim">@${esc(u.username)} · ${esc(u.faculty || '')}</div></div>
-          </button>`).join('')
-      : `<div class="tg-empty">${icon('user',{size:22})}<span>Aucun étudiant trouvé</span></div>`;
-  }, 200);
+function contactRow(u) {
+  const tag = u.i_follow && u.follows_me ? 'Vous vous suivez'
+            : u.i_follow               ? 'Vous le suivez'
+            : u.follows_me             ? 'Vous suit'
+            : u.is_private             ? 'Compte privé' : '';
+  return `<button class="tg-row contact-row" data-to="${esc(u.id)}" style="text-align:start">
+      ${u.avatar_url
+        ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+        : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
+      <div class="grow" style="min-width:0">
+        <div class="row g2" style="flex-wrap:wrap">
+          <span class="t-sm t-bold truncate">${esc(u.full_name)}</span>
+          ${u.is_private ? `<span class="tg-ic" data-tip="Compte privé">${icon('lock', { size: 12 })}</span>` : ''}
+        </div>
+        <div class="t-xs t-dim">@${esc(u.username)}${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
+      </div>
+      ${tag ? `<span class="pill" style="height:20px">${esc(tag)}</span>` : ''}
+    </button>`;
+}
 
-  on(search, 'input', refresh);
-  list.innerHTML = skeletonList(4, 'conv');
-  const dlg = modal({ title: 'Nouveau message', body: el('div', { class: 'col g3' }, search, list) });
+export async function openNewConversation(prefill = '') {
+  const search = el('input', { class: 'input', placeholder: 'Nom ou @pseudo…', value: prefill });
+  const list = el('div', { class: 'col g2 contact-list' });
+
+  const load = async q => {
+    list.innerHTML = skeletonList(4, 'conv');
+    try {
+      const people = await api.contacts(q);
+      if (!people.length) {
+        list.innerHTML = `<div class="tg-empty">${icon('user', { size: 22 })}
+          <span>${q ? `Aucun étudiant pour « ${esc(q)} »` : 'Aucun étudiant à qui écrire pour le moment'}</span></div>`;
+        return;
+      }
+      list.innerHTML = people.map(contactRow).join('');
+    } catch (err) {
+      // Say what actually went wrong. Silence here is what made this
+      // button look dead.
+      list.innerHTML = `<div class="tg-empty failed">
+          ${icon('close', { size: 22 })}
+          <span>${esc(err?.status === 401
+            ? 'Session expirée — reconnectez-vous.'
+            : (err?.message || 'Chargement impossible.'))}</span>
+          <button class="btn btn-outline btn-sm" id="contactRetry">Réessayer</button>
+        </div>`;
+      on($('#contactRetry'), 'click', () => load(search.value.trim()));
+    }
+  };
+
+  const debounced = debounce(() => load(search.value.trim()), 220);
+  on(search, 'input', debounced);
+
+  const dlg = modal({
+    title: 'Nouveau message',
+    body: el('div', { class: 'col g3' }, search, list)
+  });
 
   on(list, 'click', e => {
     const btn = e.target.closest('[data-to]');
@@ -912,8 +1204,13 @@ async function openNewConversation() {
     openThread(btn.dataset.to);
   });
 
-  refresh();
+  await load(prefill);              // immediate, not debounced
   setTimeout(() => search.focus(), 80);
+}
+
+/** Open a conversation from anywhere (profile, discovery, search). */
+export function messageUser(userId) {
+  go('messages', userId);
 }
 
 /** Redraw just the header after a nickname or mute change. */
@@ -928,6 +1225,18 @@ function refreshHead() {
     head.insertAdjacentHTML('beforeend',
       `<span class="head-muted" data-tip="Notifications coupées">${icon('mute', { size: 15 })}</span>`);
   } else if (!pref.muted && existing) existing.remove();
+}
+
+/**
+ * Release everything this screen holds: the poll timer, the
+ * cross-tab channel and the open peer. Called when the route
+ * changes, and available to tests so they can exit.
+ */
+export function teardownMessages() {
+  stopPolling();
+  peer = null;
+  msgs = [];
+  selectedId = null;
 }
 
 export function toggleInfo(force) {
@@ -1122,6 +1431,7 @@ async function sendOne(payload, mediaType = null) {
     }
     renderThread();
     renderConvList();
+    announce('sent', payload.receiver_id);   // update my other tabs
     return saved;
   } catch (err) {
     msgs = msgs.filter(m => m.id !== temp.id);
@@ -1466,7 +1776,7 @@ export function initMessages(mountFn) {
   // Leaving the screen must stop the poll; a chat that keeps querying
   // Neon from a route you closed is a bill, not a feature.
   onEvent('route:enter', ({ route: r } = {}) => {
-    if (r !== 'messages') { stopPolling(); peer = null; }
+    if (r !== 'messages') teardownMessages();
   });
-  on(document, 'visibilitychange', () => { if (peer) startPolling(); });
+  on(document, 'visibilitychange', retune);
 }
