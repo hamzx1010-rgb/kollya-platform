@@ -66,15 +66,6 @@ const PREVIEW_USER = {
  * With Neon configured this is a real session check; without it the
  * app falls back to sample data so the UI can still be reviewed.
  */
-/** Reject after `ms` so a stalled request can never hang the boot. */
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timeout (${ms}ms)`)), ms))
-  ]);
-}
-
 async function resolveSession() {
   if (!canUseDatabase()) {
     console.info('[koliya] mode aperçu — base de données non configurée:', missingConfig());
@@ -83,34 +74,18 @@ async function resolveSession() {
   }
 
   try {
-    // A boot screen that never resolves is worse than a login screen
-    // shown too early: the student can still act on the second one.
-    // Eight seconds is generous for a cold Neon compute.
-    const state = await withTimeout(initAuth(), 8000, 'auth');
+    const state = await initAuth();
     if (state === 'authenticated') return 'authenticated';
     if (state === 'pending') return 'pending';
     return 'anonymous';
   } catch (e) {
-    console.error('[koliya] échec de la vérification de session:', e.message);
-    bootProblem = e.message;
+    console.error('[koliya] échec de la vérification de session', e);
     return 'anonymous';
   }
 }
 
-let bootProblem = null;
-
 function showAuthScreen() {
-  bootDone();
   show('auth');
-  if (bootProblem) {
-    toast(
-      /timeout/i.test(bootProblem)
-        ? 'Serveur lent à répondre. Vous pouvez vous connecter.'
-        : 'Connexion au serveur difficile.',
-      { kind: 'err', duration: 5000 }
-    );
-    bootProblem = null;
-  }
   renderAuth(async () => {
     const state = await resolveSession();
     if (state === 'pending') { renderPending(handleSignOut); return; }
@@ -125,15 +100,7 @@ async function handleSignOut() {
   showAuthScreen();
 }
 
-function bootDone() {
-  // window.dispatchEvent, not the bare global: `dispatchEvent` alone is
-  // undefined in some module scopes and throws, which would kill boot
-  // and leave the spinner turning forever.
-  try { window.dispatchEvent(new Event('koliya:ready')); } catch {}
-}
-
 function enterApp() {
-  bootDone();
   $('#auth')?.classList.add('hidden');
   show('app');
   initRouter();
@@ -273,7 +240,7 @@ async function boot() {
   const state = await resolveSession();
 
   if (state === 'anonymous') { showAuthScreen(); registerSW(); return; }
-  if (state === 'pending')   { bootDone(); show('auth'); renderPending(handleSignOut); registerSW(); return; }
+  if (state === 'pending')   { show('auth'); renderPending(handleSignOut); registerSW(); return; }
 
   enterApp();
   registerSW();

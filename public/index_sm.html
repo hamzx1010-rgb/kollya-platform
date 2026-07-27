@@ -42,63 +42,10 @@
 <a class="skip-link" href="#main">Aller au contenu</a>
 
 <!-- ============ BOOT ============ -->
-<div id="boot" class="col center" style="height:100dvh;gap:var(--s4);padding:var(--s5);text-align:center">
+<div id="boot" class="col center" style="height:100dvh;gap:var(--s4)">
   <div style="font-size:var(--fs-2xl);font-weight:700;letter-spacing:-.02em">Koliya</div>
   <div class="spinner"></div>
-  <div id="bootHint" class="t-sm t-dim" style="max-width:340px;opacity:0;transition:opacity .4s"></div>
 </div>
-
-<script>
-/*
-  Failsafe. If app_sm.js fails to load at all — a 404 from a mistyped
-  path, a module syntax error, an offline tab — nothing below ever runs
-  and the spinner turns forever. These timers make the page explain
-  itself instead of hanging silently.
-*/
-(function () {
-  var hint = document.getElementById('bootHint');
-  var slow = setTimeout(function () {
-    if (!hint) return;
-    hint.textContent = 'Connexion au serveur…';
-    hint.style.opacity = '1';
-  }, 3000);
-
-  var stuck = setTimeout(function () {
-    var boot = document.getElementById('boot');
-    if (!boot || boot.classList.contains('hidden')) return;
-    boot.innerHTML =
-      '<div style="font-size:22px;font-weight:700;margin-bottom:12px">Koliya</div>' +
-      '<p style="color:#6B7280;max-width:360px;line-height:1.6">' +
-      'Le chargement a échoué. Ouvrez la console (F12) pour voir l\'erreur, ' +
-      'puis réessayez.</p>' +
-      '<button onclick="location.reload()" style="margin-top:16px;padding:10px 22px;' +
-      'border:0;border-radius:999px;background:#2563EB;color:#fff;font:inherit;' +
-      'font-weight:600;cursor:pointer">Réessayer</button>';
-  }, 15000);
-
-  window.addEventListener('koliya:ready', function () {
-    clearTimeout(slow);
-    clearTimeout(stuck);
-  });
-
-  // A module that fails to parse or 404s fires this on window.
-  window.addEventListener('error', function (e) {
-    if (e.target && e.target.tagName === 'SCRIPT') {
-      clearTimeout(slow);
-      clearTimeout(stuck);
-      var boot = document.getElementById('boot');
-      if (boot) {
-        boot.innerHTML =
-          '<div style="font-size:22px;font-weight:700;margin-bottom:12px">Koliya</div>' +
-          '<p style="color:#DC2626;max-width:380px;line-height:1.6">Fichier introuvable :<br>' +
-          '<code style="font-size:13px">' + (e.target.src || '') + '</code></p>' +
-          '<p style="color:#6B7280;font-size:13px;margin-top:10px">' +
-          'Vérifiez le nom et l\'emplacement du fichier.</p>';
-      }
-    }
-  }, true);
-})();
-</script>
 
 <!-- ============ AUTH (filled by auth_sm.js) ============ -->
 <div id="auth" class="hidden"></div>
@@ -213,5 +160,6 @@
 </noscript>
 
 <script type="module" src="js/app_sm.js"></script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a21bb387dd96baa1',t:'MTc4NTE1NTkwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"1954b47c125f43f8b4338b3c4f804e4f"}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a217bb0c8ebdba94',t:'MTc4NTExNDI3Mg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
