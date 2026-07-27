@@ -1,0 +1,15 @@
+{
+  "name": "koliya",
+  "version": "1.0.0",
+  "description": "Réseau social privé pour les étudiants universitaires algériens. Stack : **Neon Postgres** + **Neon Auth** + **Cloudflare R2** + PWA statique.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
