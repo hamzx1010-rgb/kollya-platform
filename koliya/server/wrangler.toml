@@ -1,0 +1,6 @@
+name = "koliya-upload"
+main = "upload-worker.js"
+compatibility_date = "2026-01-01"
+
+# secrets are set with:  wrangler secret put NAME
+# never put them in this file
