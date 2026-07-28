@@ -216,19 +216,19 @@ function heroMarkup(s, lv) {
       <div class="row g4 between wrap">
         <div>
           <div class="t-xs" style="opacity:.8;letter-spacing:.06em;text-transform:uppercase">${t('hub.levelN', { n: lv.level })}</div>
-          <div style="font-size:var(--fs-3xl);font-weight:700;line-height:1.1" id="hubXp">0</div>
+          <div style="font-size:var(--fs-3xl);font-weight:700;line-height:1.1" id="hubXp">${s.xp || 0}</div>
           <div class="t-sm" style="opacity:.85">${t('hub.xp')}</div>
         </div>
         <div class="streak-block">
           <div class="streak-flame${s.streak ? '' : ' cold'}" style="--n:${clamp(s.streak / 30, .3, 1)}">${icon('fire', { size: 30 })}</div>
           <div>
-            <div style="font-size:var(--fs-xl);font-weight:700" id="hubStreak">0</div>
+            <div style="font-size:var(--fs-xl);font-weight:700" id="hubStreak">${s.streak || 0}</div>
             <div class="t-xs" style="opacity:.85">${t('hub.streakDays')}</div>
-            ${s.streak_best > s.streak ? `<div class="t-xs" style="opacity:.6">record ${s.streak_best}</div>` : ''}
+            ${s.streak_best > s.streak ? `<div class="t-xs" style="opacity:.6">${t('hub.bestN', { n: s.streak_best })}</div>` : ''}
           </div>
           <span class="freeze-chip${s.freeze_available ? '' : ' spent'}"
                 data-tip="${s.freeze_available
-                  ? 'Gel disponible : une journée manquée sera rattrapée automatiquement ce mois-ci'
+                  ? t('hub.freezeTip')
                   : t('streak.freezeUsed')}">
             ${icon('spark', { size: 12 })} ${s.freeze_available ? t('hub.freezeReady') : t('hub.freezeUsed')}
           </span>
@@ -428,8 +428,20 @@ export function wireGameEvents() {
 /** Repaint the hub from whatever the cache currently holds. */
 function renderHub() {
   const s = stats();
+  const lv = levelFromXp(s.xp);
   const hero = $('.hub-hero');
-  if (hero) hero.outerHTML = heroMarkup(s, levelFromXp(s.xp));
+  if (hero) {
+    // heroMarkup used to hardcode 0 for XP and streak and rely on a
+    // countUp() that only ran in the route handler. Any later repaint
+    // — 'game:xp', 'game:streak', a like landing — replaced the hero
+    // with those zeros and nothing ever filled them in again. Measured
+    // in Chrome: #hubXp animated 14…221…340 and was then reset to 0.
+    // The markup now carries the real number, so a repaint is correct
+    // even without an animation.
+    hero.outerHTML = heroMarkup(s, lv);
+    const bar = $('#hubBar');
+    if (bar) bar.style.width = lv.pct + '%';
+  }
   renderBadges(s);
 }
 

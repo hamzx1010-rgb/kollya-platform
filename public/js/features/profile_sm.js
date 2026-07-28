@@ -66,7 +66,7 @@ function headerMarkup(u) {
         <div class="av xl" id="pfAvatar" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>${
           u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}</div>
       </div>
-      ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="Changer la photo">${I.camera}</button>` : ''}
+      ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="${esc(t('profile.changePhoto'))}">${I.camera}</button>` : ''}
       <span class="pf-level">Niv. ${lv.level}</span>
     </div>
 
@@ -196,7 +196,7 @@ async function renderTabBody(u) {
     host.innerHTML = '';
     host.append(emptyState({
       icon: activeTab === 'likes' ? I.fire : I.edit,
-      title: activeTab === 'likes' ? 'Rien pour l\'instant' : t('profile.noPosts'),
+      title: activeTab === 'likes' ? t('profile.nothingYet') : t('profile.noPosts'),
       text: activeTab === 'likes'
         ? t('empty.likedPosts')
         : (u.isMe ? t('empty.yourFirstPost') : `${u.full_name} n'a rien publié.`)
@@ -223,10 +223,35 @@ async function renderTabBody(u) {
       ${p.text ? `<div class="post-text">${richText(p.text)}</div>` : ''}
       ${src ? `<div class="post-media media-zoom" data-zoom="${esc(safeUrl(src))}">
           <img src="${esc(safeUrl(src))}" alt="" loading="lazy"></div>` : ''}
+      ${p.repost_of ? (() => {
+        // Same quoted-original card as the feed, or a repost with no
+        // added comment shows up here as a blank row.
+        const q = p.repost_of;
+        const qu = q.anonymous
+          ? { full_name: t('feed.anonymous'), username: 'anonyme' }
+          : person(q.user_id);
+        const qimg = q.image_url ? safeUrl(q.image_url) : null;
+        return `<a class="repost-quote" href="#/post/${esc(q.id)}">
+            <div class="row g2">
+              <span class="t-sm t-bold">${esc(qu.full_name)}</span>
+              <span class="t-xs t-dim handle">@${esc(qu.username)}</span>
+              <span class="t-xs t-dim">· ${timeAgo(q.created_at)}</span>
+            </div>
+            ${q.text ? `<div class="t-sm">${richText(q.text)}</div>` : ''}
+            ${qimg ? `<img src="${esc(qimg)}" alt="" loading="lazy"
+                         style="width:100%;border-radius:var(--r-sm);margin-top:var(--s2)">` : ''}
+          </a>`;
+      })() : ''}
       <div class="post-actions">
-        <button class="act"><span>${icon('fire',{size:17})}</span><span class="c">${p.likes?.length || ''}</span></button>
-        <button class="act">${I.comment}<span class="c">${p.comments?.length || ''}</span></button>
-        <button class="act">${I.share}</button>
+        <button class="act like${p.likes?.includes(me.id) ? ' on' : ''}" data-act="like"
+                aria-pressed="${!!p.likes?.includes(me.id)}" aria-label="${t('action.like')}">
+          <span>${icon('fire',{size:17})}</span><span class="c">${p.likes?.length || ''}</span></button>
+        <button class="act" data-act="comment" aria-label="${t('action.reply')}">${I.comment}<span class="c">${p.comments?.length || ''}</span></button>
+        <button class="act${p.reposts?.includes(me.id) ? ' on' : ''}" data-act="repost"
+                aria-pressed="${!!p.reposts?.includes(me.id)}" aria-label="${t('action.repost')}">${I.repost}<span class="c">${p.reposts?.length || ''}</span></button>
+        <button class="act" data-act="share" aria-label="${t('action.share')}">${I.share}</button>
+        <button class="act${p.saves?.includes(me.id) ? ' on' : ''}" data-act="save"
+                aria-label="${t('action.save')}" style="margin-inline-start:auto">${I.bookmark}</button>
       </div>
     </article>`;
   }).join('');
@@ -415,9 +440,21 @@ function wireActions(u) {
 
   on($('#pfAllBadges'), 'click', () => go('hub'));
 
-  on($('#pfBody'), 'click', e => {
+  on($('#pfBody'), 'click', async e => {
     const z = e.target.closest('[data-zoom]');
-    if (z) lightbox([z.dataset.zoom]);
+    if (z) { lightbox([z.dataset.zoom]); return; }
+
+    // Post actions on the profile used to be DEAD: the buttons carried
+    // no data-act and there was no listener at all, so like / comment /
+    // share on your own profile did nothing at all. They now delegate
+    // to the same handlers the feed uses, so the two cannot drift.
+    const actBtn = e.target.closest('[data-act]');
+    if (!actBtn) return;
+    const card = actBtn.closest('.post');
+    const post = viewPosts.find(x => String(x.id) === String(card?.dataset.id));
+    if (!post) return;
+    const { runPostAction } = await import('./feed_sm.js');
+    await runPostAction(actBtn.dataset.act, post, card, e);
   });
 }
 
@@ -440,7 +477,7 @@ async function openPeopleList(kind, u) {
         <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
         <div class="t-xs t-dim"><span class="handle">@${esc(p.username)}</span> · ${esc(p.faculty || '')}</div></div>
       </a>`).join('')
-    : `<div class="tg-empty">${icon('user', { size: 22 })}<span>Personne pour l'instant</span></div>`;
+    : `<div class="tg-empty">${icon('user', { size: 22 })}<span>${esc(t('profile.noPeople'))}</span></div>`;
 }
 
 /* ------------------------------------------------------------
@@ -481,7 +518,7 @@ function openEditProfile(u) {
       : coverFor(u);
     banner.innerHTML = `
       <button class="pe-cam pe-cam-banner" type="button" data-pick="banner">
-        ${icon('camera', { size: 15 })}<span>Couverture</span>
+        ${icon('camera', { size: 15 })}<span>${esc(t('profile.cover'))}</span>
       </button>
       ${bannerPreview ? `<button class="pe-clear" type="button" data-clear="banner" aria-label="Retirer">${I.close}</button>` : ''}`;
 
@@ -489,7 +526,7 @@ function openEditProfile(u) {
       <div class="av xl" ${avatarPreview ? '' : `style="background:${avatarColor(u.id)}"`}>
         ${avatarPreview ? `<img src="${avatarPreview}" alt="">` : esc(initials(nameInput.value || u.full_name))}
       </div>
-      <button class="pe-cam pe-cam-avatar" type="button" data-pick="avatar" aria-label="Changer la photo">
+      <button class="pe-cam pe-cam-avatar" type="button" data-pick="avatar" aria-label="${esc(t('profile.changePhoto'))}">
         ${icon('camera', { size: 15 })}
       </button>`;
   };

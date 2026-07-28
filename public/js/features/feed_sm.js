@@ -112,11 +112,38 @@ function commenterFaces(p) {
     </button>`;
 }
 
+/**
+ * The post being quoted by a repost.
+ *
+ * Without this a repost added no comment rendered as a completely
+ * blank card: repost_id was saved, but nothing on screen referred to
+ * the original. The .repost-quote CSS had existed unused all along.
+ */
+function repostQuote(p) {
+  const src = p.repost_of;
+  if (!src) return '';
+  const who = src.anonymous
+    ? { full_name: t('feed.anonymous'), username: 'anonyme', id: 'anon' }
+    : person(src.user_id);
+  const img = src.image_url ? safeUrl(src.image_url) : null;
+  return `<a class="repost-quote" href="#/post/${esc(src.id)}">
+      <div class="row g2">
+        <span class="t-sm t-bold">${esc(who.full_name)}</span>
+        <span class="t-xs t-dim handle">@${esc(who.username)}</span>
+        <span class="t-xs t-dim">· ${timeAgo(src.created_at)}</span>
+      </div>
+      ${src.text ? `<div class="t-sm">${richText(src.text)}</div>` : ''}
+      ${img ? `<img src="${esc(img)}" alt="" loading="lazy"
+                   style="width:100%;border-radius:var(--r-sm);margin-top:var(--s2)">` : ''}
+    </a>`;
+}
+
 function postCard(p) {
   const anon = p.anonymous;
   const u = anon ? { full_name:t('feed.anonymous'), username:'anonyme', id:'anon' } : person(p.user_id);
   const liked = p.likes.includes(me.id);
   const saved = p.saves?.includes(me.id);
+  const reposted = p.reposts?.includes(me.id);
   const mine  = p.user_id === me.id;
 
   const node = el('article', { class: 'post hover-host', 'data-id': p.id, tabindex: '0' });
@@ -140,6 +167,7 @@ function postCard(p) {
 
     ${p.text ? `<div class="post-text clamp-init">${richText(p.text)}</div>` : ''}
     ${postMedia(p)}
+    ${repostQuote(p)}
     ${p.poll ? pollMarkup(p) : ''}
     ${commenterFaces(p)}
 
@@ -149,7 +177,8 @@ function postCard(p) {
         <span class="c">${p.likes.length || ''}</span>
       </button>
       <button class="act" data-act="comment" aria-label="${t('action.reply')}">${I.comment}<span class="c">${p.comments?.length || ''}</span></button>
-      <button class="act" data-act="repost" aria-label="${t('action.share')}">${I.repost}<span class="c"></span></button>
+      <button class="act${reposted ? ' on' : ''}" data-act="repost" aria-pressed="${reposted}"
+              aria-label="${t('action.repost')}">${I.repost}<span class="c">${p.reposts?.length || ''}</span></button>
       <button class="act" data-act="share" aria-label="${t('action.share')}">${I.share}</button>
       <button class="act${saved ? ' on' : ''}" data-act="save" aria-label="${t('action.save')}" style="margin-inline-start:auto">${I.bookmark}</button>
     </div>
@@ -729,6 +758,28 @@ const truncateText = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 /* ------------------------------------------------------------
    VIEW ENTRY
    ------------------------------------------------------------ */
+
+/**
+ * Run a post action from OUTSIDE the feed.
+ *
+ * The profile screen renders its own post cards (a compact variant),
+ * and its like / comment / share buttons carried no data-act and no
+ * listener at all — three decorative shapes. Rather than copy the
+ * logic and let the two drift, the profile now delegates here, so a
+ * fix to liking is a fix everywhere.
+ *
+ * `card` is the DOM node to repaint optimistically; pass null if the
+ * caller repaints itself.
+ */
+export async function runPostAction(act, post, card = null, ev = null) {
+  if (!post) return;
+  if (act === 'like')    return toggleLike(post, card);
+  if (act === 'save')    return toggleSave(post, card);
+  if (act === 'comment') return openComments(post);
+  if (act === 'share')   return sharePost(post);
+  if (act === 'repost')  return repost(post);
+  if (act === 'menu' && ev) return postMenu(ev, post);
+}
 
 export function initFeed(mountFn) {
   route('feed', async () => {

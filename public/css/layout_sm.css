@@ -2134,11 +2134,21 @@ button.pf-stat:hover span { text-decoration: underline; }
 
 /* a repost quote inside the composer */
 .repost-quote {
+  /* The quote is an <a>, which is display:inline by default. This rule
+     never said otherwise, so the border broke across line boxes and
+     the padding did nothing — measured display:inline in Chrome, with
+     the box fragmenting around the text. */
+  display: block;
+  margin-top: var(--s2);
   padding: var(--s3);
   border: 1px solid var(--border);
   border-radius: var(--r);
   background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
 }
+.repost-quote:hover { background: var(--hover); }
+.repost-quote .row { margin-bottom: 4px; }
 
 /* a message still on its way to the database */
 .tick.pending { opacity: .55; }

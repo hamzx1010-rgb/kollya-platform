@@ -86,20 +86,36 @@ async function decoratePosts(rows) {
   const ids = posts.map(p => p.id);
   const authors = posts.map(p => p.user_id).filter(Boolean);
 
-  const [likes, saves, comments, votes] = await Promise.all([
+  const [likes, saves, comments, votes, reposts] = await Promise.all([
     db.select('post_likes', { post_id: inList(ids), select: 'post_id,user_id', limit: 2000 }).catch(() => []),
     db.select('post_saves', { post_id: inList(ids), select: 'post_id,user_id', limit: 2000 }).catch(() => []),
     db.select('comments',   { post_id: inList(ids), select: 'id,post_id,user_id,text,created_at',
                               order: 'created_at.asc', limit: 2000 }).catch(() => []),
-    soft(db.select('poll_votes', { post_id: inList(ids), select: 'post_id,user_id,choice', limit: 2000 }))
+    soft(db.select('poll_votes', { post_id: inList(ids), select: 'post_id,user_id,choice', limit: 2000 })),
+    // Reposts are ordinary posts pointing back at the original through
+    // repost_id. The column existed in 01_schema.sql from day one but
+    // nothing ever counted it, so the repost button rendered a
+    // permanently empty <span> — a counter that could never move.
+    soft(db.select('posts', { repost_id: inList(ids), select: 'repost_id,user_id', limit: 2000 }))
   ]);
 
-  await hydratePeople([...authors, ...comments.map(c => c.user_id)].filter(Boolean));
+  // The quoted original may sit outside this page of results (an old
+  // post reposted today), so fetch the ones we are missing.
+  const quotedIds = [...new Set(posts.map(p => p.repost_id).filter(Boolean).map(String))]
+    .filter(id => !posts.some(p => String(p.id) === id));
+  const quoted = quotedIds.length
+    ? await soft(db.select('posts', { id: inList(quotedIds), select: '*', limit: 100 })) || []
+    : [];
+  const quotedById = new Map(quoted.map(q => [String(q.id), q]));
+
+  await hydratePeople([...authors, ...comments.map(c => c.user_id),
+                       ...quoted.map(q => q.user_id)].filter(Boolean));
 
   const byLike = bucket(likes, 'post_id');
   const bySave = bucket(saves, 'post_id');
   const byCmt  = bucket(comments, 'post_id');
   const byVote = bucket(votes, 'post_id');
+  const byRepost = bucket(reposts || [], 'repost_id');
 
   return posts.map(p => {
     const key = String(p.id);
@@ -107,8 +123,20 @@ async function decoratePosts(rows) {
       ...p,
       likes: (byLike.get(key) || []).map(r => r.user_id),
       saves: (bySave.get(key) || []).map(r => r.user_id),
-      comments: byCmt.get(key) || []
+      comments: byCmt.get(key) || [],
+      reposts: (byRepost.get(key) || []).map(r => r.user_id)
     };
+
+    // Attach the quoted original so the card has something to show.
+    // Without this a repost with no added comment rendered as a
+    // completely EMPTY post — no text, no image, nothing.
+    if (p.repost_id) {
+      const src = posts.find(x => String(x.id) === String(p.repost_id))
+               || quotedById.get(String(p.repost_id));
+      if (src) shaped.repost_of = { id: src.id, user_id: src.user_id, text: src.text,
+                                    image_url: src.image_url, created_at: src.created_at,
+                                    anonymous: !!src.anonymous };
+    }
 
     // poll: {"options":["A","B"]} in the row + poll_votes rows
     const opts = p.poll?.options;
@@ -167,6 +195,14 @@ export const feedApi = {
     if (post.poll?.options?.length) {
       row.poll = { options: post.poll.options.map(o => (typeof o === 'string' ? o : o.label)) };
     }
+
+    // A repost points back at the original. feed_sm has always sent
+    // repost_id, but this function builds an explicit whitelist and
+    // never copied it across — so every "Repost" silently saved an
+    // EMPTY post with no text and no link to the original, and the
+    // repost counter could never move. The column has existed in
+    // 01_schema.sql since day one.
+    if (post.repost_id) row.repost_id = post.repost_id;
 
     const [created] = await db.insert('posts', row);
     const [shaped]  = await decoratePosts([created]);
