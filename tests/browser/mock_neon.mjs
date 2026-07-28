@@ -50,7 +50,28 @@ export function seed() {
       P('u3', 'leila', 'Leila Mansouri', 'Biologie', 295, { is_private: true }),
       P('u4', 'omar.k', 'Omar Kaci', 'Mathématiques', 180),
       P('u5', 'amina.z', 'Amina Zerrouki', 'Informatique', 812),
-      P('u6', 'nadir.t', 'Nadir Toumi', 'Informatique', 120)
+      P('u6', 'nadir.t', 'Nadir Toumi', 'Informatique', 120),
+      // A deeper bench so the leaderboard can actually show ranks 4-20
+      // and a tie. Three students share 300 XP on purpose.
+      P('u7',  'yacine.h', 'Yacine Haddad',   'Informatique', 720),
+      P('u8',  'nour.s',   'Nour Slimani',    'Informatique', 560),
+      P('u9',  'karim.b',  'Karim Belkacem',  'Informatique', 480),
+      P('u10', 'imene.d',  'Imene Djebbar',   'Informatique', 455),
+      P('u11', 'rania.m',  'Rania Meziane',   'Informatique', 430),
+      P('u12', 'sofiane.a','Sofiane Ait Ali', 'Informatique', 410),
+      P('u13', 'lina.g',   'Lina Gharbi',     'Informatique', 300),
+      P('u14', 'anis.r',   'Anis Rahmani',    'Informatique', 300),
+      P('u15', 'meriem.k', 'Meriem Kaddour',  'Informatique', 300),
+      P('u16', 'walid.z',  'Walid Zerhouni',  'Informatique', 260),
+      P('u17', 'hana.f',   'Hana Ferhat',     'Informatique', 240),
+      P('u18', 'bilal.n',  'Bilal Nemri',     'Informatique', 210),
+      P('u19', 'sami.o',   'Sami Ouali',      'Informatique', 190),
+      P('u20', 'dalia.c',  'Dalia Cherif',    'Informatique', 175),
+      P('u21', 'ryad.t',   'Ryad Tounsi',     'Informatique', 160),
+      P('u22', 'sarah.l',  'Sarah Lounis',    'Informatique', 140),
+      P('u23', 'amir.k',   'Amir Kessai',     'Informatique', 130),
+      P('u24', 'nesrine.b','Nesrine Bouaziz', 'Informatique', 110),
+      P('u25', 'tarek.m',  'Tarek Madani',    'Informatique',  95)
     ],
     posts: [
       { id: 'p1', user_id: 'u5', text: "Quelqu'un a le corrigé de la série 4 en #algo ?", created_at: iso(34), anonymous: false, image_url: null, poll: null },

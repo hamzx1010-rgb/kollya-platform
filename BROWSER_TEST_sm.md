@@ -178,3 +178,89 @@ absolutely positioned on the icon.
   exactly.
 - No screen-reader pass, no keyboard-only walkthrough of every flow.
 - Screenshots in `shots/` are real renders, but of **seeded** data.
+
+---
+
+# Session 2 — victory sound + leaderboard table
+
+## The question you asked
+
+- **Victory sound: NO, it did not exist.** The achievement card appeared
+  in total silence — zero audio files and zero `AudioContext` anywhere
+  in the project. I checked before answering rather than guessing.
+- **Leaderboard: yes, it really was an Olympic podium** — stepped
+  platforms at 56 / 38 / 26 px with 1st in the middle. There was a
+  *second* copy of the same podium in `hub_sm.js`.
+
+## Sound — `core/sound_sm.js` (new)
+
+Synthesised with WebAudio, no mp3: zero bytes downloaded, no licence,
+works offline, and the melody is readable in the source.
+
+| event | sound |
+|---|---|
+| quest ticked | rising third, C-E-G (523/659/784 Hz) |
+| all quests done | full arpeggio to the octave, peaks 1319 Hz |
+| day complete / level up | brighter arpeggio from E |
+| badge earned | two notes, root + octave |
+| streak saved by a freeze | soft low sine — relief, not triumph |
+
+Three rules it obeys: never on a hidden tab, never under
+`prefers-reduced-motion`, never touches `AudioContext` before a user
+gesture. On by default, with a toggle **and a Play button** in Settings.
+
+**Proof it is not silent** (`tests/browser/sound.test.mjs`, 22/22): the
+test taps the WebAudio graph and records every oscillator scheduled —
+frequencies, gain ramps, note count. Muting is verified as **zero
+oscillators created**, not merely a flag flipped. Firing the real
+achievement card fires real notes.
+
+## Leaderboard — one table
+
+Both screens now render the same `.lb-table`. Rank 1/2/3 get a gold /
+silver / bronze chip; **4-20 are plain numbers**. Capped at 20. Your
+pinned position bar is untouched.
+
+Verified in Chrome: 20 rows, ranks `1,2,3,…,9,9,9,12,…,20` (dense
+ranking survives), medals `gold, silver, bronze, plain, plain…`, and
+the top three share **one** row height — no steps.
+
+## Caught by looking at the screenshot, not the numbers
+
+- The filter pills were still French (`Ma faculté`, `Tout le campus`,
+  `Séries`) while the UI was English.
+- **The medals were nearly invisible**: the silver chip measured
+  **1.11:1** against the white page, gold 1.25:1. Darkened all three.
+  Then my own new test caught bronze at 4.41:1 — under AA — so it was
+  darkened again to 4.94:1.
+
+Also translated on the way: the day-complete modal, the badge-unlock
+title, the empty leaderboard state, and the rank strip.
+
+## A test bug, not an app bug
+
+The first sound test failed "it is a melody, not one repeated pitch".
+The cause was my spy reading `oscillator.frequency.value`, which
+reports the *current* automation value — for a note scheduled 20 ms
+ahead that is still the 440 Hz default, so every note read back as 440.
+Tapping `setValueAtTime` instead showed the real melody. The audio was
+correct the whole time.
+
+## Totals
+
+```
+tests/run.sh          848/848
+tests/browser/run.sh   96/96   (live 74 + sound 22)
+```
+
+## Still not verified
+
+- **You have never heard it.** I verified the oscillators exist, their
+  frequencies, and their gain envelopes — headless Chrome has no
+  speaker. Whether the melody is *pleasant* is a judgement only you can
+  make. If it grates, the notes are three readable lines in
+  `sound_sm.js`.
+- iOS Safari needs a user gesture before any audio and is stricter than
+  desktop Chrome; untested.
+- Migrations `05–09` are **still unrun** — profile editing stays broken
+  until you run them.

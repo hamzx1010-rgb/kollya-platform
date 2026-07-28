@@ -65,11 +65,14 @@ ok('quest count shown', !!D.getElementById('questCount'));
 ok('badge grid full', D.querySelectorAll('.badge').length===12);
 await new Promise(r=>setTimeout(r,120));   // stats arrive from the API
 ok('some badges earned', D.querySelectorAll('.badge.earned').length>0);
-// faculty scope has 2 students, so the third podium slot is intentionally empty
-ok('podium container present', !!D.querySelector('.podium'));
-ok('podium fills available places', D.querySelectorAll('.podium-slot').length>=1);
-ok('podium keeps 3 columns', D.querySelector('.podium').children.length===3);
-ok('my row highlighted', !!D.querySelector('.podium-slot.me, .board-row.me'));
+// The hub's board is now the SAME table as the leaderboard page —
+// no podium, no empty third slot. Only the rank chip is coloured.
+ok('board table present', !!D.querySelector('#boardList .lb-table'));
+ok('no podium left in the hub', !D.querySelector('.podium, .podium-slot, .board-row'));
+ok('board renders a row per student', D.querySelectorAll('#boardList .lb-row').length>=1);
+ok('first place is gold', !!D.querySelector('#boardList .lb-row .lb-rank.gold'));
+ok('my row highlighted', !!D.querySelector('#boardList .lb-row.me'));
+ok('board caps at 20', D.querySelectorAll('#boardList .lb-row').length<=20);
 ok('scope buttons', D.querySelectorAll('.board-scope').length===2);
 
 // Deterministic daily quests. The label is what must be stable; the
@@ -91,7 +94,7 @@ ok('unknown quest is safe', (()=>{try{H.trackQuest('nope');return true}catch{ret
 const all=[...D.querySelectorAll('.board-scope')].find(x=>x.dataset.scope==='all');
 all.click(); await new Promise(r=>setTimeout(r,40));
 ok('scope switches', all.classList.contains('on'));
-ok('all scope shows more', D.querySelectorAll('.podium-slot,.board-row').length>=3);
+ok('all scope shows more', D.querySelectorAll('#boardList .lb-row').length>=3);
 
 // badge detail
 D.querySelector('.badge').click();

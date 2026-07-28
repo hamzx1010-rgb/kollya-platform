@@ -491,5 +491,70 @@ s.eq(handles.filter(h => !h.txt.startsWith('@')).length, 0,
 s.eq(handles.filter(h => h.dir !== 'ltr' || !/isolate/.test(h.bidi)).length, 0,
   'handles are bidi-isolated LTR runs');
 
+/* ============================================================
+   15. LEADERBOARD IS A TABLE, NOT A PODIUM
+   ============================================================ */
+await page.evaluate(async () => {
+  const i = await import('/js/core/i18n_sm.js');
+  i.setLang('en');
+  location.hash = '#/leaderboard';
+});
+await wait(1600);
+
+const lb = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('.lb-row')];
+  const medalOf = r => ['gold', 'silver', 'bronze']
+    .find(c => r.querySelector('.lb-rank')?.classList.contains(c)) || null;
+  return {
+    podiumGone: !document.querySelector('.lb-podium, .lb-slot, .lb-step, .lb-crown, .podium'),
+    count: rows.length,
+    ranks: rows.map(r => Number(r.dataset.rank)),
+    medals: rows.map(medalOf),
+    // every row on one baseline == a table, not stepped platforms
+    tops: [...new Set(rows.slice(0, 3).map(r => Math.round(r.getBoundingClientRect().height)))],
+    header: !!document.querySelector('.lb-cols'),
+    mineBar: !document.getElementById('lbMine')?.classList.contains('hidden')
+  };
+});
+s.ok(lb.podiumGone, 'no podium markup survives anywhere');
+s.ok(lb.header, 'the table has a column header');
+s.ok(lb.count > 3 && lb.count <= 20, `shows a real list capped at 20 (${lb.count} rows)`);
+s.eq(lb.medals[0], 'gold', 'rank 1 is gold');
+s.eq(lb.medals[1], 'silver', 'rank 2 is silver');
+s.eq(lb.medals[2], 'bronze', 'rank 3 is bronze');
+s.eq(lb.medals.slice(3).filter(Boolean).length, 0,
+  'ranks 4-20 carry NO colour — just the number');
+s.eq(lb.tops.length, 1,
+  `top three share one row height, no Olympic steps (${JSON.stringify(lb.tops)})`);
+s.ok(lb.ranks.every((v, i) => i === 0 || v >= lb.ranks[i - 1]), 'ranks never go backwards');
+s.ok(lb.mineBar, '“Your position” bar is still there');
+
+/* the medals must actually be visible against the page */
+const medalContrast = await page.evaluate(() => {
+  const lum = c => { const v = c.map(x => x / 255)
+    .map(t => t <= 0.03928 ? t / 12.92 : ((t + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  const num = s => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+  const out = {};
+  for (const cls of ['gold', 'silver', 'bronze']) {
+    const chip = document.querySelector('.lb-rank.' + cls);
+    if (!chip) continue;
+    const stops = [...getComputedStyle(chip).backgroundImage.matchAll(/rgba?\(([^)]+)\)/g)]
+      .map(m => num(m[1]));
+    const fg = num(getComputedStyle(chip).color);
+    out[cls] = {
+      // worst case = the lightest stop for dark text, darkest for light text
+      text: Math.min(...stops.map(st => ratio(fg, st))),
+      page: Math.min(...stops.map(st => ratio(st, [255, 255, 255])))
+    };
+  }
+  return out;
+});
+for (const [cls, v] of Object.entries(medalContrast)) {
+  s.ok(v.text >= 4.5, `${cls} chip number is readable (${v.text.toFixed(2)}:1)`);
+  s.ok(v.page >= 1.35, `${cls} chip is visible against the page (${v.page.toFixed(2)}:1)`);
+}
+
 await app.close();
 process.exit(s.done() ? 0 : 1);

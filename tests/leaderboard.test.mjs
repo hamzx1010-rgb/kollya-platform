@@ -38,18 +38,33 @@ await new Promise(r=>setTimeout(r,200));
 const D=window.document;
 
 ok('page renders', !!D.getElementById('lbList'));
-ok('title shown', D.querySelector('.lb-title').textContent.includes('Classement'));
+// derive the expected word from i18n — a hardcoded 'Classement' broke
+// the moment the default locale became English
+const I18N = await import('../public/js/core/i18n_sm.js');
+ok('title shown', D.querySelector('.lb-title').textContent.includes(I18N.t('lb.title') || 'Lead'));
 ok('scope filters', D.querySelectorAll('.lb-scope').length===2);
 ok('metric filters', D.querySelectorAll('.lb-metric').length===2);
-ok('podium rendered', !!D.querySelector('.lb-podium'));
-ok('podium keeps 3 columns', D.querySelector('.lb-podium').children.length===3);
-ok('crown on first', !!D.querySelector('.lb-slot.p1 .lb-crown'));
+// ONE TABLE, no podium. The top three are marked only by the colour
+// of their rank chip; ranks 4-20 are plain numbers.
+ok('table rendered', !!D.querySelector('.lb-table'));
+ok('no podium anywhere', !D.querySelector('.lb-podium, .lb-slot, .podium'));
+ok('column header present', !!D.querySelector('.lb-head'));
+ok('first row is rank 1', D.querySelector('.lb-row')?.dataset.rank === '1');
+ok('gold on first', !!D.querySelector('.lb-row[data-rank="1"] .lb-rank.gold'));
+const silver = D.querySelector('.lb-rank.silver'), bronze = D.querySelector('.lb-rank.bronze');
+ok('silver/bronze only if those ranks exist',
+   (!!silver === !!D.querySelector('.lb-row[data-rank="2"]')) &&
+   (!!bronze === !!D.querySelector('.lb-row[data-rank="3"]')));
+ok('rank 4+ has no medal colour',
+   [...D.querySelectorAll('.lb-row')].filter(r => Number(r.dataset.rank) > 3)
+     .every(r => !r.querySelector('.lb-rank.medal')));
+ok('caps at 20 rows', D.querySelectorAll('.lb-row').length <= 20);
 
 // faculty scope: only Informatique
 ok('faculty scope default', D.querySelector('.lb-scope.on').dataset.scope==='faculty');
 const names=D.getElementById('lbList').textContent;
 ok('filters to my faculty', names.includes('Amina') && !names.includes('Leila'));
-ok('my row highlighted', !!D.querySelector('.lb-row.me, .lb-slot.me'));
+ok('my row highlighted', !!D.querySelector('.lb-row.me'));
 
 // my position bar
 ok('my position pinned', !D.getElementById('lbMine').classList.contains('hidden'));
@@ -87,16 +102,22 @@ L.useApi({ leaderboard: async () => ([
 ])});
 [...D.querySelectorAll('.lb-metric')].find(x=>x.dataset.metric==='xp').click();
 await new Promise(r=>setTimeout(r,120));
-const allRanks=[...D.querySelectorAll('.lb-slot,.lb-row')].map(n=>n.dataset.rank||n.querySelector('.lb-medal')?.textContent);
 ok('ties share a rank', D.getElementById('lbList').textContent.includes('400'));
+// Every student is now a .lb-row (the podium is gone), so the whole
+// ranking is readable in one place: three students tied on 400 XP are
+// all 3rd, and the next is 5th... wait — 1,1,1 then 4. Assert the real
+// dense-ranking contract instead of hardcoded positions.
 const rowRanks=[...D.querySelectorAll('.lb-row')].map(r=>Number(r.dataset.rank));
-ok('rank skips after a tie', rowRanks.length===2 && rowRanks[0]===4 && rowRanks[1]===5);
+ok('all five students are rows now', rowRanks.length===5);
+ok('ranks never decrease', rowRanks.every((v,i)=>i===0||v>=rowRanks[i-1]));
+const tied = rowRanks.filter(v=>v===rowRanks[0]).length;
+ok('rank skips after a tie', rowRanks[tied] === tied + 1);
 
 // empty state
 L.useApi({ leaderboard: async () => [] });
 [...D.querySelectorAll('.lb-scope')].find(x=>x.dataset.scope==='faculty').click();
 await new Promise(r=>setTimeout(r,120));
-ok('empty state shown', D.getElementById('lbList').textContent.includes('vide'));
+ok('empty state shown', D.getElementById('lbList').textContent.includes(I18N.t('lb.empty')));
 ok('position bar hidden when empty', D.getElementById('lbMine').classList.contains('hidden'));
 
 console.log(t.join('\n'));
