@@ -26,110 +26,23 @@ import { t, lang, setLang, LANGS, applyI18n } from './i18n_sm.js';
    1. RAIL  — context-driven, never asked
    ------------------------------------------------------------ */
 
-/** Routes where screen width matters more than navigation labels. */
-const FOCUS_ROUTES = new Set(['messages', 'channel', 'post']);
-
-/** How long the rail stays open after you arrive somewhere. */
-const AUTO_FOLD_MS = 2200;
-let autoFoldTimer = 0;
-
 /**
- * Rail state.
+ * The rail is always expanded.
  *
- * Your original app let YOU decide with `body.classList.toggle
- * ('side-folded')` and remembered it. Mine only auto-collapsed on
- * certain routes, so it folded and unfolded under you with no way to
- * pin it — which is why it felt broken.
- *
- * Now: an explicit preference wins; routes only suggest. Hovering
- * reveals the labels without changing the state, exactly like before.
+ * Three mechanisms used to decide its width — a per-route rule, a
+ * 2.2s auto-fold timer, and a hover "peek" that floated it over the
+ * content. They contradicted each other mid-transition, which is why
+ * the icons looked crushed and the panel felt like it was fighting
+ * you. Reconciling three sources of truth for one number was the
+ * wrong fix; removing the feature is the right one.
  */
-function railPref() {
-  return prefs.railFolded;             // null = follow the route
-}
-
-function syncRail(routeName) {
+function syncRail() {
   const app = $('#app');
-  if (!app) return;
-
-  // On a phone the rail is a bottom bar; folding is meaningless.
-  if (env.narrow) { app.dataset.rail = 'expanded'; return; }
-
-  const pinned = railPref();
-  if (pinned === true)  { app.dataset.rail = 'collapsed'; syncFoldButton(); return; }
-  if (pinned === false) { app.dataset.rail = 'expanded';  syncFoldButton(); return; }
-
-  // Focus routes fold at once. Everywhere else the rail stays open
-  // just long enough to see where you landed, then folds itself —
-  // which is the "premium" feel you described: it gets out of the
-  // way after you have arrived, not while you are still choosing.
-  if (FOCUS_ROUTES.has(routeName)) {
-    app.dataset.rail = 'collapsed';
-  } else {
-    app.dataset.rail = 'expanded';
-    clearTimeout(autoFoldTimer);
-    autoFoldTimer = setTimeout(() => {
-      // never fold under the cursor or mid-keyboard-navigation
-      const rail = $('#rail');
-      if (!rail || rail.matches(':hover') || rail.contains(document.activeElement)) return;
-      if (railPref() !== null) return;            // the user has an opinion
-      if (currentRoute().name !== routeName) return;
-      app.dataset.rail = 'collapsed';
-      syncFoldButton();
-    }, AUTO_FOLD_MS);
-  }
-  syncFoldButton();
+  if (app) app.dataset.rail = 'expanded';
 }
 
-/** The fold button — a state you own, not one the app guesses. */
-export function toggleRail() {
-  const app = $('#app');
-  if (!app) return;
-  clearTimeout(autoFoldTimer);        // your choice beats the timer
-  const nowCollapsed = app.dataset.rail !== 'collapsed';
-  app.dataset.rail = nowCollapsed ? 'collapsed' : 'expanded';
-  prefs.railFolded = nowCollapsed;
-  syncFoldButton();
-  emit('rail:toggle', nowCollapsed);
-}
-
-function syncFoldButton() {
-  const btn = $('#btnFold');
-  if (!btn) return;
-  const collapsed = $('#app')?.dataset.rail === 'collapsed';
-  btn.setAttribute('aria-label', collapsed ? 'Expand' : 'Collapse');
-  btn.classList.toggle('is-folded', collapsed);
-}
-
-/**
- * Peek delay. Entering is instant so the rail feels responsive;
- * leaving waits 400ms so brushing past it doesn't collapse the rail
- * while you are still travelling toward a nav item.
- */
-function wireRailPeek() {
-  const rail = $('#rail');
-  if (!rail || !env.hasMouse) return;
-
-  let leaveTimer = null;
-
-  on(rail, 'mouseenter', () => {
-    clearTimeout(leaveTimer);
-    rail.dataset.peek = '1';
-  });
-
-  on(rail, 'mouseleave', () => {
-    clearTimeout(leaveTimer);
-    leaveTimer = setTimeout(() => { delete rail.dataset.peek; }, 400);
-  });
-
-  // typing in the rail search keeps it open regardless of the mouse
-  on(rail, 'focusin', () => { clearTimeout(leaveTimer); rail.dataset.peek = '1'; });
-  on(rail, 'focusout', () => {
-    if (!rail.contains(document.activeElement) && !rail.matches(':hover')) {
-      leaveTimer = setTimeout(() => { delete rail.dataset.peek; }, 400);
-    }
-  });
-}
+/** Kept as a no-op: callers and tests still reference it. */
+function wireRailPeek() {}
 
 /* ------------------------------------------------------------
    2. ACTIVE NAV ITEM
@@ -321,7 +234,6 @@ export function initShell() {
   $('#btnTheme')  && on($('#btnTheme'), 'click', cycleTheme);
   $('#btnHelp')   && on($('#btnHelp'), 'click', showShortcuts);
   $('#btnLang')   && on($('#btnLang'), 'click', openLangMenu);
-  $('#btnFold')   && on($('#btnFold'), 'click', toggleRail);
   syncLangButton();
   $('#btnSearch') && on($('#btnSearch'), 'click', () => emit('key:search'));
   $('#btnCompose')&& on($('#btnCompose'), 'click', () => emit('key:compose'));
@@ -331,14 +243,13 @@ export function initShell() {
 
   // react to navigation
   onEvent('route:enter', ({ name, arg }) => {
-    syncRail(name);
+    syncRail();
     syncNav(name);
     syncTopbar(name, arg);
     closeMenu();
   });
 
   // the rail rule changes when crossing the mobile breakpoint
-  on(window, 'resize', throttle(() => syncRail(currentRoute().name), 200));
 
   // offline banner — the app should say so rather than silently fail
   let offlineToast = null;

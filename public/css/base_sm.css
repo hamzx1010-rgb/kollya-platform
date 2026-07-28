@@ -70,7 +70,10 @@
   --nav-w: 248px;
   --nav-w-collapsed: 64px;   /* 44px target + 2×6px padding + 8px breathing */
   --rail-w: 320px;
-  --feed-w: 620px;
+  /* Wider posts. 620px was tuned for a narrow column, but with the
+     rail always expanded there is room to breathe — and photos in a
+     620px column looked like thumbnails. */
+  --feed-w: 720px;
   --topbar-h: 56px;
   /* LAYERING — ordered by "what can open on top of what".
      The old scale had the story viewer at the very top (500), so the

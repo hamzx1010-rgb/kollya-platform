@@ -65,7 +65,8 @@ ok('fallback to English for a partial language',
 const html = fs.readFileSync(new URL('../public/index_sm.html', import.meta.url), 'utf8');
 ok('language button is in the top bar', /id="btnLang"/.test(html));
 ok('top bar shows the current code', /id="langCode"/.test(html));
-ok('fold button exists', /id="btnFold"/.test(html));
+// The sidebar fold was removed: it fought itself and was not wanted.
+ok('no sidebar fold button', !/id="btnFold"/.test(html));
 
 /* ============================================================
    2. NOTIFICATIONS

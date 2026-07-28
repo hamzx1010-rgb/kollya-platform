@@ -97,6 +97,15 @@ export function makeState() {
       followState:'none', private:!!p.is_private
     }])),
     chatFolders: {},    // peerId -> folder
+    dmRequests: {},     // "owner|peer" -> 'pending' | 'accepted' | 'declined'
+    // The seeded conversations belong to people u1 already follows —
+    // otherwise every one of them would correctly become a message
+    // request and the baseline fixture would model an empty inbox.
+    follows: [
+      { follower: 'u1', followee: 'u2' },
+      { follower: 'u1', followee: 'u3' },
+      { follower: 'u1', followee: 'u4' }
+    ],
     writes: []          // every mutation is recorded so tests can assert
   };
 }
@@ -160,9 +169,50 @@ export function fakeApi(st, myId = 'u1') {
     },
     async listSaved() { return clone(st.posts.filter(p => (p.saves || []).includes(myId))); },
 
+    /* ---- message requests ---- */
+    _connected(a, b) {
+      return st.follows.some(f =>
+        (f.follower === a && f.followee === b) || (f.follower === b && f.followee === a));
+    },
+    _reqState(owner, peer) { return st.dmRequests[`${owner}|${peer}`]; },
+
+    async listRequests() {
+      return Object.entries(st.dmRequests)
+        .filter(([k, v]) => k.startsWith(myId + '|') && v === 'pending')
+        .map(([k]) => {
+          const peerId = k.split('|')[1];
+          const msgs = st.messages.filter(m => m.sender_id === peerId && m.receiver_id === myId);
+          return {
+            peer: PEOPLE.find(p => p.id === peerId) || { id: peerId, full_name: 'Étudiant', username: peerId },
+            preview: msgs[0]?.text || '',
+            count: msgs.length,
+            at: msgs[0]?.created_at || new Date().toISOString(),
+            mutuals: 0
+          };
+        });
+    },
+    async requestCount() { return (await this.listRequests()).length; },
+    async acceptRequest(peer)  { st.dmRequests[`${myId}|${peer}`] = 'accepted'; log('acceptRequest', peer); },
+    async declineRequest(peer) { st.dmRequests[`${myId}|${peer}`] = 'declined'; log('declineRequest', peer); },
+    async deleteRequest(peer)  {
+      st.messages = st.messages.filter(m =>
+        !((m.sender_id === peer && m.receiver_id === myId) ||
+          (m.sender_id === myId && m.receiver_id === peer)));
+      st.dmRequests[`${myId}|${peer}`] = 'declined';
+      log('deleteRequest', peer);
+    },
+    async willBeRequest(peer) {
+      return !this._connected(myId, peer) && this._reqState(peer, myId) !== 'accepted';
+    },
+
     /* ---- messages ---- */
     async listConversations() {
-      const mine = st.messages.filter(m => m.sender_id === myId || m.receiver_id === myId);
+      const pending = new Set(Object.entries(st.dmRequests)
+        .filter(([k, v]) => k.startsWith(myId + '|') && (v === 'pending' || v === 'declined'))
+        .map(([k]) => k.split('|')[1]));
+      const mine = st.messages.filter(m =>
+        (m.sender_id === myId || m.receiver_id === myId) &&
+        !pending.has(m.sender_id === myId ? m.receiver_id : m.sender_id));
       const latest = new Map(), unread = new Map();
       for (const m of [...mine].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))) {
         const peerId = m.sender_id === myId ? m.receiver_id : m.sender_id;
@@ -192,6 +242,20 @@ export function fakeApi(st, myId = 'u1') {
         media_name: payload.media_name || null,
         created_at: new Date().toISOString(), reactions: {}
       };
+      // Mirrors route_new_message(): a stranger's message becomes a
+      // request, a declined one is silently dropped, and a pending
+      // one is capped at three.
+      const to = payload.receiver_id;
+      const connected = this._connected(myId, to);
+      const state = st.dmRequests[`${to}|${myId}`];
+
+      if (!connected && state !== 'accepted') {
+        if (state === 'declined') { log('sendMessage:dropped', row); return clone(row); }
+        const already = st.messages.filter(m => m.sender_id === myId && m.receiver_id === to).length;
+        if (state === 'pending' && already >= 3) { log('sendMessage:capped', row); return clone(row); }
+        if (!state) st.dmRequests[`${to}|${myId}`] = 'pending';
+      }
+
       st.messages.push(row);
       log('sendMessage', row);
       return clone(row);

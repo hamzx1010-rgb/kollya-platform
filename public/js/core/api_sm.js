@@ -259,6 +259,20 @@ export const messagesApi = {
       if (m.receiver_id === myId() && !m.seen_at) unread.set(peerId, (unread.get(peerId) || 0) + 1);
     }
 
+    // Pending requests belong in their own tab, not in the inbox.
+    // Done here rather than in SQL so one round trip still answers
+    // both questions.
+    // Both pending AND declined are hidden: a request you turned down
+    // should vanish, not linger in the list.
+    const hidden = new Set();
+    try {
+      const rows = await db.select('dm_requests', {
+        owner_id: `eq.${myId()}`, state: 'in.(pending,declined)', select: 'peer_id', limit: 500
+      });
+      for (const r of rows || []) hidden.add(String(r.peer_id));
+    } catch { /* migration 09 not run yet: show everything */ }
+    for (const id of hidden) latest.delete(id);
+
     await hydratePeople([...latest.keys()]);
 
     return [...latest.entries()].map(([peerId, last]) => ({
@@ -416,6 +430,51 @@ export const messagesApi = {
     catch { return false; }
   },
 
+  /* ---- message requests ----
+     A stranger's first messages wait in a separate tab instead of
+     interrupting you, and instead of being refused outright. The
+     sender is never told — see db/09_requests_sm.sql for why. */
+
+  /** Conversations waiting for a decision. */
+  async listRequests() {
+    const rows = await soft(db.rpc('dm_requests_list', {}));
+    return (rows || []).map(r => ({
+      peer: {
+        id: r.peer_id, username: r.username, full_name: r.full_name,
+        avatar_url: r.avatar_url, faculty: r.faculty
+      },
+      preview: r.preview,
+      count: r.msg_count,
+      at: r.first_at,
+      mutuals: r.mutuals || 0
+    }));
+  },
+
+  async requestCount() {
+    const n = await soft(db.rpc('dm_requests_count', {}), 0);
+    return typeof n === 'number' ? n : Number(n) || 0;
+  },
+
+  async acceptRequest(peerId) {
+    await db.rpc('dm_accept', { p_peer: String(peerId) });
+  },
+
+  /** Silent: no notification, nothing the sender can detect. */
+  async declineRequest(peerId) {
+    await db.rpc('dm_decline', { p_peer: String(peerId) });
+  },
+
+  async deleteRequest(peerId) {
+    await db.rpc('dm_delete_request', { p_peer: String(peerId) });
+  },
+
+  /** Will writing to this person create a request rather than a chat? */
+  async willBeRequest(userId) {
+    if (!userId) return false;
+    try { return !!(await db.rpc('dm_will_be_request', { p_user: String(userId) })); }
+    catch { return false; }
+  },
+
   /* ---- folders ----
      Same set your original app had, but stored server-side so they
      follow you between devices instead of dying with localStorage. */
@@ -530,12 +589,13 @@ export const profileApi = {
     // even on a private account whose follow rows RLS hides from me.
     // Instagram shows "142 abonnés" on a locked profile and hides the
     // list; this is that, done honestly.
-    const [counts, rel, mayMessage] = await Promise.all([
+    const [counts, rel, mayMessage, asRequest] = await Promise.all([
       db.rpc('profile_counts', { p_user: row.id }).catch(() => null),
       isSelf ? Promise.resolve(null)
              : db.one('follows', { follower_id: `eq.${myId()}`, followee_id: `eq.${row.id}`,
                                    select: 'state' }).catch(() => null),
-      isSelf ? Promise.resolve(false) : messagesApi.canMessage(row.id)
+      isSelf ? Promise.resolve(false) : messagesApi.canMessage(row.id),
+      isSelf ? Promise.resolve(false) : messagesApi.willBeRequest(row.id)
     ]);
     const c = Array.isArray(counts) ? counts[0] : counts;
 
@@ -547,6 +607,7 @@ export const profileApi = {
       following: c?.following ?? 0,
       posts: c?.posts ?? 0,
       canMessage: !!mayMessage,
+      willBeRequest: !!asRequest,
       followState: rel ? (rel.state === 'accepted' ? 'following' : 'requested') : 'none'
     };
   },

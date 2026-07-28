@@ -34,85 +34,9 @@
 }
 
 /* --- collapsed: entered a conversation, so the rail gets out of the way */
-.app[data-rail="collapsed"] { grid-template-columns: var(--nav-w-collapsed) minmax(0, 1fr); }
 @media (min-width: 1180px) {
-  .app[data-rail="collapsed"].has-rail {
-    grid-template-columns: var(--nav-w-collapsed) minmax(0, 1fr) var(--rail-w);
-  }
-}
-.app[data-rail="collapsed"] .nav-rail { width: var(--nav-w-collapsed); }
-
-/* --- COLLAPSED GEOMETRY -------------------------------------
-   The bug: 76px rail − 24px rail padding − 24px item padding left
-   28px of room for a 22px icon plus its focus ring, so the icons
-   were crushed against each other and looked like they had vanished.
-
-   Collapsed is now measured from the icon outwards: a 44px square
-   target, centred, with the rail padding reduced to match. Nothing
-   is squeezed because nothing is competing for the width.        */
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) {
-  padding: var(--s4) 6px;
-  align-items: center;
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item,
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-compose .btn,
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  padding: 0;
-  justify-content: center;
-  gap: 0;
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-nav {
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  overflow: visible;          /* a scrollbar here would eat 15 of 64px */
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item svg {
-  width: 22px; height: 22px;
-}
-/* the active marker cannot sit at inset-start when the item is
-   centred — it would land under the icon */
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item.on::before {
-  inset-inline-start: -6px;
-  height: 26px;
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item.on {
-  background: color-mix(in srgb, var(--brand) 12%, transparent);
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-logo {
-  justify-content: center;
-  padding: 0;
-  margin-bottom: var(--s3);
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot {
-  margin-inline: auto;
-  border-top: none;
-}
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot .av {
-  margin: 0;
 }
 
-/* --- PEEK
-   Driven by [data-peek], which shell_sm.js sets on mouseenter and
-   clears 400ms after mouseleave.
-
-   It used to be driven by :hover AND :focus-within AND [data-peek]
-   at the same time. Three selectors describing one state disagreed
-   during the width transition — the rail would be mid-expand while
-   the items were still centred — and the icons looked crushed or
-   missing. One source of truth fixes it.
-
-   The rail floats OVER the content while peeking, so the feed and
-   the conversation never jump sideways under the cursor. */
-.app[data-rail="collapsed"] .nav-rail[data-peek] {
-  position: absolute; inset-block: 0; inset-inline-start: 0;
-  width: var(--nav-w);
-  box-shadow: var(--shadow-lg);
-  border-inline-end-color: var(--border-strong);
-}
 
 .rail-logo {
   display: flex; align-items: center; gap: var(--s3);
@@ -158,24 +82,6 @@
 .nav-item .count, .nav-item .dot { margin-inline-start: auto; flex-shrink: 0; }
 
 /* labels fade out when collapsed, back in on peek */
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .lbl,
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-logo .word,
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot .who {
-  opacity: 0; pointer-events: none;
-}
-/* the unread badge shrinks to a dot rather than disappearing.
-   Positioned from the centre, because the item is centred now. */
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item .count {
-  position: absolute; top: 7px; inset-inline-start: 26px;
-  min-width: 9px; height: 9px; padding: 0;
-  margin: 0;
-  font-size: 0; color: transparent;
-  border: 2px solid var(--surface);
-  box-sizing: content-box;
-}
-
-.rail-compose { margin: var(--s3) 0; }
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-compose .lbl { display: none; }
 
 .rail-foot {
   display: flex; align-items: center; gap: var(--s3);
@@ -191,11 +97,6 @@
 /* Touch has no hover, so peek never fires there — the rail simply
    stays collapsed and the icons must be tappable on their own. */
 @media (hover: none) {
-  .app[data-rail="collapsed"] .nav-rail[data-peek] {
-    position: relative;
-    width: var(--nav-w-collapsed);
-    box-shadow: none;
-  }
 }
 
 /* ---------- 3. MAIN COLUMN ---------------------------------- */
@@ -323,11 +224,24 @@
 .dm-list-scroll { flex: 1; overflow-y: auto; }
 
 .conv {
+  /* THE EMPTY STRIP: .conv is a <button>, and a button defaults to
+     width:auto — so the row shrink-wrapped its text and the hover /
+     active shade covered only part of the box. Buttons also inherit
+     centred text and the UA font, both wrong for a list row. */
   display: flex; align-items: center; gap: var(--s3);
+  width: 100%;
+  box-sizing: border-box;
   padding: var(--s3) var(--s4);
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   transition: background var(--t-fast) var(--ease);
 }
+.conv:focus-visible { outline-offset: -2px; }
 .conv:hover { background: var(--hover); }
 .conv.on { background: var(--brand-50); }
 [data-theme="dark"] .conv.on { background: color-mix(in srgb, var(--brand) 14%, transparent); }
@@ -646,7 +560,6 @@
 /* ---------- 10. NARROW SCREENS ------------------------------ */
 /* Web-first, but a phone must not be broken. */
 @media (max-width: 900px) {
-  .app, .app.has-rail, .app[data-rail="collapsed"] { grid-template-columns: 1fr; }
   .right-rail { display: none !important; }
 
   .nav-rail {
@@ -679,7 +592,7 @@
 
 /* ---------- 11. WIDE SCREENS -------------------------------- */
 @media (min-width: 1600px) {
-  :root { --feed-w: 680px; --rail-w: 360px; }
+  :root { --feed-w: 800px; --rail-w: 360px; }
 }
 
 /* ============================================================
@@ -779,18 +692,6 @@
   flex-shrink: 0;
 }
 .info-scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /* media grid, 3 across like Telegram */
@@ -1027,7 +928,21 @@
   overflow-x: auto; scrollbar-width: none; flex-shrink: 0;
 }
 .gif-cats::-webkit-scrollbar { display: none; }
-.gif-cat { flex-shrink: 0; }
+/* Category pills — real buttons, not bare text. The old markup
+   assumed a `.pill` class that was never applied here. */
+.gif-cat {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 11px;
+  border-radius: var(--r-full);
+  color: var(--text-2);
+  font-size: var(--fs-xs); font-weight: 600;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.gif-cat:hover { background: var(--hover); color: var(--text); }
+.gif-cat.on { background: color-mix(in srgb, var(--brand) 13%, transparent); color: var(--brand); }
+.gif-cat svg { width: 14px; height: 14px; }
 .gif-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2);
   padding: var(--s3); overflow-y: auto;
@@ -1040,7 +955,45 @@
   transition: transform var(--t-fast) var(--ease-spring), box-shadow var(--t-fast) var(--ease);
 }
 .gif-tile:hover { transform: scale(1.05); box-shadow: var(--shadow-sm); z-index: 1; }
-.gif-tile img { width: 100%; height: 100%; object-fit: cover; }
+.gif-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* A GIF is a moving image; pause it for anyone who asked for less
+   motion rather than animating a whole grid at them. */
+@media (prefers-reduced-motion: reduce) {
+  .gif-tile img { animation-play-state: paused; }
+  .gif-tile:hover { transform: none; }
+}
+
+/* Reserve the row height while loading so the grid does not jump
+   under the cursor when the images land. */
+.gif-tile.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--hover) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: kl-shimmer 1.3s linear infinite;
+  pointer-events: none;
+}
+
+.gif-empty {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
+  padding: var(--s7) var(--s4);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/* Attribution. Tenor and Giphy both require it, and it also tells
+   you at a glance which source you are on. */
+.gif-foot {
+  padding: 6px var(--s3);
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  text-align: center;
+  flex-shrink: 0;
+}
 .gif-skel {
   aspect-ratio: 4 / 3; border-radius: var(--r-sm);
   background: var(--skeleton); background-size: 200% 100%;
@@ -1308,7 +1261,10 @@
 
 /* quests */
 .quest {
-  display: flex; align-items: center; gap: var(--s3);
+  /* align-items:center squeezed the 4px bar against the label because
+     the 34px icon set the row height. Aligning to the start and
+     giving the bar real room lets the meter read as a meter. */
+  display: flex; align-items: flex-start; gap: var(--s3);
   padding: var(--s3);
   border: 1px solid var(--border);
   border-radius: var(--r);
@@ -1323,6 +1279,25 @@
   width: 34px; height: 34px; flex-shrink: 0;
   border-radius: var(--r-sm);
   background: var(--surface-2); color: var(--text-2);
+}
+
+/* The meter itself: taller, with space above it, and a fill that
+   animates from the left rather than snapping. */
+.quest .bar {
+  height: 6px;
+  margin-top: var(--s2);
+  background: var(--surface-2);
+}
+.quest .bar-fill {
+  background: var(--grad);
+  min-width: 0;
+}
+.quest.done .bar-fill { background: var(--ok); }
+.quest-label { line-height: 1.35; }
+.quest-count {
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  padding-inline-start: var(--s2);
 }
 
 /* badges */
@@ -2259,36 +2234,6 @@ button.pf-stat:hover span { text-decoration: underline; }
 
 
 /* ============================================================
-   FOLDABLE RAIL — the behaviour from the original app
-   Fold is a state YOU set and the app remembers. Hovering only
-   reveals the labels; it does not change the state. Mine used to
-   fold and unfold by route with no way to pin it, which is why it
-   felt like it was fighting you.
-   ============================================================ */
-
-.rail-fold {
-  margin-inline-start: auto;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity var(--t-fast) var(--ease), transform var(--t) var(--ease);
-}
-.nav-rail:hover .rail-fold,
-.nav-rail:focus-within .rail-fold { opacity: .75; }
-.rail-fold:hover { opacity: 1 !important; }
-.rail-fold svg { transform: rotate(180deg); transition: transform var(--t) var(--ease); }
-.rail-fold.is-folded svg { transform: none; }
-
-/* When folded, the button sits under the logo mark rather than
-   crushing it — 44px of centred target, same as the nav items. */
-.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-fold {
-  display: none;
-}
-
-/* Peeking lifts the rail above the content it floats over. */
-.app[data-rail="collapsed"] .nav-rail[data-peek] { z-index: calc(var(--z-nav) + 5); }
-
-
-/* ============================================================
    LANGUAGE SWITCHER
    ============================================================ */
 
@@ -2405,8 +2350,6 @@ button.pf-stat:hover span { text-decoration: underline; }
    that are genuinely directional.
    ============================================================ */
 
-[dir="rtl"] .rail-fold svg { transform: none; }
-[dir="rtl"] .rail-fold.is-folded svg { transform: rotate(180deg); }
 [dir="rtl"] .nav-item.on::before { border-radius: var(--r-full) 0 0 var(--r-full); }
 [dir="rtl"] .cf-count,
 [dir="rtl"] .lang-badge { font-feature-settings: normal; }
@@ -2422,18 +2365,9 @@ button.pf-stat:hover span { text-decoration: underline; }
 [dir="rtl"] .story-plus { inset-inline-end: auto; inset-inline-start: -1px; }
 
 
-/* ============================================================
-   DM PANEL FOLD — the `dm-folded` behaviour from the original app
-   The conversation list collapses to a strip of avatars and opens
-   again when the mouse rests on it. Your original did this with
-   width:76px + :hover -> 340px; same idea, on the new tokens.
-   ============================================================ */
-
 .dm { --dm-list-w: clamp(260px, 26vw, 330px); }
-.dm.dm-folded { --dm-list-w: 72px; }
 
 .dm,
-.dm.dm-folded { grid-template-columns: var(--dm-list-w) minmax(0, 1fr); }
 
 @media (min-width: 1400px) {
   .dm.info-open { grid-template-columns: var(--dm-list-w) minmax(420px, 1fr) 320px; }
@@ -2443,59 +2377,88 @@ button.pf-stat:hover span { text-decoration: underline; }
 
 /* Folded: avatars only. The list floats over the thread when you
    hover it, so the conversation never shifts sideways. */
-.dm.dm-folded .dm-list {
-  overflow-x: hidden;
-}
-.dm.dm-folded .dm-list:hover,
-.dm.dm-folded .dm-list:focus-within {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  width: clamp(260px, 26vw, 330px);
-  z-index: calc(var(--z-sticky) + 2);
-  box-shadow: 12px 0 30px rgba(0, 0, 0, .10);
-  background: var(--surface);
-}
-[dir="rtl"] .dm.dm-folded .dm-list:hover { box-shadow: -12px 0 30px rgba(0, 0, 0, .10); }
 
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv-body,
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .cf-label,
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) #convSearch,
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .input-icon,
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) #btnNewConv {
-  display: none;
+
+/* ============================================================
+   MESSAGE REQUESTS
+   A stranger's first messages wait here rather than interrupting
+   the inbox — the Instagram model. The card carries enough context
+   to decide without opening it: who, what they said, and how many
+   people you both know.
+   ============================================================ */
+
+.req-note {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--s3) var(--s4);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  border-bottom: 1px solid var(--border);
 }
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv {
-  justify-content: center;
-  padding: var(--s2) 0;
-  gap: 0;
+
+.req {
+  padding: var(--s4);
+  border-bottom: 1px solid var(--border);
 }
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .dm-list-head {
-  justify-content: center;
-  padding: var(--s2) 0;
+.req-top { display: flex; align-items: flex-start; gap: var(--s3); }
+.req-top .av { flex-shrink: 0; }
+
+.req-mutual {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 3px;
+  color: var(--brand);
+  font-weight: 550;
 }
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .chat-folders {
-  justify-content: center;
-  padding: var(--s2) 4px;
+
+.req-preview {
+  margin: var(--s3) 0 0;
+  padding: var(--s3);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-2);
+  /* a request preview must never run away with the panel */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.req-actions {
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s3);
+}
+.req-actions .btn { flex: 1; }
+.req-actions .icon-btn { flex-shrink: 0; }
+[dir="rtl"] .req-actions .icon-btn svg { transform: rotate(180deg); }
+
+/* The folder pill glows only while something is actually waiting. */
+.chat-folder.has-requests .cf-count {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* The strip that replaces the composer on a pending request.
+   Replying IS accepting, so the composer is hidden until the
+   decision is made — otherwise the choice happens by accident. */
+.request-bar {
+  display: flex; align-items: center; gap: var(--s3);
   flex-wrap: wrap;
+  padding: var(--s4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
 }
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .chat-folder { padding: 6px; }
+.rb-text { flex: 1; min-width: 180px; }
+.rb-actions { display: flex; gap: var(--s2); flex-shrink: 0; }
 
-/* the unread count becomes a dot on the avatar when folded */
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv .count {
-  position: absolute;
-  top: 4px; inset-inline-end: 10px;
-  min-width: 9px; height: 9px; padding: 0;
-  font-size: 0; color: transparent;
-  border: 2px solid var(--surface);
-  box-sizing: content-box;
+@media (max-width: 520px) {
+  .rb-actions { width: 100%; }
+  .rb-actions .btn { flex: 1; }
 }
-.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv { position: relative; }
 
-.dm-fold-btn svg { transition: transform var(--t) var(--ease); }
-.dm-fold-btn.is-folded svg { transform: rotate(180deg); }
-[dir="rtl"] .dm-fold-btn svg { transform: rotate(180deg); }
-[dir="rtl"] .dm-fold-btn.is-folded svg { transform: none; }
-
-/* An edited-message marker patched in without a full rebuild. */
-.edited-mark { margin-inline-end: 4px; }
+/* Requests folder pill keeps its place in the strip even when the
+   count is zero, so the tab does not jump around as requests arrive
+   and are cleared. */
+.chat-folder[data-folder="requests"] { min-width: 40px; justify-content: center; }

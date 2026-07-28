@@ -94,7 +94,9 @@ ok('history back changes route', location.hash!==before || true);
 
 // rail behaviour across the walk
 R.go('messages'); await new Promise(r=>setTimeout(r,150));
-ok('rail collapses on messages', D.getElementById('app').dataset.rail==='collapsed');
+// The rail no longer collapses anywhere: the fold was removed after
+// three competing mechanisms kept crushing the icons.
+ok('rail stays expanded on messages', D.getElementById('app').dataset.rail==='expanded');
 R.go('feed'); await new Promise(r=>setTimeout(r,150));
 ok('rail expands on feed', D.getElementById('app').dataset.rail==='expanded');
 

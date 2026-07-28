@@ -261,10 +261,6 @@ export const prefs = {
     emit('locale', v);
   },
 
-  /** null = let the route decide · true = folded · false = pinned open */
-  get railFolded() { return read('pref:railFolded', null); },
-  set railFolded(v) { write('pref:railFolded', v); },
-
   get guideDone() { return read(KEYS.GUIDE_DONE, false); },
   set guideDone(v) { write(KEYS.GUIDE_DONE, !!v); }
 };

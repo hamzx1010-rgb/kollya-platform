@@ -79,8 +79,10 @@ function headerMarkup(u) {
              ${followLabel(u.followState)}
            </button>
            ${u.canMessage
-             ? `<button class="btn btn-outline" id="pfMessage">${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}</button>`
-             : ''}
+             ? `<button class="btn btn-outline" id="pfMessage"
+                        data-request="${u.willBeRequest ? '1' : ''}">
+                  ${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}
+                </button>` : ''}
            <button class="icon-btn" id="pfMore" data-tip="Plus">${I.moreH}</button>`}
     </div>
   </div>
@@ -304,6 +306,9 @@ function wireActions(u) {
     btn.disabled = true;
     try {
       const { openConversationWith } = await import('./messages_sm.js');
+      // Say up front that this lands in their requests tab. Finding
+      // out afterwards — from silence — is worse than being told.
+      if (btn.dataset.request) toast(t('dm.willBeRequest'), { duration: 5000 });
       await openConversationWith(u.id, { full_name: u.full_name, username: u.username,
                                          avatar_url: u.avatar_url, faculty: u.faculty });
     } catch (err) {

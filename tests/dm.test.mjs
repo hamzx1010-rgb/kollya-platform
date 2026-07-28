@@ -67,7 +67,9 @@ const D = window.document;
 ok('conversation list renders', !!D.getElementById('convScroll'));
 ok('conversations shown', D.querySelectorAll('.conv').length >= 3);
 ok('folder bar present', !!D.getElementById('chatFolders'));
-ok('six folders', D.querySelectorAll('.chat-folder').length === 6);
+// Seven now: Requests joined the set when message requests landed.
+ok('seven folders including Requests', D.querySelectorAll('.chat-folder').length === 7);
+ok('a Requests folder exists', !!D.querySelector('[data-folder="requests"]'));
 ok('Tous is active by default', D.querySelector('.chat-folder.on')?.dataset.folder === 'all');
 
 /* ============================================================
@@ -241,15 +243,18 @@ ok('the thread header names someone',
    (D.getElementById('threadHead').textContent || '').trim().length > 0);
 
 /* ============================================================
-   13. PANEL FOLD
+   13. NO FOLD — the panel is always open
+   The fold had three competing mechanisms and never behaved; it was
+   removed rather than patched again. These assertions make sure it
+   does not quietly come back.
    ============================================================ */
-ok('fold button exists', !!D.getElementById('btnDmFold'));
-D.getElementById('btnDmFold').click();
-await tick(60);
-ok('folding collapses the list', D.getElementById('dm').classList.contains('dm-folded'));
-D.getElementById('btnDmFold').click();
-await tick(60);
-ok('unfolding restores it', !D.getElementById('dm').classList.contains('dm-folded'));
+ok('no DM fold button', !D.getElementById('btnDmFold'));
+ok('the conversation list is never collapsed',
+   !D.getElementById('dm').classList.contains('dm-folded'));
+ok('the conversation list is visible', !!D.querySelector('.dm-list'));
+ok('conversation rows fill their box',
+   /\.conv \{[^}]*width:\s*100%/s.test(
+     fs.readFileSync(new URL('../public/css/layout_sm.css', import.meta.url), 'utf8')));
 
 /* ============================================================
    14. GIFS — blocked by my own SVG guard
@@ -257,8 +262,12 @@ ok('unfolding restores it', !D.getElementById('dm').classList.contains('dm-folde
 const gifSrc = fs.readFileSync(new URL('../public/js/features/gif_sm.js', import.meta.url), 'utf8');
 const gifCode = gifSrc.replace(/\/\*[\s\S]*?\*\//g, '');
 ok('gif tiles are no longer SVG data-urls', !/image\/svg\+xml/.test(gifCode));
-ok('gif tiles render to a canvas', /toDataURL\('image\/png'\)/.test(gifCode));
-ok('there is an inert fallback', /data:image\/gif;base64/.test(gifCode));
+// The canvas placeholders are gone: they were coloured rectangles
+// with a word on them, not GIFs. Real animated GIFs now come from a
+// CDN, with Tenor taking over the moment a key is configured.
+ok('no canvas-drawn placeholders', !/toDataURL/.test(gifCode));
+ok('real animated GIFs are shipped', /media\.giphy\.com/.test(gifCode));
+ok('Tenor is wired for the full catalogue', /tenor\.googleapis\.com/.test(gifCode));
 ok('a png tile would pass safeUrl', !!U.safeUrl('data:image/png;base64,iVBORw0KGgo='));
 ok('svg is STILL blocked — it can carry script',
    U.safeUrl('data:image/svg+xml,<svg onload=alert(1)>') === '');

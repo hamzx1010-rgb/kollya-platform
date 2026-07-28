@@ -187,10 +187,14 @@ function renderQuests() {
         <span class="quest-ic">${complete ? icon('check', { size: 16 }) : icon(q.icon, { size: 16 })}</span>
         <div class="grow" style="min-width:0">
           <div class="row between">
-            <span class="t-sm">${esc(questLabel(q))}</span>
-            <span class="t-xs t-dim t-mono">${q.progress}/${q.target}</span>
+            <span class="t-sm quest-label">${esc(questLabel(q))}</span>
+            <span class="t-xs t-dim quest-count">${q.progress}/${q.target}</span>
           </div>
-          <div class="bar" style="height:4px;margin-top:5px"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <div class="bar" role="progressbar" aria-valuenow="${q.progress}"
+               aria-valuemin="0" aria-valuemax="${q.target}"
+               aria-label="${esc(questLabel(q))}">
+            <div class="bar-fill" style="width:${pct}%"></div>
+          </div>
         </div>
       </div>`;
   }).join('');

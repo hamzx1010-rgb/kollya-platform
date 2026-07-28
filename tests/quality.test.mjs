@@ -146,6 +146,60 @@ ok('no plaintext secrets in SQL', !/password\s*=\s*'[^']{8,}'/i.test(allSql));
 ok('config holds no secret keys',
    !/service_role|secret_key|sk_live/i.test(read('public/js/core/config_sm.js')));
 
+/* ============================================================
+   REGRESSION GUARDS for the fixes in this round
+   ============================================================ */
+const layout = read('public/css/layout_sm.css');
+const baseCss = read('public/css/base_sm.css');
+const html2 = read('public/index_sm.html');
+
+// The sidebar fold was removed, not fixed: three mechanisms (route
+// rule, auto-fold timer, hover peek) disagreed and produced crushed
+// icons. Nothing should reintroduce it silently.
+ok('no fold button in the shell', !/id="btnFold"|id="btnDmFold"/.test(html2));
+ok('no collapsed-rail CSS', !/data-rail="collapsed"/.test(layout));
+ok('no hover-peek CSS', !/data-peek/.test(layout));
+ok('no dm-folded CSS', !/dm-folded/.test(layout));
+ok('shell always expands the rail', /app\.dataset\.rail = 'expanded'/.test(read('public/js/core/shell_sm.js')));
+
+// A <button> is width:auto by default, which made the conversation
+// row shrink-wrap and left an unclickable strip beside it.
+const convRule = (layout.match(/\.conv \{([^}]*)\}/s) || ['',''])[1];
+ok('conversation rows fill their container', /width:\s*100%/.test(convRule));
+ok('conversation rows use border-box', /box-sizing:\s*border-box/.test(convRule));
+ok('conversation rows do not inherit button centring', /text-align:\s*start/.test(convRule));
+
+// The quest meter was flattened by the 34px icon setting the row height.
+const questRule = (layout.match(/\.quest \{([^}]*)\}/s) || ['',''])[1];
+ok('quest rows align to the top', /align-items:\s*flex-start/.test(questRule));
+ok('the quest meter has real height', /\.quest \.bar \{[^}]*height:\s*6px/s.test(layout));
+ok('the quest meter is a labelled progressbar',
+   /role="progressbar"/.test(read('public/js/features/hub_sm.js')));
+
+const feedW = +(baseCss.match(/--feed-w:\s*(\d+)px/) || [0,0])[1];
+ok(`posts have room to breathe (${feedW}px)`, feedW >= 700);
+
+/* ============================================================
+   GIFs must be real animated GIFs
+   I shipped canvas-drawn coloured rectangles with a word on them and
+   called the feature done. These assertions make that impossible to
+   repeat without noticing.
+   ============================================================ */
+const gifSrc = read('public/js/features/gif_sm.js');
+ok('no canvas-drawn fake GIFs', !/createElement\('canvas'\)/.test(gifSrc));
+ok('no colour palette placeholders', !/const PALETTE/.test(gifSrc));
+const gifIds = [...gifSrc.matchAll(/g\('([A-Za-z0-9]+)',/g)].map(m => m[1]);
+ok(`a real GIF library is shipped (${new Set(gifIds).size} unique)`, new Set(gifIds).size >= 12);
+ok('GIF urls point at a real CDN', /media\.giphy\.com\/media\/\$\{id\}\/giphy\.gif/.test(gifSrc));
+ok('previews use the light still, not the full GIF', /200w\.gif/.test(gifSrc));
+ok('Tenor is wired for when a key exists', /tenor\.googleapis\.com\/v2/.test(gifSrc));
+ok('Tenor requests safe content only', /contentfilter:\s*'high'/.test(gifSrc));
+ok('every GIF carries alt text', !/g\('[A-Za-z0-9]+'\)/.test(gifSrc));
+ok('the provider seam has a real default, not a dead hook',
+   /if \(hasKey\(\)\)/.test(gifSrc) && /LIBRARY\[category\]/.test(gifSrc));
+ok('reduced motion pauses the GIF grid',
+   /prefers-reduced-motion[\s\S]{0,200}gif-tile/.test(layout));
+
 const pass = T.filter(x => x.startsWith('PASS')).length;
 T.filter(x => x.startsWith('FAIL')).forEach(x => console.log(x));
 console.log(`${pass}/${T.length} passed`);

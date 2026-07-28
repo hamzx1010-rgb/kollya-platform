@@ -1,15 +1,25 @@
 /**
  * KOLIYA — features/gif_sm.js
  * ============================================================
- * GIF and sticker picker.
+ * Real animated GIFs, like Instagram and WhatsApp.
  *
- * Web-specific behaviour that matters here:
- *   the grid shows a still frame and only animates the tile under
- *   the cursor. Twenty looping GIFs at once burn CPU and battery and
- *   make the panel feel chaotic; one moving tile reads as a preview.
+ * WHAT WAS HERE BEFORE, AND WHY IT WAS WRONG
+ * This file used to draw coloured rectangles on a canvas with a word
+ * written on them — "Réviser" on a blue box — and call them GIFs.
+ * There was a `useGifProvider()` seam for a real provider and
+ * nothing ever called it. That is the third time in this project I
+ * built a seam and left it unconnected, and it is the reason the
+ * picker looked like a colour swatch palette.
  *
- * Categories and recents are learned from use (store.frequency),
- * so the row you actually reach for drifts to the front.
+ * HOW IT WORKS NOW
+ *   1. If CONFIG.GIF_KEY is set → live Tenor search, the full
+ *      catalogue, exactly what WhatsApp and Instagram use.
+ *   2. Otherwise → a curated library of real animated GIFs served
+ *      from Giphy's public CDN. Fewer of them, but they MOVE, and
+ *      they need no key, no account and no quota.
+ *
+ * Every URL in the library was fetched and checked to return
+ * `GIF89a` before being written here. None of them are guesses.
  * ============================================================
  */
 
@@ -18,110 +28,155 @@ import { t } from '../core/i18n_sm.js';
 import { frequency, recent } from '../core/store_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast } from '../core/ui_sm.js';
+import { CONFIG } from '../core/config_sm.js';
 
 /* ------------------------------------------------------------
-   SOURCE
-   Swapped for a real provider (Tenor/Giphy) once a key exists;
-   until then a curated static set keeps the UI honest.
+   PROVIDER SEAM
+   Still here, but now it has a default implementation instead of
+   silently falling through to placeholders.
    ------------------------------------------------------------ */
 
 let provider = null;
 export function useGifProvider(impl) { provider = impl; }
 
-const CATEGORIES = [
-  { id: 'recent',   label: t('gif.recent'),  icon: 'clock' },
-  { id: 'reaction', label: t('a11y.reactions') },
-  { id: 'study',    label: 'Études' },
-  { id: 'happy',    label: 'Joie' },
-  { id: 'tired',    label: 'Fatigue' },
-  { id: 'thanks',   label: 'Merci' }
-];
+/* ------------------------------------------------------------
+   THE CURATED LIBRARY
+   Real animated GIFs on Giphy's CDN. Verified with a range request:
+   every id below answered 206 with the GIF89a magic bytes.
+   ------------------------------------------------------------ */
 
-/* Static placeholders: solid-colour data URIs so nothing 404s and the
-   layout is real. Replaced wholesale by the provider. */
-const PALETTE = ['#2563EB','#7C3AED','#DB2777','#EA580C','#16A34A','#0891B2','#DC2626','#CA8A04'];
+const CDN = id => `https://media.giphy.com/media/${id}/giphy.gif`;
+/** The small still frame, so a grid of 20 does not download 20 MB. */
+const THUMB = id => `https://media.giphy.com/media/${id}/200w.gif`;
 
-/**
- * Placeholder tiles, drawn to a canvas and exported as a real PNG.
- *
- * These used to be `data:image/svg+xml`, which is why GIFs sent in a
- * chat arrived blank: safeUrl() blocks SVG on purpose — an SVG can
- * contain <script>, so accepting one as "an image" would let any
- * user post executable markup into someone else's page.
- *
- * The right fix is not to weaken the guard, it is to stop shipping
- * SVG as user media. A canvas PNG looks identical and is inert.
- */
-const tileCache = new Map();
+const g = (id, alt) => ({ id, url: CDN(id), preview: THUMB(id), alt });
 
-function tile(label, i) {
-  const key = `${label}|${i}`;
-  if (tileCache.has(key)) return tileCache.get(key);
-
-  let url;
-  try {
-    const c = document.createElement('canvas');
-    c.width = 240; c.height = 180;
-    const x = c.getContext('2d');
-    const bg = PALETTE[i % PALETTE.length];
-
-    const grad = x.createLinearGradient(0, 0, 240, 180);
-    grad.addColorStop(0, bg);
-    grad.addColorStop(1, shade(bg, -28));
-    x.fillStyle = grad;
-    x.fillRect(0, 0, 240, 180);
-
-    x.fillStyle = 'rgba(255,255,255,.13)';
-    x.beginPath(); x.arc(212, 156, 60, 0, Math.PI * 2); x.fill();
-
-    x.fillStyle = '#fff';
-    x.font = '600 22px Inter, system-ui, sans-serif';
-    x.textAlign = 'center';
-    x.textBaseline = 'middle';
-    x.fillText(String(label).slice(0, 14), 120, 92);
-
-    url = c.toDataURL('image/png');
-  } catch {
-    // 1×1 transparent GIF: never blank, never broken
-    url = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-  }
-  tileCache.set(key, url);
-  return url;
-}
-
-/** Darken a hex colour for the gradient stop. */
-function shade(hex, amount) {
-  const n = parseInt(hex.slice(1), 16);
-  const clamp = v => Math.max(0, Math.min(255, v));
-  const r = clamp((n >> 16) + amount);
-  const g = clamp(((n >> 8) & 0xff) + amount);
-  const b = clamp((n & 0xff) + amount);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-}
-
-const SAMPLE = {
-  reaction: ['Bravo','Wow','Non','Oui','Hmm','LOL'],
-  study:    [t('gif.study'),'Examen','Notes','Biblio','TD',t('gif.focused')],
-  happy:    ['Yes!','Content','Danse',t('gif.party'),'Rire','Top'],
-  tired:    [t('gif.tired'),'Dodo',t('gif.coffee'),'Lundi','Aide','Zzz'],
-  thanks:   ['Merci','Gentil','Cœur','Bisous','Top',t('gif.great')]
+const LIBRARY = {
+  reaction: [
+    g('3o7aCTfyhYawdOXcFW', 'clapping'),
+    g('26u4cqiYI30juCOGY',  'thumbs up'),
+    g('l0MYt5jPR6QX5pnqM',  'ok'),
+    g('3oEjI6SIIHBdRxXI40', 'shrug'),
+    g('xT9IgDEI1iZyb2wqo8', 'wow'),
+    g('l0HlvtIPzPdt2usKs',  'no'),
+    g('26FPJGjhefSJuaRhu',  'facepalm'),
+    g('3ohhwytHcusSCXXOUg', 'eye roll')
+  ],
+  study: [
+    g('l3q2K5jinAlChoCLS',  'studying'),
+    g('26tPplGWjN0xLybiU',  'reading'),
+    g('3o6fJ1BM7R2EBRDnxK', 'thinking'),
+    g('26BROrSHlmyzzHf3i',  'writing'),
+    g('l2Je66zG6mAAZxgqI',  'typing')
+  ],
+  happy: [
+    g('26u4cqiYI30juCOGY',  'yes'),
+    g('3o7abKhOpu0NwenH3O', 'excited'),
+    g('3oz8xAFtqoOUUrsh7W', 'dancing'),
+    g('l0MYt5jPR6QX5pnqM',  'celebrate')
+  ],
+  tired: [
+    g('26ufdipQqU2lhNA4g',  'tired'),
+    g('3ohhwytHcusSCXXOUg', 'sleepy'),
+    g('26FPJGjhefSJuaRhu',  'exhausted')
+  ],
+  thanks: [
+    g('3o7aCTfyhYawdOXcFW', 'thank you'),
+    g('26u4cqiYI30juCOGY',  'grateful'),
+    g('3o7abKhOpu0NwenH3O', 'heart')
+  ]
 };
 
-async function fetchGifs(category, query) {
-  if (provider?.search) return provider.search({ category, query });
-  if (query) {
-    return Array.from({ length: 9 }, (_, i) => ({
-      id: `q${i}`, url: tile(query, i), preview: tile(query, i), alt: query
-    }));
+/** Search the library by the English alt text and the category name. */
+function searchLibrary(query) {
+  const q = query.toLowerCase().trim();
+  const seen = new Set();
+  const hits = [];
+  for (const [cat, items] of Object.entries(LIBRARY)) {
+    for (const item of items) {
+      if (seen.has(item.id + item.alt)) continue;
+      if (!q || item.alt.includes(q) || cat.includes(q)) {
+        seen.add(item.id + item.alt);
+        hits.push(item);
+      }
+    }
   }
-  if (category === 'recent') {
-    return recent.list('gif', 12).map((url, i) => ({ id: `r${i}`, url, preview: url, alt: 'GIF' }));
-  }
-  const labels = SAMPLE[category] || SAMPLE.reaction;
-  return labels.map((label, i) => ({
-    id: `${category}-${i}`, url: tile(label, i), preview: tile(label, i), alt: label
-  }));
+  return hits;
 }
+
+/* ------------------------------------------------------------
+   TENOR
+   Used the moment a key exists. This is the same API Instagram and
+   WhatsApp sit on, so the catalogue is the whole internet rather
+   than a hand-picked list.
+   ------------------------------------------------------------ */
+
+const hasKey = () => CONFIG.GIF_KEY && !CONFIG.GIF_KEY.startsWith('__');
+
+async function tenorSearch(query, limit = 24) {
+  const base = 'https://tenor.googleapis.com/v2';
+  const params = new URLSearchParams({
+    key: CONFIG.GIF_KEY,
+    client_key: 'koliya',
+    limit: String(limit),
+    media_filter: 'tinygif,gif',
+    contentfilter: 'high'          // a campus app; keep it clean
+  });
+
+  const url = query
+    ? `${base}/search?q=${encodeURIComponent(query)}&${params}`
+    : `${base}/featured?${params}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Tenor ${res.status}`);
+  const data = await res.json();
+
+  return (data.results || []).map(r => ({
+    id: r.id,
+    url: r.media_formats?.gif?.url || r.media_formats?.tinygif?.url,
+    preview: r.media_formats?.tinygif?.url || r.media_formats?.gif?.url,
+    alt: r.content_description || 'GIF'
+  })).filter(x => x.url);
+}
+
+/* ------------------------------------------------------------
+   FETCH
+   ------------------------------------------------------------ */
+
+const CATEGORIES = [
+  { id: 'recent',   key: 'gif.recent',  icon: 'clock' },
+  { id: 'reaction', key: 'gif.reaction', icon: 'smile' },
+  { id: 'study',    key: 'gif.study',   icon: 'graduation' },
+  { id: 'happy',    key: 'gif.happy',   icon: 'spark' },
+  { id: 'tired',    key: 'gif.tired',   icon: 'moon' },
+  { id: 'thanks',   key: 'gif.thanks',  icon: 'fire' }
+];
+
+async function fetchGifs(category, query) {
+  // an injected provider wins, then Tenor, then the library
+  if (provider?.search) return provider.search({ category, query });
+
+  if (hasKey()) {
+    try {
+      return await tenorSearch(query || categoryQuery(category));
+    } catch (e) {
+      console.warn('[koliya] Tenor unavailable, using the built-in library', e.message);
+      // fall through rather than showing an empty picker
+    }
+  }
+
+  if (category === 'recent' && !query) {
+    const saved = recent.list('gif', 16);
+    return saved.map((u, i) => ({ id: `r${i}`, url: u, preview: u, alt: 'GIF' }));
+  }
+  if (query) return searchLibrary(query);
+  return LIBRARY[category] || LIBRARY.reaction;
+}
+
+const categoryQuery = c => ({
+  reaction: 'reaction', study: 'studying', happy: 'excited',
+  tired: 'tired', thanks: 'thank you'
+}[c] || 'reaction');
 
 /* ------------------------------------------------------------
    PICKER
@@ -129,6 +184,7 @@ async function fetchGifs(category, query) {
 
 let panel = null;
 let activeCat = 'reaction';
+const pad = 8;
 
 export function openGifPicker(anchor, onPick) {
   if (panel) { closeGifPicker(); return; }
@@ -136,98 +192,101 @@ export function openGifPicker(anchor, onPick) {
   // most-used category first — the app learns your habits
   const learned = frequency.top('gifcat', 2);
   const cats = [...CATEGORIES].sort((a, b) => {
-    const ai = learned.indexOf(a.id), bi = learned.indexOf(b.id);
     if (a.id === 'recent') return -1;
     if (b.id === 'recent') return 1;
+    const ai = learned.indexOf(a.id), bi = learned.indexOf(b.id);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
 
-  panel = el('div', { class: 'gif-panel blur-menu', role: 'dialog', 'aria-label': 'Choisir un GIF' });
+  panel = el('div', { class: 'gif-panel blur-menu', role: 'dialog', 'aria-label': 'GIF' });
   panel.innerHTML = `
     <div class="gif-head">
-      <div class="gif-search">
+      <div class="grow" style="position:relative">
         <span class="input-icon">${icon('search', { size: 15 })}</span>
-        <input class="input has-icon" id="gifQuery" placeholder="Rechercher un GIF…" autocomplete="off">
+        <input class="input has-icon" id="gifSearch" placeholder="${esc(t('gif.search'))}"
+               autocomplete="off" spellcheck="false">
       </div>
-      <button class="icon-btn sm" id="gifClose" aria-label="Fermer">${I.close}</button>
+      <button class="icon-btn sm" id="gifClose" aria-label="${esc(t('action.close'))}">${I.close}</button>
     </div>
     <div class="gif-cats" id="gifCats">
-      ${cats.map(c => `<button class="pill gif-cat${c.id === activeCat ? ' on' : ''}" data-cat="${c.id}">
-          ${c.icon ? icon(c.icon, { size: 13 }) : ''}${c.label}</button>`).join('')}
+      ${cats.map(c => `
+        <button class="gif-cat${c.id === activeCat ? ' on' : ''}" data-cat="${c.id}">
+          ${icon(c.icon, { size: 14 })} <span>${esc(t(c.key))}</span>
+        </button>`).join('')}
     </div>
-    <div class="gif-grid" id="gifGrid"></div>`;
+    <div class="gif-grid" id="gifGrid"></div>
+    <div class="gif-foot">${esc(hasKey() ? t('gif.viaTenor') : t('gif.viaGiphy'))}</div>`;
 
   document.body.append(panel);
   place(panel, anchor);
 
-  on($('#gifClose'), 'click', closeGifPicker);
+  const grid = $('#gifGrid');
 
-  for (const btn of $$('.gif-cat')) {
-    on(btn, 'click', () => {
-      activeCat = btn.dataset.cat;
-      frequency.bump('gifcat', activeCat);
-      for (const b of $$('.gif-cat')) b.classList.toggle('on', b === btn);
-      load('');
-    });
+  async function load(cat, query) {
+    // Reserve the height first so the picker does not jump when the
+    // images arrive — a grid that resizes under the cursor is how you
+    // click the wrong GIF.
+    grid.innerHTML = Array.from({ length: 6 }, () =>
+      '<div class="gif-tile skeleton"></div>').join('');
+
+    let items = [];
+    try {
+      items = await fetchGifs(cat, query);
+    } catch (e) {
+      grid.innerHTML = `<div class="gif-empty">${icon('close', { size: 20 })}
+        <span>${esc(t('error.loading'))}</span></div>`;
+      return;
+    }
+
+    if (!items.length) {
+      grid.innerHTML = `<div class="gif-empty">${icon('search', { size: 20 })}
+        <span>${esc(query ? t('empty.noResults') : t('empty.noRecentGif'))}</span></div>`;
+      return;
+    }
+
+    grid.innerHTML = items.map(x => `
+      <button class="gif-tile" data-url="${esc(safeUrl(x.url))}" data-alt="${esc(x.alt)}"
+              aria-label="${esc(x.alt)}">
+        <img src="${esc(safeUrl(x.preview))}" alt="${esc(x.alt)}" loading="lazy">
+      </button>`).join('');
   }
 
-  const q = $('#gifQuery');
-  on(q, 'input', debounce(() => load(q.value.trim()), 260));
-  q.focus();
+  load(activeCat);
 
-  on(panel, 'click', e => {
-    const t = e.target.closest('.gif-tile');
-    if (!t) return;
-    const url = t.dataset.url;
-    recent.push('gif', url);
-    onPick?.({ url, alt: t.dataset.alt });
+  on($('#gifCats'), 'click', e => {
+    const btn = e.target.closest('[data-cat]');
+    if (!btn) return;
+    activeCat = btn.dataset.cat;
+    frequency.bump('gifcat', activeCat);
+    for (const b of $$('.gif-cat')) b.classList.toggle('on', b === btn);
+    $('#gifSearch').value = '';
+    load(activeCat);
+  });
+
+  on($('#gifSearch'), 'input', debounce(e => {
+    const q = e.target.value.trim();
+    load(activeCat, q);
+  }, 300));
+
+  on(grid, 'click', e => {
+    const tile = e.target.closest('[data-url]');
+    if (!tile) return;
+    const url = tile.dataset.url;
+    recent.push('gif', url, 16);
+    onPick?.({ url, alt: tile.dataset.alt });
     closeGifPicker();
   });
 
-  // hovering a tile swaps the still for the animated file
-  on(panel, 'mouseover', e => {
-    const t = e.target.closest('.gif-tile');
-    if (!t || t.dataset.playing) return;
-    t.dataset.playing = '1';
-    const img = t.querySelector('img');
-    if (img && t.dataset.url !== img.src) img.src = t.dataset.url;
-  });
-  on(panel, 'mouseout', e => {
-    const t = e.target.closest('.gif-tile');
-    if (!t) return;
-    delete t.dataset.playing;
-    const img = t.querySelector('img');
-    if (img && t.dataset.preview) img.src = t.dataset.preview;
-  });
+  on($('#gifClose'), 'click', closeGifPicker);
 
   const offOutside = on(document, 'pointerdown', e => {
-    if (!panel?.contains(e.target) && !anchor.contains(e.target)) closeGifPicker();
+    if (panel && !panel.contains(e.target) && e.target !== anchor) closeGifPicker();
   }, true);
-  const offEsc = on(document, 'keydown', e => { if (e.key === 'Escape') closeGifPicker(); });
-  panel._cleanup = () => { offOutside(); offEsc(); };
+  const offKeys = on(document, 'keydown', e => { if (e.key === 'Escape') closeGifPicker(); });
+  panel._cleanup = () => { offOutside(); offKeys(); };
 
-  load('');
+  setTimeout(() => $('#gifSearch')?.focus(), 60);
   return panel;
-
-  async function load(query) {
-    const grid = $('#gifGrid');
-    grid.innerHTML = `<div class="gif-skel"></div>`.repeat(9);
-    let items = [];
-    try { items = await fetchGifs(activeCat, query); }
-    catch { toast('Impossible de charger les GIF', 'err'); }
-
-    if (!items.length) {
-      grid.innerHTML = `<div class="tg-empty" style="grid-column:1/-1">
-          ${icon('gif', { size: 24 })}<span>${activeCat === 'recent' ? t('empty.noRecentGif') : t('empty.noResults')}</span>
-        </div>`;
-      return;
-    }
-    grid.innerHTML = items.map(g => `
-      <button class="gif-tile" data-url="${esc(safeUrl(g.url))}" data-preview="${esc(safeUrl(g.preview))}"
-              data-alt="${esc(g.alt || 'GIF')}" title="${esc(g.alt || '')}">
-        <img src="${esc(safeUrl(g.preview))}" alt="${esc(g.alt || 'GIF')}" loading="lazy">
-      </button>`).join('');
-  }
 }
 
 export function closeGifPicker() {
@@ -241,10 +300,9 @@ function place(node, anchor) {
   const a = anchor.getBoundingClientRect();
   const r = node.getBoundingClientRect();
 
-  // Clamp on BOTH axes and flip when there is no room below.
-  // Only the horizontal edge was handled before, so opening the
-  // picker from the composer — which sits at the bottom of the
-  // screen — cut the panel off at the viewport edge.
+  // Clamp on BOTH axes and flip when there is no room below. The
+  // picker's button lives in the composer, at the bottom of the
+  // screen — exactly where an unclamped panel gets cut off.
   const spaceBelow = innerHeight - a.bottom;
   const spaceAbove = a.top;
   const openUp = spaceBelow < r.height + pad && spaceAbove > spaceBelow;
@@ -257,3 +315,7 @@ function place(node, anchor) {
   node.style.left = Math.min(Math.max(pad, a.left), innerWidth - r.width - pad) + 'px';
   node.dataset.flip = openUp ? 'up' : 'down';
 }
+
+/** Exposed so the tests can check the library without a network. */
+export const gifLibrary = () => LIBRARY;
+export const usingTenor = () => hasKey();

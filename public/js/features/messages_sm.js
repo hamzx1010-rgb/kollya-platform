@@ -51,6 +51,8 @@ let selectedId = null;     // message whose toolbar is open
 let infoOpen = true;       // right-hand info panel — open by default
 let folder = 'all';        // active chat folder
 let folders = {};          // peerId -> folder name
+let requests = [];         // conversations waiting for a decision
+let showingRequests = false;
 
 /* Injected by db_sm.js once the keys arrive. Until then the screen
    runs on sample data so the interaction can be built and reviewed. */
@@ -326,6 +328,7 @@ function showTyping(on) {
 
 const FOLDERS = [
   { id: 'all',      label: 'Tous',     icon: 'message'  },
+  { id: 'requests', label: 'Requests', icon: 'inbox'    },
   { id: 'unread',   label: 'Non lus',  icon: 'inbox'    },
   { id: 'pinned',   label: t('dm.pinnedFolder'), icon: 'pin'      },
   { id: 'study',    label: 'Études',   icon: 'graduation' },
@@ -348,13 +351,16 @@ function folderBar() {
     ${FOLDERS.map(f => {
       const n = f.id === 'all'
         ? convs.filter(c => folderOf(c.peer.id) !== 'archived').length
+        : f.id === 'requests'
+          ? requests.length
         : f.id === 'unread'
           ? convs.filter(c => c.unread > 0 && folderOf(c.peer.id) !== 'archived').length
           : convs.filter(c => folderOf(c.peer.id) === f.id).length;
-      return `<button class="chat-folder${f.id === folder ? ' on' : ''}" data-folder="${f.id}"
-                      data-tip="${esc(f.label)}">
+      const label = f.id === 'requests' ? t('dm.requests') : t('dm.folder.' + f.id);
+      return `<button class="chat-folder${f.id === folder ? ' on' : ''}${f.id === 'requests' && n ? ' has-requests' : ''}"
+                      data-folder="${f.id}" data-tip="${esc(label)}">
           ${icon(f.icon, { size: 14 })}
-          <span class="cf-label">${esc(f.label)}</span>
+          <span class="cf-label">${esc(label)}</span>
           ${n ? `<span class="cf-count">${n}</span>` : ''}
         </button>`;
     }).join('')}
@@ -471,12 +477,14 @@ async function renderConvList() {
   box.innerHTML = skeletonList(5, 'conv');
 
   try {
-    const [rows, f] = await Promise.all([
+    const [rows, f, reqs] = await Promise.all([
       loadConversations(),
-      api?.listFolders ? api.listFolders() : Promise.resolve({})
+      api?.listFolders  ? api.listFolders()  : Promise.resolve({}),
+      api?.listRequests ? api.listRequests() : Promise.resolve([])
     ]);
     convs = rows;
     folders = f || {};
+    requests = reqs || [];
   } catch (err) {
     box.innerHTML = '';
     box.append(emptyState({
@@ -497,37 +505,6 @@ async function renderConvList() {
   setState({ unread: { ...state.unread, messages: totalUnread } });
 }
 
-/* ------------------------------------------------------------
-   PANEL FOLD  — taken from the original app's `dm-folded`
-   The conversation list shrinks to a strip of avatars and expands
-   again when the mouse rests on it. Your original stored this in
-   localStorage; same behaviour, same key idea.
-   ------------------------------------------------------------ */
-
-const dmPrefs = scoped('dmui');
-
-function wireDmFold() {
-  const dm = $('#dm');
-  if (!dm) return;
-
-  if (dmPrefs.get('folded', false)) dm.classList.add('dm-folded');
-  syncDmFoldBtn();
-
-  on($('#btnDmFold'), 'click', () => {
-    const folded = dm.classList.toggle('dm-folded');
-    dmPrefs.set('folded', folded);
-    syncDmFoldBtn();
-  });
-}
-
-function syncDmFoldBtn() {
-  const folded = $('#dm')?.classList.contains('dm-folded');
-  const btn = $('#btnDmFold');
-  if (!btn) return;
-  btn.classList.toggle('is-folded', !!folded);
-  btn.setAttribute('aria-label', folded ? t('action.seeAll') : 'Fold');
-}
-
 /** Nothing to open: say so in the thread pane, not with a blank box. */
 function showNoConversations() {
   const body = $('#threadBody');
@@ -544,6 +521,99 @@ function showNoConversations() {
   $('#composerWrap')?.classList.add('hidden');
 }
 
+/* ------------------------------------------------------------
+   MESSAGE REQUESTS
+   A stranger's first messages wait here instead of interrupting the
+   inbox. Accepting moves the conversation across; declining is
+   silent — the sender is never told, which is the point.
+   ------------------------------------------------------------ */
+
+function requestCard(r) {
+  const p = r.peer;
+  return `<article class="req" data-peer="${esc(p.id)}">
+      <div class="req-top">
+        ${p.avatar_url
+          ? `<span class="av"><img src="${esc(safeUrl(p.avatar_url))}" alt=""></span>`
+          : `<span class="av" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>`}
+        <div class="grow" style="min-width:0">
+          <div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
+          <div class="t-xs t-dim truncate">@${esc(p.username)}${p.faculty ? ' · ' + esc(p.faculty) : ''}</div>
+          ${r.mutuals > 0
+            ? `<div class="t-xs req-mutual">${icon('users', { size: 11 })} ${t('dm.mutuals', { n: r.mutuals })}</div>`
+            : ''}
+        </div>
+        <span class="t-xs t-dim">${timeAgo(r.at)}</span>
+      </div>
+
+      <p class="req-preview">${esc(truncateReq(r.preview || '', 140))}</p>
+      ${r.count > 1 ? `<div class="t-xs t-dim2">${t('dm.andMore', { n: r.count - 1 })}</div>` : ''}
+
+      <div class="req-actions">
+        <button class="btn btn-primary btn-sm" data-accept>${esc(t('dm.accept'))}</button>
+        <button class="btn btn-outline btn-sm" data-decline>${esc(t('dm.decline'))}</button>
+        <button class="icon-btn sm" data-open aria-label="${esc(t('dm.readIt'))}"
+                data-tip="${esc(t('dm.readIt'))}">${I.chevron}</button>
+      </div>
+    </article>`;
+}
+
+const truncateReq = (v, n) => (v.length > n ? v.slice(0, n - 1) + '…' : v);
+
+function paintRequests() {
+  const box = $('#convScroll');
+  if (!box) return;
+  box.innerHTML = '';
+
+  if (!requests.length) {
+    box.append(emptyState({
+      icon: I.inbox,
+      title: t('dm.noRequests'),
+      text: t('dm.noRequestsText')
+    }));
+    return;
+  }
+
+  box.insertAdjacentHTML('beforeend',
+    `<div class="req-note">${icon('lock', { size: 13 })} ${esc(t('dm.requestNote'))}</div>` +
+    requests.map(requestCard).join(''));
+
+  on(box, 'click', async e => {
+    const card = e.target.closest('.req');
+    if (!card) return;
+    const peerId = card.dataset.peer;
+    const req = requests.find(r => String(r.peer.id) === String(peerId));
+    if (!req) return;
+
+    if (e.target.closest('[data-accept]')) {
+      requests = requests.filter(r => String(r.peer.id) !== String(peerId));
+      paintRequests();
+      try {
+        await api.acceptRequest(peerId);
+        toast(t('dm.accepted', { name: req.peer.full_name }), 'ok');
+        folder = 'all';
+        await renderConvList();
+        openThread(peerId);
+      } catch { requests.push(req); paintRequests(); toast(errorText(new Error()), 'err'); }
+      return;
+    }
+
+    if (e.target.closest('[data-decline]')) {
+      requests = requests.filter(r => String(r.peer.id) !== String(peerId));
+      paintRequests();
+      // No confirmation dialog: declining is reversible in effect
+      // (they can be accepted later from the profile) and asking
+      // twice makes an unwanted message feel like a bigger event
+      // than it is.
+      try { await api.declineRequest(peerId); toast(t('dm.declined'), { duration: 2200 }); }
+      catch { requests.push(req); paintRequests(); }
+      return;
+    }
+
+    // Reading a request does NOT accept it.
+    openThread(peerId, { asRequest: true });
+  }, { once: true });
+}
+
 /** Repaint from memory — no network, so folders switch instantly. */
 function paintConvList() {
   const box = $('#convScroll');
@@ -553,6 +623,9 @@ function paintConvList() {
   if (bar) bar.outerHTML = folderBar();
   else box.insertAdjacentHTML('beforebegin', folderBar());
   wireFolders();
+
+  if (folder === 'requests') { showingRequests = true; paintRequests(); return; }
+  showingRequests = false;
 
   const visible = convs.filter(inFolder).sort((a, b) => {
     // pinned first, then most recent
@@ -1835,7 +1908,7 @@ function jumpTo(id) {
    OPEN A THREAD
    ------------------------------------------------------------ */
 
-export async function openThread(peerId) {
+export async function openThread(peerId, { asRequest = false } = {}) {
   // A peer with no history yet is legitimate — it is exactly what
   // "start a conversation" means. person() falls back to the cache
   // that openConversationWith() just seeded, so the header shows a
@@ -1912,9 +1985,60 @@ export async function openThread(peerId) {
   if (innerWidth >= 1280) toggleInfo(true);
   else if (infoOpen) renderInfoPanel();
 
-  $('#composerWrap')?.classList.remove('hidden');
-  wireComposer();
+  // A request is readable but not repliable until it is accepted:
+  // replying IS accepting, and that decision should be explicit.
+  const pending = asRequest || requests.some(r => String(r.peer.id) === String(peerId));
+  if (pending) {
+    $('#composerWrap')?.classList.add('hidden');
+    showRequestBar(peerId);
+  } else {
+    $('#requestBar')?.remove();
+    $('#composerWrap')?.classList.remove('hidden');
+    wireComposer();
+  }
   startPolling();
+}
+
+/** The accept / decline strip shown in place of the composer. */
+function showRequestBar(peerId) {
+  $('#requestBar')?.remove();
+  const thread = $('#thread');
+  if (!thread) return;
+  const who = person(peerId);
+
+  const bar = el('div', { class: 'request-bar', id: 'requestBar' });
+  bar.innerHTML = `
+    <div class="rb-text">
+      <div class="t-sm t-bold">${esc(t('dm.wantsToMessage', { name: who.full_name }))}</div>
+      <div class="t-xs t-dim">${esc(t('dm.acceptToReply'))}</div>
+    </div>
+    <div class="rb-actions">
+      <button class="btn btn-outline btn-sm" id="rbDecline">${esc(t('dm.decline'))}</button>
+      <button class="btn btn-primary btn-sm" id="rbAccept">${esc(t('dm.accept'))}</button>
+    </div>`;
+  thread.append(bar);
+
+  on($('#rbAccept'), 'click', async () => {
+    try {
+      await api.acceptRequest(peerId);
+      requests = requests.filter(r => String(r.peer.id) !== String(peerId));
+      bar.remove();
+      $('#composerWrap')?.classList.remove('hidden');
+      wireComposer();
+      toast(t('dm.accepted', { name: who.full_name }), 'ok');
+      renderConvList();
+    } catch { toast(t('toast.actionFailed'), 'err'); }
+  });
+
+  on($('#rbDecline'), 'click', async () => {
+    try {
+      await api.declineRequest(peerId);
+      requests = requests.filter(r => String(r.peer.id) !== String(peerId));
+      toast(t('dm.declined'), { duration: 2200 });
+      $('#dm')?.removeAttribute('data-open');
+      renderConvList();
+    } catch { toast(t('toast.actionFailed'), 'err'); }
+  });
 }
 
 /* ------------------------------------------------------------
@@ -1931,7 +2055,6 @@ function markup() {
           <input class="input has-icon" id="convSearch" placeholder="Rechercher…" aria-label="Rechercher une conversation">
         </div>
         <button class="icon-btn" id="btnNewConv" data-tip="${esc(t('dm.new'))}">${I.plus}</button>
-        <button class="icon-btn dm-fold-btn" id="btnDmFold" aria-label="Fold">${I.chevron}</button>
       </div>
       <div class="dm-list-scroll" id="convScroll"></div>
     </section>
@@ -1975,7 +2098,6 @@ export function initMessages(mountFn) {
     wireDropZone();
 
     on($('#btnNewConv'), 'click', openNewConversation);
-    wireDmFold();
 
     on($('#convSearch'), 'input', debounce(e => {
       const q = e.target.value.trim().toLowerCase();

@@ -81,7 +81,9 @@ R.initRouter({start:'feed'}); SH.initShell();
 const D=window.document;
 ok('rail expanded on feed', D.getElementById('app').dataset.rail==='expanded');
 R.go('messages');
-ok('rail auto-collapses on messages', D.getElementById('app').dataset.rail==='collapsed');
+// The rail no longer collapses anywhere: the fold was removed after
+// three competing mechanisms kept crushing the icons.
+ok('rail stays expanded on messages', D.getElementById('app').dataset.rail==='expanded');
 R.go('profile');
 ok('rail expands again', D.getElementById('app').dataset.rail==='expanded');
 R.go('messages');
