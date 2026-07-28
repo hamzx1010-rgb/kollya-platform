@@ -48,9 +48,12 @@ ok('3 filters', D.querySelectorAll('.sub-tab[data-f]').length===3);
 const rows=D.querySelectorAll('.notif');
 // 3 likes on the same post must collapse into ONE row
 ok('9 events become fewer rows', rows.length<9 && rows.length>0);
-const likeRow=[...rows].find(r=>r.textContent.includes('ont aimé'));
+// Find the grouped like row by its DATA, not by a French phrase:
+// a row that merges several actors is the grouped one.
+const likeRow=[...rows].find(r=>r.dataset.kind==='like' && (r.dataset.ids||'').includes(','));
 ok('likes grouped into one row', !!likeRow);
-ok('grouped row names count', /et 2 autres/.test(likeRow.textContent));
+ok('grouped row mentions the extra actors',
+   /\d/.test(likeRow.textContent) && likeRow.dataset.ids.split(',').length === 3);
 ok('grouped row stacks faces', likeRow.querySelectorAll('.av-stack .av').length===3);
 ok('kind icon shown', !!likeRow.querySelector('.notif-kind'));
 ok('follow request has buttons', !!D.querySelector('[data-accept]') && !!D.querySelector('[data-decline]'));
@@ -80,12 +83,14 @@ ok('dismiss removes row', D.querySelectorAll('.notif').length===n0-1);
 R.go('channels'); await new Promise(r=>setTimeout(r,150));
 ok('channels render', D.querySelectorAll('.cc').length===4);
 ok('search bar present', !!D.getElementById('campusSearch'));
-ok('official channel marked', D.querySelector('#campusList').textContent.includes('Officiel'));
+ok('official channel marked', /Officiel|Official|رسمي/.test(D.querySelector('#campusList').textContent));
 ok('unread counts shown', !!D.querySelector('.cc .count'));
 const joinBtn=D.querySelector('[data-join]');
-const wasJoined=joinBtn.textContent.trim()==='Rejoint';
+const wasJoined=/Rejoint|Joined|منضم/.test(joinBtn.textContent);
 joinBtn.click(); await new Promise(r=>setTimeout(r,60));
-ok('join toggles', (D.querySelector('[data-join]').textContent.trim()==='Rejoint')!==wasJoined);
+// state, not wording: the button label flips with membership
+ok('join toggles',
+   (/Rejoint|Joined|منضم/.test(D.querySelector('[data-join]').textContent)) !== wasJoined);
 // Membership is a row in channel_members now, not a localStorage
 // array — so it is the same on every device.
 ok('join persists to the database', st.writes.some(w => w.op === 'joinChannel'));
@@ -99,12 +104,14 @@ ok('channel search filters', D.querySelectorAll('.cc').length===1);
 R.go('events'); await new Promise(r=>setTimeout(r,150));
 ok('events render', D.querySelectorAll('.ev').length===3);
 ok('date block shown', !!D.querySelector('.ev-date'));
-ok('countdown shown', /Dans /.test(D.querySelector('#campusList').textContent));
+ok('countdown shown',
+   /Dans |In \d|بعد |Ended|Terminé|انتهى/.test(D.querySelector('#campusList').textContent));
 ok('sorted by date', true);
 ok('attendee faces', !!D.querySelector('.ev .av-stack'));
 const goBtn=D.querySelector('[data-going]');
 goBtn.click(); await new Promise(r=>setTimeout(r,60));
-ok('going toggles', D.querySelector('[data-going]').textContent.trim()==='Inscrit');
+ok('going toggles',
+   /Inscrit|Attending|مسجَّل/.test(D.querySelector('[data-going]').textContent));
 
 // The create button lives ON the hero now, as in the original app.
 ok('events hero rendered', !!D.querySelector('.events-hero'));
@@ -119,9 +126,15 @@ await new Promise(r=>setTimeout(r,250));
 // ---------- Q&A: anonymity must hold ----------
 R.go('qa'); await new Promise(r=>setTimeout(r,150));
 ok('questions render', D.querySelectorAll('.qa').length===2);
-const anonCard=[...D.querySelectorAll('.qa')].find(c=>c.textContent.includes('Anonyme'));
+// Identify the anonymous question by the DATA, not by a translated
+// word — this assertion guards a privacy promise and must not depend
+// on the interface language.
+const anonQ = st.questions.find(q => q.anonymous);
+const anonCard = D.querySelector(`.qa[data-id="${anonQ.id}"]`);
 ok('anonymous question exists', !!anonCard);
-ok('anonymous shows no name', !/Youssef|Leila|Omar|Amina/.test(anonCard.querySelector('.t-bold').textContent));
+ok('anonymous carries no author id', anonQ.user_id === null);
+ok('anonymous shows no real name anywhere in the card',
+   !/Youssef|Leila|Omar|Amina|Sara/.test(anonCard.textContent));
 ok('best answer highlighted', !!D.querySelector('.qa-best'));
 ok('answer count shown', !!D.querySelector('.qa .act .c'));
 
@@ -149,7 +162,8 @@ D.querySelector('.modal .textarea').value='Comment réserver une salle ?';
 D.querySelector('.modal-foot .btn-primary').click();
 await new Promise(r=>setTimeout(r,100));
 ok('question published', D.querySelectorAll('.qa').length===3);
-ok('new question is anonymous', D.querySelector('.qa').textContent.includes('Anonyme'));
+ok('new question is anonymous', st.questions[0].anonymous === true &&
+   st.questions[0].user_id === null);
 
 // ---------- explore ----------
 R.go('explore'); await new Promise(r=>setTimeout(r,150));
@@ -162,7 +176,8 @@ await new Promise(r=>setTimeout(r,260));
 ok('people search works', D.querySelector('#campusList').textContent.includes('Leila'));
 es.value='zzzz'; es.dispatchEvent(new window.Event('input',{bubbles:true}));
 await new Promise(r=>setTimeout(r,260));
-ok('no results handled', D.querySelector('#campusList').textContent.includes('Aucun résultat'));
+ok('no results handled',
+   /Aucun résultat|No results|لا نتائج/.test(D.querySelector('#campusList').textContent));
 
 // ---------- saved ----------
 R.go('saved'); await new Promise(r=>setTimeout(r,120));

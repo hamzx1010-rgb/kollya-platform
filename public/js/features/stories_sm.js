@@ -19,6 +19,7 @@ import {
   $, $$, el, on, esc, initials, avatarColor, timeAgo, clamp, env, safeUrl, uid
 } from '../core/utils_sm.js';
 import { me, scoped } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { person } from '../core/people_sm.js';
 import { act } from '../core/game_sm.js';
 import { I, icon, reactionIcon, REACTION_KEYS, reactionLabel } from '../core/icons_sm.js';
@@ -220,7 +221,7 @@ export async function openStories(startUserId) {
       pause(true);
       const ok = await confirmDialog({
         title: 'Supprimer cette story ?', message: 'Elle disparaîtra immédiatement.',
-        confirmLabel: 'Supprimer', danger: true
+        confirmLabel: t('action.delete'), danger: true
       });
       if (!ok) { pause(false); return; }
       try {

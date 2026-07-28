@@ -145,7 +145,8 @@ R.go('profile','leila');
 await new Promise(r=>setTimeout(r,150));
 ok('private badge shown', D.querySelector('#pfRoot').textContent.includes('Privé'));
 ok('private hides posts', D.querySelectorAll('#pfBody .post').length===0);
-ok('private explains why', D.getElementById('pfBody').textContent.includes('privé'));
+ok('private explains why',
+   /privé|private|خاص/i.test(D.getElementById('pfBody').textContent));
 // followState comes from the follows table now, so a fresh fixture
 // user has no relation yet — 'none' is the correct answer here.
 const pfb=D.getElementById('pfFollow');

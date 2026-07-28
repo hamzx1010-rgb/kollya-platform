@@ -203,6 +203,66 @@ await yous.sendMessage({ receiver_id: 'u1', text: 'À demain' });
 const delta = await sara.listNewMessages('u2', since);
 ok('only the new message is fetched', delta.length === 1 && delta[0].text === 'À demain');
 
+/* ============================================================
+   11. THE FLICKER — read receipts must not rebuild the thread
+   ============================================================ */
+const src = fs.readFileSync(new URL('../public/js/features/messages_sm.js', import.meta.url), 'utf8');
+const tailFn = (src.match(/async function refreshTail\(\)[\s\S]*?\n\}/) || [''])[0];
+
+ok('refreshTail does not rebuild the whole thread for a tick',
+   !/renderThread\(\{ keepScroll: !atBottom \}\);\s*\n\}/.test(tailFn) ||
+   /patchTicks/.test(tailFn));
+ok('ticks are patched in place', /patchTicks\(merged\)/.test(tailFn));
+ok('reactions repaint one bubble', /repaintBubble\(merged\)/.test(tailFn));
+ok('edited text is patched in place', /patchText\(merged\)/.test(tailFn));
+ok('only add/remove triggers a rebuild', /structural/.test(tailFn));
+ok('patchTicks exists', /function patchTicks/.test(src));
+ok('patchText exists', /function patchText/.test(src));
+
+/* ============================================================
+   12. THE PAGE MUST OPEN ON A CONVERSATION
+   ============================================================ */
+ok('a conversation opens without being clicked', /const wanted = arg/.test(src));
+ok('it remembers the last chat', /state\.activeChat/.test(src));
+ok('it falls back to the newest conversation', /convs\[0\]\?\.peer\?\.id/.test(src));
+ok('an empty inbox says so in the thread pane', /function showNoConversations/.test(src));
+
+// prove it in the DOM: route with no argument
+M.teardownMessages();
+R.go('feed');
+await tick(80);
+R.go('messages');
+await tick(300);
+ok('landing on /messages shows a real conversation, not a blank panel',
+   D.querySelectorAll('#threadBody .bubble-row').length > 0);
+ok('the composer is visible on arrival',
+   !D.getElementById('composerWrap').classList.contains('hidden'));
+ok('the thread header names someone',
+   (D.getElementById('threadHead').textContent || '').trim().length > 0);
+
+/* ============================================================
+   13. PANEL FOLD
+   ============================================================ */
+ok('fold button exists', !!D.getElementById('btnDmFold'));
+D.getElementById('btnDmFold').click();
+await tick(60);
+ok('folding collapses the list', D.getElementById('dm').classList.contains('dm-folded'));
+D.getElementById('btnDmFold').click();
+await tick(60);
+ok('unfolding restores it', !D.getElementById('dm').classList.contains('dm-folded'));
+
+/* ============================================================
+   14. GIFS — blocked by my own SVG guard
+   ============================================================ */
+const gifSrc = fs.readFileSync(new URL('../public/js/features/gif_sm.js', import.meta.url), 'utf8');
+const gifCode = gifSrc.replace(/\/\*[\s\S]*?\*\//g, '');
+ok('gif tiles are no longer SVG data-urls', !/image\/svg\+xml/.test(gifCode));
+ok('gif tiles render to a canvas', /toDataURL\('image\/png'\)/.test(gifCode));
+ok('there is an inert fallback', /data:image\/gif;base64/.test(gifCode));
+ok('a png tile would pass safeUrl', !!U.safeUrl('data:image/png;base64,iVBORw0KGgo='));
+ok('svg is STILL blocked — it can carry script',
+   U.safeUrl('data:image/svg+xml,<svg onload=alert(1)>') === '');
+
 // Leaving the screen must release the poll timer. If this line is
 // removed the test hangs for the length of the interval — which is
 // exactly what a browser tab would do too.

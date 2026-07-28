@@ -39,13 +39,64 @@ const CATEGORIES = [
 /* Static placeholders: solid-colour data URIs so nothing 404s and the
    layout is real. Replaced wholesale by the provider. */
 const PALETTE = ['#2563EB','#7C3AED','#DB2777','#EA580C','#16A34A','#0891B2','#DC2626','#CA8A04'];
-const tile = (label, i) =>
-  `data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
-       <rect width="160" height="120" fill="${PALETTE[i % PALETTE.length]}"/>
-       <text x="80" y="66" font-family="Inter,sans-serif" font-size="15" font-weight="600"
-             fill="#fff" text-anchor="middle">${label}</text>
-     </svg>`)}`;
+
+/**
+ * Placeholder tiles, drawn to a canvas and exported as a real PNG.
+ *
+ * These used to be `data:image/svg+xml`, which is why GIFs sent in a
+ * chat arrived blank: safeUrl() blocks SVG on purpose — an SVG can
+ * contain <script>, so accepting one as "an image" would let any
+ * user post executable markup into someone else's page.
+ *
+ * The right fix is not to weaken the guard, it is to stop shipping
+ * SVG as user media. A canvas PNG looks identical and is inert.
+ */
+const tileCache = new Map();
+
+function tile(label, i) {
+  const key = `${label}|${i}`;
+  if (tileCache.has(key)) return tileCache.get(key);
+
+  let url;
+  try {
+    const c = document.createElement('canvas');
+    c.width = 240; c.height = 180;
+    const x = c.getContext('2d');
+    const bg = PALETTE[i % PALETTE.length];
+
+    const grad = x.createLinearGradient(0, 0, 240, 180);
+    grad.addColorStop(0, bg);
+    grad.addColorStop(1, shade(bg, -28));
+    x.fillStyle = grad;
+    x.fillRect(0, 0, 240, 180);
+
+    x.fillStyle = 'rgba(255,255,255,.13)';
+    x.beginPath(); x.arc(212, 156, 60, 0, Math.PI * 2); x.fill();
+
+    x.fillStyle = '#fff';
+    x.font = '600 22px Inter, system-ui, sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(String(label).slice(0, 14), 120, 92);
+
+    url = c.toDataURL('image/png');
+  } catch {
+    // 1×1 transparent GIF: never blank, never broken
+    url = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  }
+  tileCache.set(key, url);
+  return url;
+}
+
+/** Darken a hex colour for the gradient stop. */
+function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const clamp = v => Math.max(0, Math.min(255, v));
+  const r = clamp((n >> 16) + amount);
+  const g = clamp(((n >> 8) & 0xff) + amount);
+  const b = clamp((n & 0xff) + amount);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+}
 
 const SAMPLE = {
   reaction: ['Bravo','Wow','Non','Oui','Hmm','LOL'],

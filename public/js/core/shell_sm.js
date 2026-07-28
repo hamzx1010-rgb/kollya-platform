@@ -29,6 +29,10 @@ import { t, lang, setLang, LANGS, applyI18n } from './i18n_sm.js';
 /** Routes where screen width matters more than navigation labels. */
 const FOCUS_ROUTES = new Set(['messages', 'channel', 'post']);
 
+/** How long the rail stays open after you arrive somewhere. */
+const AUTO_FOLD_MS = 2200;
+let autoFoldTimer = 0;
+
 /**
  * Rail state.
  *
@@ -52,10 +56,28 @@ function syncRail(routeName) {
   if (env.narrow) { app.dataset.rail = 'expanded'; return; }
 
   const pinned = railPref();
-  if (pinned === true)  { app.dataset.rail = 'collapsed'; return; }
-  if (pinned === false) { app.dataset.rail = 'expanded';  return; }
+  if (pinned === true)  { app.dataset.rail = 'collapsed'; syncFoldButton(); return; }
+  if (pinned === false) { app.dataset.rail = 'expanded';  syncFoldButton(); return; }
 
-  app.dataset.rail = FOCUS_ROUTES.has(routeName) ? 'collapsed' : 'expanded';
+  // Focus routes fold at once. Everywhere else the rail stays open
+  // just long enough to see where you landed, then folds itself —
+  // which is the "premium" feel you described: it gets out of the
+  // way after you have arrived, not while you are still choosing.
+  if (FOCUS_ROUTES.has(routeName)) {
+    app.dataset.rail = 'collapsed';
+  } else {
+    app.dataset.rail = 'expanded';
+    clearTimeout(autoFoldTimer);
+    autoFoldTimer = setTimeout(() => {
+      // never fold under the cursor or mid-keyboard-navigation
+      const rail = $('#rail');
+      if (!rail || rail.matches(':hover') || rail.contains(document.activeElement)) return;
+      if (railPref() !== null) return;            // the user has an opinion
+      if (currentRoute().name !== routeName) return;
+      app.dataset.rail = 'collapsed';
+      syncFoldButton();
+    }, AUTO_FOLD_MS);
+  }
   syncFoldButton();
 }
 
@@ -63,6 +85,7 @@ function syncRail(routeName) {
 export function toggleRail() {
   const app = $('#app');
   if (!app) return;
+  clearTimeout(autoFoldTimer);        // your choice beats the timer
   const nowCollapsed = app.dataset.rail !== 'collapsed';
   app.dataset.rail = nowCollapsed ? 'collapsed' : 'expanded';
   prefs.railFolded = nowCollapsed;
@@ -128,7 +151,7 @@ function syncNav(routeName) {
 function syncTopbar(routeName, arg) {
   const meta = ROUTES[routeName] || {};
   const title = $('#topbarTitle');
-  if (title) title.textContent = meta.title || 'Koliya';
+  if (title) title.textContent = meta.title ? t(meta.title) : 'Koliya';
 
   // the back arrow exists only when going back means something
   const app = $('#app');

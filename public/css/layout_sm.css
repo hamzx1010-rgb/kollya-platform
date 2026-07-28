@@ -50,13 +50,13 @@
    Collapsed is now measured from the icon outwards: a 44px square
    target, centred, with the rail padding reduced to match. Nothing
    is squeezed because nothing is competing for the width.        */
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) {
   padding: var(--s4) 6px;
   align-items: center;
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item,
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-compose .btn,
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item,
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-compose .btn,
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot {
   width: 44px;
   min-width: 44px;
   height: 44px;
@@ -64,49 +64,54 @@
   justify-content: center;
   gap: 0;
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-nav {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-nav {
   align-items: center;
   gap: 4px;
   width: 100%;
   overflow: visible;          /* a scrollbar here would eat 15 of 64px */
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item svg {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item svg {
   width: 22px; height: 22px;
 }
 /* the active marker cannot sit at inset-start when the item is
    centred — it would land under the icon */
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item.on::before {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item.on::before {
   inset-inline-start: -6px;
   height: 26px;
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item.on {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item.on {
   background: color-mix(in srgb, var(--brand) 12%, transparent);
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-logo {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-logo {
   justify-content: center;
   padding: 0;
   margin-bottom: var(--s3);
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot {
   margin-inline: auto;
   border-top: none;
 }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot .av {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot .av {
   margin: 0;
 }
 
-/* --- peek: the mouse arrived. It floats OVER the content,
-       so nothing reflows and no text jumps sideways. */
-.app[data-rail="collapsed"] .nav-rail:hover,
-.app[data-rail="collapsed"] .nav-rail:focus-within {
+/* --- PEEK
+   Driven by [data-peek], which shell_sm.js sets on mouseenter and
+   clears 400ms after mouseleave.
+
+   It used to be driven by :hover AND :focus-within AND [data-peek]
+   at the same time. Three selectors describing one state disagreed
+   during the width transition — the rail would be mid-expand while
+   the items were still centred — and the icons looked crushed or
+   missing. One source of truth fixes it.
+
+   The rail floats OVER the content while peeking, so the feed and
+   the conversation never jump sideways under the cursor. */
+.app[data-rail="collapsed"] .nav-rail[data-peek] {
   position: absolute; inset-block: 0; inset-inline-start: 0;
   width: var(--nav-w);
   box-shadow: var(--shadow-lg);
   border-inline-end-color: var(--border-strong);
-}
-/* only devices with a real mouse get peek; touch keeps it collapsed */
-@media (hover: none) {
-  .app[data-rail="collapsed"] .nav-rail:hover { position: relative; width: var(--nav-w-collapsed); box-shadow: none; }
 }
 
 .rail-logo {
@@ -153,14 +158,14 @@
 .nav-item .count, .nav-item .dot { margin-inline-start: auto; flex-shrink: 0; }
 
 /* labels fade out when collapsed, back in on peek */
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .lbl,
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-logo .word,
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-foot .who {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .lbl,
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-logo .word,
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-foot .who {
   opacity: 0; pointer-events: none;
 }
 /* the unread badge shrinks to a dot rather than disappearing.
    Positioned from the centre, because the item is centred now. */
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .nav-item .count {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .nav-item .count {
   position: absolute; top: 7px; inset-inline-start: 26px;
   min-width: 9px; height: 9px; padding: 0;
   margin: 0;
@@ -170,7 +175,7 @@
 }
 
 .rail-compose { margin: var(--s3) 0; }
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-compose .lbl { display: none; }
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-compose .lbl { display: none; }
 
 .rail-foot {
   display: flex; align-items: center; gap: var(--s3);
@@ -182,6 +187,16 @@
 }
 .rail-foot:hover { background: var(--hover); }
 .rail-foot .who { min-width: 0; }
+
+/* Touch has no hover, so peek never fires there — the rail simply
+   stays collapsed and the icons must be tappable on their own. */
+@media (hover: none) {
+  .app[data-rail="collapsed"] .nav-rail[data-peek] {
+    position: relative;
+    width: var(--nav-w-collapsed);
+    box-shadow: none;
+  }
+}
 
 /* ---------- 3. MAIN COLUMN ---------------------------------- */
 .main {
@@ -2265,27 +2280,12 @@ button.pf-stat:hover span { text-decoration: underline; }
 
 /* When folded, the button sits under the logo mark rather than
    crushing it — 44px of centred target, same as the nav items. */
-.app[data-rail="collapsed"] .nav-rail:not(:hover):not(:focus-within) .rail-fold {
+.app[data-rail="collapsed"] .nav-rail:not([data-peek]) .rail-fold {
   display: none;
 }
 
-/* PEEK — labels reveal on hover WITHOUT reflowing the page.
-   The rail floats over the content while peeking, so the thread and
-   the feed never jump sideways under the cursor. */
-.app[data-rail="collapsed"] .nav-rail[data-peek] {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  width: var(--nav-w);
-  z-index: calc(var(--z-nav) + 5);
-  box-shadow: var(--shadow-lg);
-}
-.app[data-rail="collapsed"] .nav-rail[data-peek] .lbl,
-.app[data-rail="collapsed"] .nav-rail[data-peek] .rail-logo .word,
-.app[data-rail="collapsed"] .nav-rail[data-peek] .rail-foot .who {
-  opacity: 1;
-  pointer-events: auto;
-}
+/* Peeking lifts the rail above the content it floats over. */
+.app[data-rail="collapsed"] .nav-rail[data-peek] { z-index: calc(var(--z-nav) + 5); }
 
 
 /* ============================================================
@@ -2420,3 +2420,82 @@ button.pf-stat:hover span { text-decoration: underline; }
 [dir="rtl"] .cf-count { direction: ltr; unicode-bidi: embed; }
 
 [dir="rtl"] .story-plus { inset-inline-end: auto; inset-inline-start: -1px; }
+
+
+/* ============================================================
+   DM PANEL FOLD — the `dm-folded` behaviour from the original app
+   The conversation list collapses to a strip of avatars and opens
+   again when the mouse rests on it. Your original did this with
+   width:76px + :hover -> 340px; same idea, on the new tokens.
+   ============================================================ */
+
+.dm { --dm-list-w: clamp(260px, 26vw, 330px); }
+.dm.dm-folded { --dm-list-w: 72px; }
+
+.dm,
+.dm.dm-folded { grid-template-columns: var(--dm-list-w) minmax(0, 1fr); }
+
+@media (min-width: 1400px) {
+  .dm.info-open { grid-template-columns: var(--dm-list-w) minmax(420px, 1fr) 320px; }
+}
+
+.dm-list { transition: width var(--t) var(--ease); }
+
+/* Folded: avatars only. The list floats over the thread when you
+   hover it, so the conversation never shifts sideways. */
+.dm.dm-folded .dm-list {
+  overflow-x: hidden;
+}
+.dm.dm-folded .dm-list:hover,
+.dm.dm-folded .dm-list:focus-within {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: clamp(260px, 26vw, 330px);
+  z-index: calc(var(--z-sticky) + 2);
+  box-shadow: 12px 0 30px rgba(0, 0, 0, .10);
+  background: var(--surface);
+}
+[dir="rtl"] .dm.dm-folded .dm-list:hover { box-shadow: -12px 0 30px rgba(0, 0, 0, .10); }
+
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv-body,
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .cf-label,
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) #convSearch,
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .input-icon,
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) #btnNewConv {
+  display: none;
+}
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv {
+  justify-content: center;
+  padding: var(--s2) 0;
+  gap: 0;
+}
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .dm-list-head {
+  justify-content: center;
+  padding: var(--s2) 0;
+}
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .chat-folders {
+  justify-content: center;
+  padding: var(--s2) 4px;
+  flex-wrap: wrap;
+}
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .chat-folder { padding: 6px; }
+
+/* the unread count becomes a dot on the avatar when folded */
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv .count {
+  position: absolute;
+  top: 4px; inset-inline-end: 10px;
+  min-width: 9px; height: 9px; padding: 0;
+  font-size: 0; color: transparent;
+  border: 2px solid var(--surface);
+  box-sizing: content-box;
+}
+.dm.dm-folded .dm-list:not(:hover):not(:focus-within) .conv { position: relative; }
+
+.dm-fold-btn svg { transition: transform var(--t) var(--ease); }
+.dm-fold-btn.is-folded svg { transform: rotate(180deg); }
+[dir="rtl"] .dm-fold-btn svg { transform: rotate(180deg); }
+[dir="rtl"] .dm-fold-btn.is-folded svg { transform: none; }
+
+/* An edited-message marker patched in without a full rebuild. */
+.edited-mark { margin-inline-end: 4px; }

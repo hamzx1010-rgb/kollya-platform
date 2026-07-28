@@ -17,6 +17,7 @@ import {
   uid, safeUrl, cssEscape, onVisible, rafThrottle, debounce, env, copyText
 } from '../core/utils_sm.js';
 import { me, on as onEvent, emit, frequency } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { act } from '../core/game_sm.js';
 import { I, icon, reactionIcon } from '../core/icons_sm.js';
@@ -113,7 +114,7 @@ function commenterFaces(p) {
 
 function postCard(p) {
   const anon = p.anonymous;
-  const u = anon ? { full_name:'Anonyme', username:'anonyme', id:'anon' } : person(p.user_id);
+  const u = anon ? { full_name:t('feed.anonymous'), username:'anonyme', id:'anon' } : person(p.user_id);
   const liked = p.likes.includes(me.id);
   const saved = p.saves?.includes(me.id);
   const mine  = p.user_id === me.id;
@@ -213,7 +214,7 @@ function toggleSave(p, node) {
   optimistic(
     () => { p.saves = was ? p.saves.filter(x => x !== me.id) : [...p.saves, me.id];
             btn.classList.toggle('on', !was);
-            toast(was ? 'Retiré des enregistrés' : 'Enregistré', { duration: 1500 }); },
+            toast(was ? t('feed.unsaved') : t('feed.saved'), { duration: 1500 }); },
     () => { p.saves = was ? [...p.saves, me.id] : p.saves.filter(x => x !== me.id);
             btn.classList.toggle('on', was); },
     () => api.save(p.id, !was)
@@ -221,7 +222,7 @@ function toggleSave(p, node) {
 }
 
 async function votePoll(p, index, node) {
-  if (p.poll.options.some(o => o.votes.includes(me.id))) { toast('Vous avez déjà voté'); return; }
+  if (p.poll.options.some(o => o.votes.includes(me.id))) { toast(t('feed.voted')); return; }
   const before = JSON.parse(JSON.stringify(p.poll));
   p.poll.options[index].votes.push(me.id);
   node.querySelector('.poll').outerHTML = pollMarkup(p);
@@ -238,10 +239,10 @@ async function votePoll(p, index, node) {
 function postMenu(e, p) {
   const mine = p.user_id === me.id;
   contextMenu(e, [
-    { title: 'Publication' },
+    { title: t('feed.post') },
     { label: 'Copier le lien', icon: I.link, kbd: 'C',
       onClick: async () => toast(await copyText(`${location.origin}/#/post/${p.id}`) ? 'Lien copié' : 'Échec', 'ok') },
-    { label: p.saves?.includes(me.id) ? 'Retirer des enregistrés' : 'Enregistrer', icon: I.bookmark,
+    { label: p.saves?.includes(me.id) ? 'Retirer des enregistrés' : t('action.save'), icon: I.bookmark,
       onClick: () => toggleSave(p, $(`.post[data-id="${cssEscape(p.id)}"]`)) },
     { sep: true },
     !mine ? { label: 'Masquer cette publication', icon: I.eyeOff, onClick: () => hidePost(p) } : null,
@@ -251,28 +252,28 @@ function postMenu(e, p) {
              onClick: () => { p.pinned = !p.pinned; render(); } } : null,
     { sep: true },
     mine
-      ? { label: 'Supprimer', icon: I.trash, danger: true, onClick: () => deletePost(p) }
-      : { label: 'Signaler', icon: I.flag, danger: true, onClick: () => toast('Signalement envoyé', 'ok') }
+      ? { label: t('action.delete'), icon: I.trash, danger: true, onClick: () => deletePost(p) }
+      : { label: t('action.report'), icon: I.flag, danger: true, onClick: () => toast('Signalement envoyé', 'ok') }
   ]);
 }
 
 function hidePost(p) {
   posts = posts.filter(x => x.id !== p.id);
   render();
-  toast('Publication masquée', { action: { label: 'Annuler', fn: () => { posts.unshift(p); render(); } } });
+  toast(t('feed.hidden'), { action: { label: t('action.cancel'), fn: () => { posts.unshift(p); render(); } } });
 }
 
 async function deletePost(p) {
   if (!await confirmDialog({
     title: 'Supprimer la publication ?', message: 'Cette action est définitive.',
-    confirmLabel: 'Supprimer', danger: true
+    confirmLabel: t('action.delete'), danger: true
   })) return;
   const keep = posts;
   posts = posts.filter(x => x.id !== p.id);
   render();
   try {
     await api.deletePost(p.id);
-    toast('Publication supprimée', 'ok');
+    toast(t('feed.deleted'), 'ok');
   } catch {
     posts = keep;
     render();
@@ -318,8 +319,8 @@ async function openComments(p) {
     } catch { /* keep what we had */ }
   }
 
-  const input = el('input', { class: 'input', placeholder: 'Écrire un commentaire…' });
-  const send = el('button', { class: 'btn btn-primary', onclick: () => add() }, 'Publier');
+  const input = el('input', { class: 'input', placeholder: t('feed.comment.placeholder') });
+  const send = el('button', { class: 'btn btn-primary', onclick: () => add() }, t('action.publish'));
   on(input, 'keydown', e => { if (e.key === 'Enter') add(); });
 
   on(list, 'click', async e => {
@@ -366,7 +367,7 @@ async function openComments(p) {
   }
 
   const body = el('div', { class: 'col g4' }, list, el('div', { class: 'row g2' }, input, send));
-  modal({ title: 'Commentaires', body });
+  modal({ title: t('feed.comments'), body });
   setTimeout(() => input.focus(), 80);
 }
 
@@ -375,10 +376,10 @@ async function openComments(p) {
    ------------------------------------------------------------ */
 
 const POST_KINDS = [
-  { id:'post',  label:'Publication', desc:'Partagez avec votre faculté', icon:'edit',  grad:'var(--grad)' },
-  { id:'photo', label:'Photo',       desc:'Une image vaut mille mots',   icon:'image', grad:'linear-gradient(135deg,#F59E0B,#EF4444)' },
-  { id:'poll',  label:'Sondage',     desc:'Demandez au campus',          icon:'poll',  grad:'linear-gradient(135deg,#06B6D4,#4F46E5)' },
-  { id:'anon',  label:'Anonyme',     desc:'Masquez votre identité',      icon:'lock',  grad:'linear-gradient(135deg,#64748B,#334155)' }
+  { id:'post',  label:t('feed.post'), desc:'Partagez avec votre faculté', icon:'edit',  grad:'var(--grad)' },
+  { id:'photo', label:t('feed.photo'),       desc:'Une image vaut mille mots',   icon:'image', grad:'linear-gradient(135deg,#F59E0B,#EF4444)' },
+  { id:'poll',  label:t('feed.poll'),     desc:'Demandez au campus',          icon:'poll',  grad:'linear-gradient(135deg,#06B6D4,#4F46E5)' },
+  { id:'anon',  label:t('feed.anonymous'),     desc:'Masquez votre identité',      icon:'lock',  grad:'linear-gradient(135deg,#64748B,#334155)' }
 ];
 
 export function openComposer(kind = 'post') {
@@ -565,7 +566,7 @@ function render() {
       title: 'Rien à afficher',
       text: tab === 'following'
         ? 'Suivez des étudiants pour voir leurs publications ici.'
-        : 'Soyez le premier à publier aujourd\'hui.',
+        : t('feed.empty.text'),
       action: { label: 'Créer une publication', onClick: () => openComposer() }
     }));
     return;
@@ -681,9 +682,9 @@ async function sharePost(p) {
    ------------------------------------------------------------ */
 
 const TABS = [
-  { id:'foryou',    label:'Pour vous' },
-  { id:'following', label:'Abonnements' },
-  { id:'faculty',   label:'Ma faculté' }
+  { id:'foryou',    label:t('feed.forYou') },
+  { id:'following', label:t('feed.following') },
+  { id:'faculty',   label:t('hub.myFaculty') }
 ];
 
 /** Repost: a new post that points at the original. */
@@ -696,14 +697,14 @@ async function repost(p) {
     title: 'Repartager',
     body: el('div', { class: 'col g3' }, note,
       el('div', { class: 'repost-quote', html:
-        `<div class="row g2"><span class="t-sm t-bold">${esc(p.anonymous ? 'Anonyme' : orig.full_name)}</span>
+        `<div class="row g2"><span class="t-sm t-bold">${esc(p.anonymous ? t('feed.anonymous') : orig.full_name)}</span>
          <span class="t-xs t-dim">${timeAgo(p.created_at)}</span></div>
          <div class="t-sm t-dim">${esc(truncateText(p.text || '', 160))}</div>` })),
     footer: foot
   });
 
   foot.append(
-    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, 'Annuler'),
+    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
       btn.disabled = true;
@@ -773,11 +774,11 @@ async function reload() {
     const offline = err?.message === 'not-connected' || err?.status === 401;
     list.append(emptyState({
       icon: I.inbox,
-      title: offline ? 'Non connecté à la base' : 'Chargement impossible',
+      title: offline ? 'Non connecté à la base' : t('error.loading'),
       text: offline
         ? 'Reconnectez-vous pour voir le fil de votre campus.'
         : (err?.message || 'Réessayez dans un instant.'),
-      action: { label: 'Réessayer', onClick: () => { list.innerHTML = skeletonList(3); reload(); } }
+      action: { label: t('action.retry'), onClick: () => { list.innerHTML = skeletonList(3); reload(); } }
     }));
   }
 }

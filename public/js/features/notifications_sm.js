@@ -16,6 +16,7 @@ import {
   $, $$, el, on, esc, timeAgo, initials, avatarColor, truncate, onVisible
 } from '../core/utils_sm.js';
 import { me, setState, state, scoped } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { safeUrl } from '../core/utils_sm.js';
 import { I, icon, reactionIcon } from '../core/icons_sm.js';
@@ -71,13 +72,13 @@ function group(list) {
 }
 
 const KIND = {
-  like:    { icon:'fire',     tint:'like',   verb:g => `${names(g)} ${g.actors.length > 1 ? 'ont aimé' : 'a aimé'}` },
-  comment: { icon:'comment',  tint:'brand',  verb:g => `${names(g)} a commenté` },
-  follow:  { icon:'users',    tint:'ok',     verb:g => `${names(g)} ${g.actors.length > 1 ? 'vous suivent' : 'vous suit'}` },
-  mention: { icon:'hash',     tint:'brand',  verb:g => `${names(g)} vous a mentionné` },
-  request: { icon:'user',     tint:'warn',   verb:g => `${names(g)} demande à vous suivre` },
-  badge:   { icon:'trophy',   tint:'warn',   verb:() => 'Nouveau badge débloqué' },
-  event:   { icon:'calendar', tint:'brand',  verb:g => `${names(g)} a créé un événement` }
+  like:    { icon:'fire',     tint:'like',   verb:g => `${names(g)} ${t('notif.likedYours')}` },
+  comment: { icon:'comment',  tint:'brand',  verb:g => `${names(g)} ${t('notif.commented')}` },
+  follow:  { icon:'users',    tint:'ok',     verb:g => `${names(g)} ${t('notif.follows')}` },
+  mention: { icon:'hash',     tint:'brand',  verb:g => `${names(g)} ${t('notif.mentioned')}` },
+  request: { icon:'user',     tint:'warn',   verb:g => `${names(g)} ${t('notif.requests')}` },
+  badge:   { icon:'trophy',   tint:'warn',   verb:() => t('notif.newBadge') },
+  event:   { icon:'calendar', tint:'brand',  verb:g => `${names(g)} ${t('notif.createdEvent')}` }
 };
 
 function names(g) {
@@ -143,7 +144,7 @@ function render() {
     host.innerHTML = '';
     host.append(emptyState({
       icon: I.bell,
-      title: 'Rien de neuf',
+      title: t('notif.none'),
       text: 'Les réactions, mentions et demandes apparaîtront ici.'
     }));
     updateBadge();
@@ -179,9 +180,9 @@ function updateBadge() {
    ------------------------------------------------------------ */
 
 const FILTERS = [
-  { id:'all',      label:'Tout' },
-  { id:'mentions', label:'Mentions' },
-  { id:'follows',  label:'Abonnements' }
+  { id:'all',      label:t('notif.all') },
+  { id:'mentions', label:t('notif.mentions') },
+  { id:'follows',  label:t('feed.following') }
 ];
 
 export function initNotifications(mountFn) {

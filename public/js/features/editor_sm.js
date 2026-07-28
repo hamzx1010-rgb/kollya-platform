@@ -17,6 +17,7 @@
  */
 
 import { $, $$, el, on, clamp, esc } from '../core/utils_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal } from '../core/ui_sm.js';
 import { read, write } from '../core/store_sm.js';
@@ -442,7 +443,7 @@ export function openImageEditor(source, mode = 'dm') {
 
     const foot = el('div', { class: 'row g2' });
     const m = modal({
-      title: 'Modifier l\'image',
+      title: t('editor.title'),
       body: markup(),
       footer: foot,
       wide: true,

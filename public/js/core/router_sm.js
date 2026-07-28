@@ -17,23 +17,33 @@ import { emit, setState, state, write, read, KEYS } from './store_sm.js';
    1. ROUTE TABLE
    ------------------------------------------------------------ */
 
+/**
+ * Titles are i18n KEYS, not text. They are resolved through t() at
+ * render time, so switching language relabels the whole app without
+ * a reload — and a route added later cannot forget to be translated.
+ */
+import { t } from './i18n_sm.js';
+
 export const ROUTES = {
-  feed:          { title: 'Accueil',       nav: true,  icon: 'home' },
-  explore:       { title: 'Explorer',      nav: true,  icon: 'compass' },
-  messages:      { title: 'Messages',      nav: true,  icon: 'message' },
-  notifications: { title: 'Notifications', nav: true,  icon: 'bell' },
-  hub:           { title: 'Hub',           nav: true,  icon: 'trophy' },
-  channels:      { title: 'Canaux',        nav: true,  icon: 'hash' },
-  events:        { title: 'Événements',    nav: true,  icon: 'calendar' },
-  qa:            { title: 'Questions',     nav: true,  icon: 'help' },
-  profile:       { title: 'Profil',        nav: true,  icon: 'user' },
-  saved:         { title: 'Enregistrés',   nav: false, icon: 'bookmark' },
-  leaderboard:   { title: 'Classement',    nav: false, icon: 'chart' },
-  settings:      { title: 'Réglages',      nav: false, icon: 'settings' },
-  post:          { title: 'Publication',   nav: false },
-  channel:       { title: 'Canal',         nav: false },
-  auth:          { title: 'Connexion',     nav: false, public: true }
+  feed:          { title: 'nav.home',          nav: true,  icon: 'home' },
+  explore:       { title: 'nav.explore',       nav: true,  icon: 'compass' },
+  messages:      { title: 'nav.messages',      nav: true,  icon: 'message' },
+  notifications: { title: 'nav.notifications', nav: true,  icon: 'bell' },
+  hub:           { title: 'nav.hub',           nav: true,  icon: 'trophy' },
+  channels:      { title: 'nav.channels',      nav: true,  icon: 'hash' },
+  events:        { title: 'nav.events',        nav: true,  icon: 'calendar' },
+  qa:            { title: 'nav.qa',            nav: true,  icon: 'help' },
+  profile:       { title: 'nav.profile',       nav: true,  icon: 'user' },
+  saved:         { title: 'nav.saved',         nav: false, icon: 'bookmark' },
+  leaderboard:   { title: 'nav.leaderboard',   nav: false, icon: 'chart' },
+  settings:      { title: 'nav.settings',      nav: false, icon: 'settings' },
+  post:          { title: 'feed.post',         nav: false },
+  channel:       { title: 'nav.channels',      nav: false },
+  auth:          { title: 'auth.signIn',       nav: false, public: true }
 };
+
+/** The human label for a route, in the current language. */
+export const routeTitle = name => t(ROUTES[name]?.title || name);
 
 const DEFAULT_ROUTE = 'feed';
 
@@ -121,7 +131,8 @@ function render(target) {
   write(KEYS.LAST_ROUTE, { name: target.name, arg: target.arg });
 
   const meta = ROUTES[target.name] || {};
-  document.title = meta.title ? `${meta.title} — Koliya` : 'Koliya';
+  // meta.title is an i18n KEY, so the tab title follows the language
+  document.title = meta.title ? `${t(meta.title)} — Koliya` : 'Koliya';
 
   // direction hint so the view can slide the right way
   const dir = navDirection(prev.name, target.name);
@@ -299,6 +310,16 @@ export function initRouter({ start } = {}) {
 
   return current;
 }
+
+/**
+ * Re-render the CURRENT screen when the language changes.
+ *
+ * Translating strings is only half the job: the screen already on
+ * display was built with the old language and will not change until
+ * something repaints it. Re-running the active view is what makes
+ * the switch feel instant instead of "working after you navigate".
+ */
+on(window, 'koliya:i18n', () => render({ ...current }));
 
 export const currentRoute = () => ({ ...current });
 export const isRoute = (name) => current.name === name;

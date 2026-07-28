@@ -14,6 +14,7 @@ import {
   rafThrottle, clamp, env, copyText, cssEscape
 } from '../core/utils_sm.js';
 import { me, on as onEvent } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { safeUrl } from '../core/utils_sm.js';
 import { I, icon } from '../core/icons_sm.js';
@@ -61,7 +62,7 @@ function headerMarkup(u) {
 
   <div class="pf-head">
     <div class="pf-avatar-wrap">
-      <div class="av-ring" style="--pct:${lv.pct}" data-tip="Niveau ${lv.level} · ${lv.into}/${lv.need} XP">
+      <div class="av-ring" style="--pct:${lv.pct}" data-tip="${t('hub.levelTip', { n: lv.level, into: lv.into, need: lv.need })}">
         <div class="av xl" id="pfAvatar" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>${
           u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}</div>
       </div>
@@ -71,7 +72,7 @@ function headerMarkup(u) {
 
     <div class="pf-actions">
       ${u.isMe
-        ? `<button class="btn btn-outline" id="pfEdit">${icon('edit',{size:16})} Modifier le profil</button>
+        ? `<button class="btn btn-outline" id="pfEdit">${icon('edit',{size:16})} ${t('profile.edit')}</button>
            <button class="icon-btn" id="pfSettings" data-tip="Réglages">${I.settings}</button>`
         : `<button class="btn ${u.followState === 'following' ? 'btn-outline btn-follow' : 'btn-primary'}"
                    id="pfFollow" data-state="${u.followState || 'none'}">
@@ -112,7 +113,7 @@ function headerMarkup(u) {
 const followLabel = s =>
   s === 'following' ? '<span class="lbl-following">Abonné</span><span class="lbl-unfollow">Se désabonner</span>'
   : s === 'requested' ? 'Demande envoyée'
-  : 'Suivre';
+  : t('action.follow');
 
 /** Website / GitHub / LinkedIn, shown only when they exist. */
 function profileLinks(u) {
@@ -137,9 +138,9 @@ function coverFor(u) {
    ------------------------------------------------------------ */
 
 const TABS = [
-  { id:'posts', label:'Publications', icon:'edit' },
-  { id:'media', label:'Médias',       icon:'image' },
-  { id:'likes', label:'J\'aime',      icon:'fire' }
+  { id:'posts', label:t('profile.tabPosts'), icon:'edit' },
+  { id:'media', label:t('profile.tabMedia'), icon:'image' },
+  { id:'likes', label:t('profile.tabLikes'), icon:'fire' }
 ];
 
 async function renderTabBody(u) {
@@ -150,7 +151,7 @@ async function renderTabBody(u) {
     host.innerHTML = '';
     host.append(emptyState({
       icon: I.lock,
-      title: 'Ce compte est privé',
+      title: t('profile.privateTitle'),
       text: `Suivez ${u.full_name} pour voir ses publications.`
     }));
     return;
@@ -166,9 +167,9 @@ async function renderTabBody(u) {
   } catch (err) {
     host.innerHTML = '';
     host.append(emptyState({
-      icon: I.inbox, title: 'Chargement impossible',
+      icon: I.inbox, title: t('error.loading'),
       text: err?.message || 'Réessayez dans un instant.',
-      action: { label: 'Réessayer', onClick: () => renderTabBody(u) }
+      action: { label: t('action.retry'), onClick: () => renderTabBody(u) }
     }));
     return;
   }
@@ -190,7 +191,7 @@ async function renderTabBody(u) {
     host.innerHTML = '';
     host.append(emptyState({
       icon: activeTab === 'likes' ? I.fire : I.edit,
-      title: activeTab === 'likes' ? 'Rien pour l\'instant' : 'Aucune publication',
+      title: activeTab === 'likes' ? 'Rien pour l\'instant' : t('profile.noPosts'),
       text: activeTab === 'likes'
         ? 'Les publications aimées apparaîtront ici.'
         : (u.isMe ? 'Votre première publication apparaîtra ici.' : `${u.full_name} n'a rien publié.`)
@@ -199,7 +200,7 @@ async function renderTabBody(u) {
   }
 
   host.innerHTML = posts.map(p => {
-    const author = p.anonymous ? { full_name: 'Anonyme', username: 'anonyme', id: 'anon' }
+    const author = p.anonymous ? { full_name: t('feed.anonymous'), username: 'anonyme', id: 'anon' }
                                : (String(p.user_id) === String(u.id) ? u : person(p.user_id));
     const src = p.image_url || (p.media_type === 'image' ? p.media_url : null);
     return `
@@ -285,14 +286,14 @@ function wireActions(u) {
       onClick: async () => toast(await copyText(`${location.origin}/#/profile/${u.username}`) ? 'Lien copié' : 'Échec', 'ok') },
     { label: 'Couper les notifications', icon: I.mute, onClick: () => toast('Notifications coupées', 'ok') },
     { sep: true },
-    { label: 'Bloquer', icon: I.block, danger: true, onClick: async () => {
+    { label: t('action.block'), icon: I.block, danger: true, onClick: async () => {
         if (!await confirmDialog({ title: `Bloquer ${u.full_name} ?`,
           message: 'Cette personne ne pourra plus vous contacter ni voir vos publications.',
-          confirmLabel: 'Bloquer', danger: true })) return;
+          confirmLabel: t('action.block'), danger: true })) return;
         try { await api.block(u.id); toast('Utilisateur bloqué', 'ok'); go('feed'); }
         catch { toast('Blocage échoué', 'err'); }
       } },
-    { label: 'Signaler', icon: I.flag, danger: true, onClick: async () => {
+    { label: t('action.report'), icon: I.flag, danger: true, onClick: async () => {
         try { await api.report('user', u.id, 'Signalé depuis le profil');
               toast('Signalement envoyé aux administrateurs', 'ok'); }
         catch { toast('Signalement échoué', 'err'); }
@@ -518,26 +519,26 @@ function openEditProfile(u) {
   root.append(
     el('div', { class: 'pe-media' }, banner, avatar),
     el('div', { class: 'pe-body' },
-      el('div', { class: 'pe-sec' }, 'Identité'),
-      field('Nom complet', nameInput),
+      el('div', { class: 'pe-sec' }, t('profile.identity')),
+      field(t('profile.name'), nameInput),
       field("Nom d'utilisateur", userInput, 'Lettres, chiffres, point et tiret bas. Il apparaît dans votre lien de profil.'),
-      field('Faculté', facSelect),
-      field('Pronoms', pronounInput, 'Facultatif, affiché à côté de votre nom.'),
+      field(t('profile.faculty'), facSelect),
+      field(t('profile.pronouns'), pronounInput, 'Facultatif, affiché à côté de votre nom.'),
 
-      el('div', { class: 'pe-sec' }, 'À propos'),
+      el('div', { class: 'pe-sec' }, t('profile.about')),
       el('div', { class: 'pe-field' },
-        el('div', { class: 'row between' }, el('label', { class: 'pe-label' }, 'Bio'), bioCount),
+        el('div', { class: 'row between' }, el('label', { class: 'pe-label' }, t('profile.bio')), bioCount),
         bioInput),
 
-      el('div', { class: 'pe-sec' }, 'Liens'),
-      field('Site web', siteInput),
+      el('div', { class: 'pe-sec' }, t('profile.links')),
+      field(t('profile.website'), siteInput),
       field('GitHub', githubInput),
       field('LinkedIn', linkedinInput),
 
-      el('div', { class: 'pe-sec' }, 'Confidentialité'),
+      el('div', { class: 'pe-sec' }, t('profile.privacy')),
       el('div', { class: 'pe-toggle' },
         el('div', { class: 'grow' },
-          el('div', { class: 't-sm t-bold' }, 'Compte privé'),
+          el('div', { class: 't-sm t-bold' }, t('profile.privateAccount')),
           el('div', { class: 't-xs t-dim' }, 'Seuls vos abonnés acceptés voient vos publications et vos stories.')),
         priv)
     )
@@ -547,7 +548,7 @@ function openEditProfile(u) {
 
   const foot = el('div', { class: 'row g2' });
   const m = modal({
-    title: 'Modifier le profil',
+    title: t('profile.edit'),
     body: root,
     footer: foot,
     wide: true,
@@ -558,8 +559,8 @@ function openEditProfile(u) {
     }
   });
 
-  const save = el('button', { class: 'btn btn-primary', onclick: submit }, 'Enregistrer');
-  foot.append(el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, 'Annuler'), save);
+  const save = el('button', { class: 'btn btn-primary', onclick: submit }, t('action.save'));
+  foot.append(el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')), save);
 
   async function submit() {
     const username = userInput.value.trim().toLowerCase();
@@ -608,7 +609,7 @@ function openEditProfile(u) {
       }, { avatarFile, bannerFile });
 
       m.close();
-      toast('Profil mis à jour', 'ok');
+      toast(t('profile.updated'), 'ok');
       // re-read from what the database actually stored, not from the
       // form — if a trigger normalised something, we show the truth
       Object.assign(u, updated, { isMe: true, private: !!updated.is_private });
@@ -616,7 +617,7 @@ function openEditProfile(u) {
       render(u);
     } catch (err) {
       save.disabled = false;
-      save.textContent = 'Enregistrer';
+      save.textContent = t('action.save');
       // Report what actually happened. The old catch-all said
       // "rien n'a été modifié" for every failure — including cases
       // where the user HAD changed something — which is why the
@@ -625,7 +626,7 @@ function openEditProfile(u) {
       const msg =
         /duplicate|unique|23505/i.test(raw) ? "Ce nom d'utilisateur est déjà pris."
       : /trop lourd|413/i.test(raw)         ? raw
-      : err?.status === 401                 ? 'Session expirée — reconnectez-vous.'
+      : err?.status === 401                 ? t('error.session')
       : err?.status === 403                 ? raw
       : raw                                 ? `Échec : ${raw}`
       : 'Échec inconnu — regardez la console.';
@@ -702,7 +703,7 @@ export function initProfile(mountFn) {
         text: err?.message === 'not-connected'
           ? 'Non connecté à la base de données.'
           : (err?.message || 'Réessayez dans un instant.'),
-        action: { label: 'Réessayer', onClick: () => location.reload() }
+        action: { label: t('action.retry'), onClick: () => location.reload() }
       }));
       return;
     }

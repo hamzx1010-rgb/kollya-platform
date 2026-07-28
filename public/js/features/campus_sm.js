@@ -22,6 +22,7 @@ import {
   debounce, uid, truncate, safeUrl, cssEscape
 } from '../core/utils_sm.js';
 import { me, scoped, frequency } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { act, rankBadge } from '../core/game_sm.js';
 import { I, icon } from '../core/icons_sm.js';
@@ -43,11 +44,11 @@ function failed(host, err, retry) {
   host.innerHTML = '';
   host.append(emptyState({
     icon: I.inbox,
-    title: 'Chargement impossible',
+    title: t('error.loading'),
     text: err?.status === 401
-      ? 'Session expirée — reconnectez-vous.'
+      ? t('error.session')
       : (err?.message || 'Réessayez dans un instant.'),
-    action: { label: 'Réessayer', onClick: retry }
+    action: { label: t('action.retry'), onClick: retry }
   }));
 }
 
@@ -76,7 +77,7 @@ function channelCard(c) {
           c.last_at ? ' · ' + timeAgo(c.last_at) : ''}</div>
       </div>
       <button class="btn ${c.joined ? 'btn-outline' : 'btn-primary'} btn-sm" data-join>
-        ${c.joined ? 'Rejoint' : 'Rejoindre'}
+        ${c.joined ? t('channels.joined') : t('channels.join')}
       </button>
     </article>`;
 }
@@ -97,9 +98,9 @@ async function renderChannels(q = '') {
     host.innerHTML = '';
     host.append(emptyState({
       icon: I.hash,
-      title: q ? 'Aucun canal' : "Aucun canal pour l'instant",
+      title: q ? t('channels.noneSearch') : t('channels.none'),
       text: q ? 'Essayez un autre mot-clé.' : 'Créez le premier canal de votre faculté.',
-      action: q ? null : { label: 'Créer un canal', onClick: openChannelComposer }
+      action: q ? null : { label: t('channels.create'), onClick: openChannelComposer }
     }));
     return;
   }
@@ -114,16 +115,16 @@ function openChannelComposer() {
   const foot = el('div', { class: 'row g2' });
 
   const m = modal({
-    title: 'Créer un canal',
+    title: t('channels.createTitle'),
     body: el('div', { class: 'col g3' },
       el('div', { class: 'field' }, el('label', { class: 'label' }, 'Nom'), name),
-      el('div', { class: 'field' }, el('label', { class: 'label' }, 'Description'), desc),
-      el('div', { class: 'field' }, el('label', { class: 'label' }, 'Faculté'), fac)),
+      el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.what')), desc),
+      el('div', { class: 'field' }, el('label', { class: 'label' }, t('profile.faculty')), fac)),
     footer: foot
   });
 
   foot.append(
-    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, 'Annuler'),
+    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
       if (name.value.trim().length < 3) { toast('Nom trop court', 'err'); return; }
@@ -138,7 +139,7 @@ function openChannelComposer() {
         toast('Canal créé', 'ok');
         renderChannels();
       } catch { btn.disabled = false; toast('Création échouée', 'err'); }
-    }}, 'Créer')
+    }}, t('action.create'))
   );
   setTimeout(() => name.focus(), 80);
 }
@@ -150,14 +151,14 @@ function openChannelComposer() {
 let events = [];
 
 function countdown(iso) {
-  if (!iso) return 'Date à préciser';
+  if (!iso) return t('events.tbd');
   const ms = new Date(iso) - Date.now();
-  if (ms < 0) return 'Terminé';
+  if (ms < 0) return t('time.ended');
   const d = Math.floor(ms / 86400000);
-  if (d >= 1) return `Dans ${d} jour${d > 1 ? 's' : ''}`;
+  if (d >= 1) return d === 1 ? t('time.inDay') : t('time.inDays', { n: d });
   const h = Math.floor(ms / 3600000);
-  if (h >= 1) return `Dans ${h} h`;
-  return `Dans ${Math.max(1, Math.floor(ms / 60000))} min`;
+  if (h >= 1) return t('time.inHours', { n: h });
+  return t('time.inMins', { n: Math.max(1, Math.floor(ms / 60000)) });
 }
 
 /**
@@ -172,7 +173,7 @@ function eventsHero() {
   <section class="events-hero">
     <div class="hero-body">
       <div class="hero-eyebrow">${icon('calendar', { size: 14 })} Campus</div>
-      <h2 class="hero-title">Événements</h2>
+      <h2 class="hero-title">${t('events.title')}</h2>
       <p class="hero-sub">Révisions, conférences, sorties — tout ce qui se passe autour de vous.</p>
       <div class="hero-stats">
         <div class="hero-stat"><b>${upcoming}</b><span>à venir</span></div>
@@ -181,7 +182,7 @@ function eventsHero() {
     </div>
     <button class="hero-cta" id="heroCreateEvent">
       <span class="hero-cta-ic">${icon('plus', { size: 22 })}</span>
-      <span class="hero-cta-txt">Créer un<br>événement</span>
+      <span class="hero-cta-txt">${t('events.createCta')}</span>
     </button>
   </section>`;
 }
@@ -211,7 +212,7 @@ function eventCard(e) {
         </div>
       </div>
       <button class="btn ${going ? 'btn-outline' : 'btn-primary'} btn-sm" data-going>
-        ${going ? 'Inscrit' : 'Je participe'}
+        ${going ? t('events.attending') : t('events.attend')}
       </button>
     </article>`;
 }
@@ -232,7 +233,7 @@ async function renderEvents(q = '') {
   host.innerHTML = eventsHero() + (list.length
     ? list.map(eventCard).join('')
     : `<div class="tg-empty tall">${icon('calendar', { size: 26 })}
-        <span>${q ? 'Aucun événement pour cette recherche' : "Rien de prévu pour l'instant"}</span></div>`);
+        <span>${q ? t('events.noneSearch') : t('events.none')}</span></div>`);
 
   on($('#heroCreateEvent'), 'click', openEventComposer);
 }
@@ -266,9 +267,9 @@ function openEventDetail(e) {
       if (!await confirmDialog({ title: "Supprimer l'événement ?", confirmLabel: 'Supprimer', danger: true })) return;
       try { await api.deleteEvent(e.id); m.close(); toast('Événement supprimé', 'ok'); renderEvents(); }
       catch { toast('Suppression échouée', 'err'); }
-    }}, 'Supprimer'));
+    }}, t('action.delete')));
   }
-  foot.append(el('button', { class: 'btn btn-primary', onclick: () => m.close() }, 'Fermer'));
+  foot.append(el('button', { class: 'btn btn-primary', onclick: () => m.close() }, t('action.close')));
 }
 
 function openEventComposer() {
@@ -282,14 +283,14 @@ function openEventComposer() {
     title: 'Créer un événement',
     body: el('div', { class: 'col g3' },
       el('div', { class: 'field' }, el('label', { class: 'label' }, 'Titre'), title),
-      el('div', { class: 'field' }, el('label', { class: 'label' }, 'Lieu'), place),
-      el('div', { class: 'field' }, el('label', { class: 'label' }, 'Date et heure'), when),
-      el('div', { class: 'field' }, el('label', { class: 'label' }, 'Description'), desc)),
+      el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.where')), place),
+      el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.when')), when),
+      el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.what')), desc)),
     footer: foot
   });
 
   foot.append(
-    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, 'Annuler'),
+    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
       if (!title.value.trim() || !when.value) { toast('Titre et date obligatoires', 'err'); return; }
@@ -308,10 +309,10 @@ function openEventComposer() {
         renderEvents();
       } catch {
         btn.disabled = false;
-        btn.textContent = 'Créer';
+        btn.textContent = t('action.create');
         toast("Création échouée — rien n'a été enregistré", 'err');
       }
-    }}, 'Créer')
+    }}, t('action.create'))
   );
   setTimeout(() => title.focus(), 80);
 }
@@ -328,7 +329,7 @@ function qaHero() {
   <section class="qa-hero">
     <div class="hero-body">
       <div class="hero-eyebrow">${icon('help', { size: 14 })} Entraide</div>
-      <h2 class="hero-title">Questions &amp; Réponses</h2>
+      <h2 class="hero-title">${t('qa.andAnswers')}</h2>
       <p class="hero-sub">Demandez ce que vous n'osez pas demander en amphi. Anonymement si vous préférez.</p>
       <div class="hero-stats">
         <div class="hero-stat"><b>${questions.length}</b><span>questions</span></div>
@@ -337,7 +338,7 @@ function qaHero() {
     </div>
     <button class="hero-cta" id="heroAsk">
       <span class="hero-cta-ic">${icon('plus', { size: 22 })}</span>
-      <span class="hero-cta-txt">Poser une<br>question</span>
+      <span class="hero-cta-txt">${t('qa.askCta')}</span>
     </button>
   </section>`;
 }
@@ -352,7 +353,7 @@ function questionCard(q) {
           : avatarChip(author)}
         <div class="grow" style="min-width:0">
           <div class="row g2">
-            <span class="t-sm t-bold">${q.anonymous ? 'Anonyme' : esc(author.full_name)}</span>
+            <span class="t-sm t-bold">${q.anonymous ? t('feed.anonymous') : esc(author.full_name)}</span>
             <span class="t-xs t-dim">${timeAgo(q.created_at)}</span>
             ${q.faculty ? `<span class="pill" style="height:19px">${esc(q.faculty)}</span>` : ''}
           </div>
@@ -360,7 +361,7 @@ function questionCard(q) {
         </div>
       </div>
       ${best ? `<div class="qa-best">
-          <span class="qa-badge">${icon('check', { size: 12 })} Meilleure réponse</span>
+          <span class="qa-badge">${icon('check', { size: 12 })} ${t('qa.bestAnswer')}</span>
           <p class="t-sm">${esc(truncate(best.text, 120))}</p>
         </div>` : ''}
       <div class="row g3" style="margin-top:var(--s2)">
@@ -402,9 +403,9 @@ function openQuestion(q) {
             <span class="t-sm t-bold t-mono">${a.votes}</span>
           </div>
           <div class="grow" style="min-width:0">
-            <div class="row g2"><span class="t-sm t-bold">${a.anonymous ? 'Anonyme' : esc(u.full_name)}</span>
+            <div class="row g2"><span class="t-sm t-bold">${a.anonymous ? t('feed.anonymous') : esc(u.full_name)}</span>
             <span class="t-xs t-dim">${timeAgo(a.created_at)}</span>
-            ${i === 0 ? `<span class="qa-badge">${icon('check', { size: 11 })} Meilleure</span>` : ''}</div>
+            ${i === 0 ? `<span class="qa-badge">${icon('check', { size: 11 })} ${t('qa.bestAnswer')}</span>` : ''}</div>
             <p class="t-sm">${esc(a.text)}</p>
           </div>
         </div>`;
@@ -413,7 +414,7 @@ function openQuestion(q) {
   draw();
 
   const input = el('input', { class: 'input', placeholder: 'Votre réponse…' });
-  const btn = el('button', { class: 'btn btn-primary', onclick: () => add() }, 'Répondre');
+  const btn = el('button', { class: 'btn btn-primary', onclick: () => add() }, t('action.reply'));
 
   async function add() {
     const text = input.value.trim();
@@ -426,7 +427,7 @@ function openQuestion(q) {
       input.value = '';
       draw();
       renderQA();
-    } catch { toast('Réponse non enregistrée', 'err'); }
+    } catch { toast(t('qa.answerFailed'), 'err'); }
     finally { btn.disabled = false; input.focus(); }
   }
   on(input, 'keydown', e => { if (e.key === 'Enter') add(); });
@@ -445,7 +446,7 @@ function openQuestion(q) {
   });
 
   modal({
-    title: q.anonymous ? 'Question anonyme' : 'Question',
+    title: q.anonymous ? t('qa.anonymousQ') : t('qa.question'),
     body: el('div', { class: 'col g4' },
       el('p', { class: 't-md' }, q.text),
       el('div', { class: 'hr' }),
@@ -468,14 +469,14 @@ function openAsk() {
     body: el('div', { class: 'col g4' }, ta,
       el('div', { class: 'row between' },
         el('div', {},
-          el('div', { class: 't-sm t-bold' }, 'Rester anonyme'),
+          el('div', { class: 't-sm t-bold' }, t('qa.anonymous')),
           el('div', { class: 't-xs t-dim' }, 'Votre nom ne quittera jamais le serveur')),
         anon)),
     footer: foot
   });
 
   foot.append(
-    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, 'Annuler'),
+    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
       const text = ta.value.trim();
@@ -484,10 +485,10 @@ function openAsk() {
       try {
         await api.ask({ text, anonymous: anon.classList.contains('on') });
         m.close();
-        toast('Question publiée', 'ok');
+        toast(t('qa.published'), 'ok');
         renderQA();
-      } catch { btn.disabled = false; toast('Publication échouée', 'err'); }
-    }}, 'Publier')
+      } catch { btn.disabled = false; toast(t('feed.failed'), 'err'); }
+    }}, t('action.publish'))
   );
   setTimeout(() => ta.focus(), 80);
 }
@@ -509,7 +510,7 @@ async function renderExplore(q = '') {
 
     if (!people.length && !posts.length) {
       host.innerHTML = '';
-      host.append(emptyState({ icon: I.search, title: 'Aucun résultat', text: `Rien pour « ${q} ».` }));
+      host.append(emptyState({ icon: I.search, title: t('explore.noResults'), text: `Rien pour « ${q} ».` }));
       return;
     }
 
@@ -525,9 +526,9 @@ async function renderExplore(q = '') {
               <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
             </div>
           </div>`).join('') : ''}
-      ${posts.length ? `<div class="hub-sec-head" style="margin:var(--s4) 0 var(--s3)">Publications · ${posts.length}</div>` +
+      ${posts.length ? `<div class="hub-sec-head" style="margin:var(--s4) 0 var(--s3)">${t('feed.post')} · ${posts.length}</div>` +
         posts.map(p => {
-          const a = p.anonymous ? { full_name: 'Anonyme', id: 'anon' } : person(p.user_id);
+          const a = p.anonymous ? { full_name: t('feed.anonymous'), id: 'anon' } : person(p.user_id);
           return `<article class="cc">
             ${p.anonymous ? `<span class="av" style="background:var(--text-3)">${icon('user', { size: 16 })}</span>` : avatarChip(a, 'av')}
             <div class="grow" style="min-width:0">
@@ -603,7 +604,7 @@ async function renderSaved() {
   }
 
   host.innerHTML = posts.map(p => {
-    const a = p.anonymous ? { full_name: 'Anonyme', id: 'anon' } : person(p.user_id);
+    const a = p.anonymous ? { full_name: t('feed.anonymous'), id: 'anon' } : person(p.user_id);
     const src = p.image_url || (p.media_type === 'image' ? p.media_url : null);
     return `<article class="post" data-id="${esc(p.id)}">
       <div class="post-head">
@@ -624,12 +625,12 @@ async function renderSaved() {
    ============================================================ */
 
 const SCREENS = {
-  channels: { title: 'Canaux',      placeholder: 'Rechercher un canal…',      render: renderChannels,
-              action: { label: 'Créer', icon: 'plus', fn: openChannelComposer } },
-  events:   { title: 'Événements',  placeholder: 'Rechercher un événement…',  render: renderEvents },
-  qa:       { title: 'Questions',   placeholder: 'Rechercher une question…',  render: renderQA },
-  explore:  { title: 'Explorer',    placeholder: 'Rechercher étudiants, sujets…', render: renderExplore },
-  saved:    { title: 'Enregistrés', placeholder: null,                        render: renderSaved }
+  channels: { title: t('channels.title'),      placeholder: 'Rechercher un canal…',      render: renderChannels,
+              action: { label: t('action.create'), icon: 'plus', fn: openChannelComposer } },
+  events:   { title: t('events.title'),  placeholder: 'Rechercher un événement…',  render: renderEvents },
+  qa:       { title: t('qa.title'),   placeholder: 'Rechercher une question…',  render: renderQA },
+  explore:  { title: t('explore.title'),    placeholder: 'Rechercher étudiants, sujets…', render: renderExplore },
+  saved:    { title: t('saved.title'), placeholder: null,                        render: renderSaved }
 };
 
 function mountScreen(name, mountFn) {

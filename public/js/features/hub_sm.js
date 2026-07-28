@@ -13,6 +13,8 @@ import {
   $, $$, el, on, esc, compact, initials, avatarColor, clamp, timeAgo
 } from '../core/utils_sm.js';
 import { me, read, write, scoped, on as onEvent } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
+import { questLabel } from '../core/game_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, countUp, skeletonList, emptyState, contextMenu } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
@@ -36,18 +38,18 @@ export { xpForLevel, levelFromXp, XP, trackQuest };
    ------------------------------------------------------------ */
 
 export const BADGES = [
-  { id:'first_post', icon:'edit',       name:'Première publication', desc:'Publier pour la première fois',      need:s => s.posts >= 1 },
-  { id:'writer',     icon:'edit',       name:'Plume active',         desc:'Publier 10 fois',                    need:s => s.posts >= 10 },
-  { id:'social',     icon:'message',    name:'Sociable',             desc:'Écrire 25 commentaires',             need:s => s.comments >= 25 },
-  { id:'liked',      icon:'fire',       name:'Apprécié',             desc:'Recevoir 50 j\'aime',                need:s => s.likes >= 50 },
-  { id:'helper',     icon:'help',       name:'Entraide',             desc:'Répondre à 10 questions',            need:s => s.answers >= 10 },
-  { id:'streak7',    icon:'fire',       name:'Une semaine',          desc:'7 jours d\'affilée',                 need:s => s.streak >= 7 },
-  { id:'streak30',   icon:'trophy',     name:'Un mois entier',       desc:'30 jours d\'affilée',                need:s => s.streak >= 30 },
-  { id:'popular',    icon:'users',      name:'Connu du campus',      desc:'Atteindre 50 abonnés',               need:s => s.followers >= 50 },
-  { id:'organizer',  icon:'calendar',   name:'Organisateur',         desc:'Créer 3 événements',                 need:s => s.events >= 3 },
-  { id:'scholar',    icon:'graduation', name:'Érudit',               desc:'Atteindre le niveau 10',             need:s => s.level >= 10 },
-  { id:'night_owl',  icon:'moon',       name:'Oiseau de nuit',       desc:'Publier après minuit',               need:s => s.nightPosts >= 1 },
-  { id:'archivist',  icon:'bookmark',   name:'Archiviste',           desc:'Enregistrer 20 publications',        need:s => s.saved >= 20 }
+  { id:'first_post', icon:'edit',       name:t('badge.firstPost'), desc:t('badge.firstPostD'),      need:s => s.posts >= 1 },
+  { id:'writer',     icon:'edit',       name:t('badge.writer'), desc:t('badge.writerD'),                    need:s => s.posts >= 10 },
+  { id:'social',     icon:'message',    name:t('badge.social'), desc:t('badge.socialD'),             need:s => s.comments >= 25 },
+  { id:'liked',      icon:'fire',       name:t('badge.liked'), desc:t('badge.likedD'),                need:s => s.likes >= 50 },
+  { id:'helper',     icon:'help',       name:t('badge.helper'), desc:t('badge.helperD'),            need:s => s.answers >= 10 },
+  { id:'streak7',    icon:'fire',       name:t('badge.week'),          desc:t('badge.weekDesc'),                 need:s => s.streak >= 7 },
+  { id:'streak30',   icon:'trophy',     name:t('badge.month'), desc:t('badge.monthD'),                need:s => s.streak >= 30 },
+  { id:'popular',    icon:'users',      name:t('badge.popular'), desc:t('badge.popularD'),               need:s => s.followers >= 50 },
+  { id:'organizer',  icon:'calendar',   name:t('badge.organizer'), desc:t('badge.organizerD'),                 need:s => s.events >= 3 },
+  { id:'scholar',    icon:'graduation', name:t('badge.scholar'), desc:t('badge.scholarD'),             need:s => s.level >= 10 },
+  { id:'night_owl',  icon:'moon',       name:t('badge.night'), desc:t('badge.nightD'),               need:s => s.nightPosts >= 1 },
+  { id:'archivist',  icon:'bookmark',   name:t('badge.archivist'), desc:t('badge.archivistD'),        need:s => s.saved >= 20 }
 ];
 
 /* ------------------------------------------------------------
@@ -109,7 +111,7 @@ function celebrate({ streak, grew, xp }) {
   setTimeout(() => host.remove(), 2600);
 
   modal({
-    title: 'Défis du jour accomplis',
+    title: t('hub.dayComplete'),
     body: `<div class="col center g4" style="text-align:center;padding:var(--s4) 0">
         <div class="streak-flame big">${icon('fire', { size: 46 })}</div>
         <div style="font-size:var(--fs-2xl);font-weight:700">${streak} jour${streak > 1 ? 's' : ''}</div>
@@ -141,28 +143,28 @@ function heroMarkup(s, lv) {
     <div class="hub-hero-in">
       <div class="row g4 between wrap">
         <div>
-          <div class="t-xs" style="opacity:.8;letter-spacing:.06em;text-transform:uppercase">Niveau ${lv.level}</div>
+          <div class="t-xs" style="opacity:.8;letter-spacing:.06em;text-transform:uppercase">${t('hub.levelN', { n: lv.level })}</div>
           <div style="font-size:var(--fs-3xl);font-weight:700;line-height:1.1" id="hubXp">0</div>
-          <div class="t-sm" style="opacity:.85">XP au total</div>
+          <div class="t-sm" style="opacity:.85">${t('hub.xp')}</div>
         </div>
         <div class="streak-block">
           <div class="streak-flame${s.streak ? '' : ' cold'}" style="--n:${clamp(s.streak / 30, .3, 1)}">${icon('fire', { size: 30 })}</div>
           <div>
             <div style="font-size:var(--fs-xl);font-weight:700" id="hubStreak">0</div>
-            <div class="t-xs" style="opacity:.85">jours d'affilée</div>
+            <div class="t-xs" style="opacity:.85">${t('hub.streakDays')}</div>
             ${s.streak_best > s.streak ? `<div class="t-xs" style="opacity:.6">record ${s.streak_best}</div>` : ''}
           </div>
           <span class="freeze-chip${s.freeze_available ? '' : ' spent'}"
                 data-tip="${s.freeze_available
                   ? 'Gel disponible : une journée manquée sera rattrapée automatiquement ce mois-ci'
                   : 'Gel déjà utilisé ce mois-ci'}">
-            ${icon('spark', { size: 12 })} ${s.freeze_available ? 'Gel prêt' : 'Gel utilisé'}
+            ${icon('spark', { size: 12 })} ${s.freeze_available ? t('hub.freezeReady') : t('hub.freezeUsed')}
           </span>
         </div>
       </div>
       <div class="hub-progress">
         <div class="row between t-xs" style="opacity:.85">
-          <span>Niveau ${lv.level}</span><span>${lv.into} / ${lv.need} XP</span>
+          <span>${t('hub.levelN', { n: lv.level })}</span><span>${t('hub.xpOf', { into: lv.into, need: lv.need })}</span>
         </div>
         <div class="bar" style="background:rgba(255,255,255,.25)">
           <div class="bar-fill" id="hubBar" style="width:0;background:#fff"></div>
@@ -185,7 +187,7 @@ function renderQuests() {
         <span class="quest-ic">${complete ? icon('check', { size: 16 }) : icon(q.icon, { size: 16 })}</span>
         <div class="grow" style="min-width:0">
           <div class="row between">
-            <span class="t-sm">${esc(q.label)}</span>
+            <span class="t-sm">${esc(questLabel(q))}</span>
             <span class="t-xs t-dim t-mono">${q.progress}/${q.target}</span>
           </div>
           <div class="bar" style="height:4px;margin-top:5px"><div class="bar-fill" style="width:${pct}%"></div></div>
@@ -374,7 +376,7 @@ export function initHub(mountFn) {
 
       <section class="hub-sec">
         <div class="hub-sec-head">
-          <span>Défis du jour</span>
+          <span>${t('hub.quests')}</span>
           <span class="pill" id="questCount">0/3</span>
         </div>
         <div id="questList"></div>
@@ -382,7 +384,7 @@ export function initHub(mountFn) {
 
       <section class="hub-sec">
         <div class="hub-sec-head">
-          <span>Badges</span>
+          <span>${t('hub.badges')}</span>
           <span class="pill" id="badgeCount">0/${BADGES.length}</span>
         </div>
         <div class="badge-grid" id="badgeGrid"></div>
@@ -390,10 +392,10 @@ export function initHub(mountFn) {
 
       <section class="hub-sec">
         <div class="hub-sec-head">
-          <span>Classement</span>
+          <span>${t('hub.leaderboard')}</span>
           <div class="row g1">
-            <button class="pill board-scope on" data-scope="faculty">Ma faculté</button>
-            <button class="pill board-scope" data-scope="all">Tout le campus</button>
+            <button class="pill board-scope on" data-scope="faculty">${t('hub.myFaculty')}</button>
+            <button class="pill board-scope" data-scope="all">${t('hub.allCampus')}</button>
           </div>
         </div>
         <div id="rankStrip"></div>

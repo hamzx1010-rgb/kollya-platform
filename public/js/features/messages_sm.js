@@ -31,6 +31,7 @@ import {
   confirmDialog, skeletonList, emptyState, optimistic, closeMenu
 } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { openGifPicker, closeGifPicker } from './gif_sm.js';
 import { startRecording, cancelRecording, isRecording, wireVoicePlayers } from './voice_sm.js';
 import { openImageEditor } from './editor_sm.js';
@@ -188,25 +189,74 @@ async function beat(force = false) {
   finally { pollBusy = false; }
 }
 
-/** Re-read the last few messages so ticks and reactions stay true. */
+/**
+ * Re-read the tail so ticks, edits and reactions stay true.
+ *
+ * THE FLICKER YOU SAW: this used to call renderThread(), which wipes
+ * innerHTML and rebuilds every bubble. Running that every few
+ * seconds — because someone's read receipt landed — made the whole
+ * conversation blink, lose text selection, and close any open menu.
+ *
+ * Now each change is applied to the ONE element that changed. The
+ * thread is only rebuilt when a message is added or removed, which
+ * is a structural change the user is expecting anyway.
+ */
 async function refreshTail() {
   if (!peer || !msgs.length) return;
   const tail = await api.listMessages(peer.id).catch(() => null);
   if (!tail) return;
+
   const byId = new Map(tail.map(m => [String(m.id), m]));
-  let changed = false;
+  let structural = false;
+
   msgs = msgs.map(m => {
     const fresh = byId.get(String(m.id));
     if (!fresh) return m;
-    if (fresh.seen_at !== m.seen_at ||
-        JSON.stringify(fresh.reactions) !== JSON.stringify(m.reactions) ||
-        fresh.text !== m.text) { changed = true; return { ...m, ...fresh }; }
-    return m;
+
+    const tickChanged = fresh.seen_at !== m.seen_at;
+    const rxChanged   = JSON.stringify(fresh.reactions || {}) !== JSON.stringify(m.reactions || {});
+    const textChanged = fresh.text !== m.text;
+    if (!tickChanged && !rxChanged && !textChanged) return m;
+
+    const merged = { ...m, ...fresh };
+    // surgical: touch only what moved
+    if (tickChanged) patchTicks(merged);
+    if (rxChanged)   repaintBubble(merged);
+    if (textChanged) patchText(merged);
+    return merged;
   });
-  // messages deleted by the other side disappear
+
+  // A message appearing or vanishing changes the layout, so that one
+  // does need a rebuild — but it is rare and visible on purpose.
   const alive = msgs.filter(m => m._pending || byId.has(String(m.id)));
-  if (alive.length !== msgs.length) { msgs = alive; changed = true; }
-  if (changed) renderThread({ keepScroll: !atBottom });
+  if (alive.length !== msgs.length) { msgs = alive; structural = true; }
+  if (structural) renderThread({ keepScroll: !atBottom });
+}
+
+/** Swap the delivery tick without touching the bubble. */
+function patchTicks(m) {
+  const row = $(`#threadBody .bubble-row[data-id="${cssEscape(m.id)}"]`);
+  const meta = row?.querySelector('.bubble-meta');
+  if (!meta || String(m.sender_id) !== String(me.id)) return;
+  const tick = meta.querySelector('.tick');
+  if (!tick) return;
+  const wantRead = !!m.seen_at;
+  if (tick.classList.contains('read') === wantRead) return;
+  tick.classList.toggle('read', wantRead);
+  tick.innerHTML = wantRead ? I.tickDouble : I.tick;
+}
+
+/** Replace only the text node of an edited message. */
+function patchText(m) {
+  const row = $(`#threadBody .bubble-row[data-id="${cssEscape(m.id)}"]`);
+  const span = row?.querySelector('.bub-text');
+  if (!span) return;
+  span.textContent = m.text || '';
+  const meta = row.querySelector('.bubble-meta');
+  if (m.edited_at && meta && !meta.querySelector('.edited-mark')) {
+    meta.insertAdjacentHTML('afterbegin',
+      `<span class="edited-mark t-xs" style="opacity:.7">${esc(t('dm.edited'))}</span>`);
+  }
 }
 
 /** A soft chime for an arriving message, muted if you muted the chat. */
@@ -404,7 +454,7 @@ function isOnline(p) {
 }
 
 const mediaLabel = t => ({
-  image: 'Photo', video: 'Vidéo', audio: 'Message vocal', file: 'Fichier'
+  image: t('feed.photo'), video: t('dm.video'), audio: t('dm.voice'), file: t('dm.file')
 }[t] || 'Pièce jointe');
 
 async function renderConvList() {
@@ -423,9 +473,9 @@ async function renderConvList() {
     box.innerHTML = '';
     box.append(emptyState({
       icon: I.message,
-      title: 'Chargement impossible',
-      text: err?.status === 401 ? 'Session expirée — reconnectez-vous.' : (err?.message || ''),
-      action: { label: 'Réessayer', onClick: () => renderConvList() }
+      title: t('error.loading'),
+      text: err?.status === 401 ? t('error.session') : (err?.message || ''),
+      action: { label: t('action.retry'), onClick: () => renderConvList() }
     }));
     return;
   }
@@ -437,6 +487,53 @@ async function renderConvList() {
   // notifications.
   const totalUnread = convs.reduce((n, c) => n + (c.unread || 0), 0);
   setState({ unread: { ...state.unread, messages: totalUnread } });
+}
+
+/* ------------------------------------------------------------
+   PANEL FOLD  — taken from the original app's `dm-folded`
+   The conversation list shrinks to a strip of avatars and expands
+   again when the mouse rests on it. Your original stored this in
+   localStorage; same behaviour, same key idea.
+   ------------------------------------------------------------ */
+
+const dmPrefs = scoped('dmui');
+
+function wireDmFold() {
+  const dm = $('#dm');
+  if (!dm) return;
+
+  if (dmPrefs.get('folded', false)) dm.classList.add('dm-folded');
+  syncDmFoldBtn();
+
+  on($('#btnDmFold'), 'click', () => {
+    const folded = dm.classList.toggle('dm-folded');
+    dmPrefs.set('folded', folded);
+    syncDmFoldBtn();
+  });
+}
+
+function syncDmFoldBtn() {
+  const folded = $('#dm')?.classList.contains('dm-folded');
+  const btn = $('#btnDmFold');
+  if (!btn) return;
+  btn.classList.toggle('is-folded', !!folded);
+  btn.setAttribute('aria-label', folded ? t('action.seeAll') : 'Fold');
+}
+
+/** Nothing to open: say so in the thread pane, not with a blank box. */
+function showNoConversations() {
+  const body = $('#threadBody');
+  const head = $('#threadHead');
+  if (head) head.innerHTML = '';
+  if (!body) return;
+  body.innerHTML = '';
+  body.append(emptyState({
+    icon: I.message,
+    title: t('dm.empty.title'),
+    text: t('dm.empty.text'),
+    action: { label: t('dm.new'), onClick: () => openNewConversation() }
+  }));
+  $('#composerWrap')?.classList.add('hidden');
 }
 
 /** Repaint from memory — no network, so folders switch instantly. */
@@ -463,12 +560,12 @@ function paintConvList() {
     const f = FOLDERS.find(x => x.id === folder);
     box.append(emptyState({
       icon: I.message,
-      title: folder === 'all' ? 'Aucune conversation' : `Rien dans « ${f?.label || folder} »`,
+      title: folder === 'all' ? t('dm.empty.title') : `Rien dans « ${f?.label || folder} »`,
       text: folder === 'all'
         ? 'Commencez à discuter avec les étudiants de votre faculté.'
         : 'Clic droit sur une conversation pour la classer ici.',
       action: folder === 'all'
-        ? { label: 'Nouveau message', onClick: () => openNewConversation() }
+        ? { label: t('dm.new'), onClick: () => openNewConversation() }
         : { label: 'Voir tout', onClick: () => { folder = 'all'; paintConvList(); } }
     }));
     return;
@@ -503,7 +600,7 @@ function bubbleContent(m) {
     parts.push(voiceMarkup(m));
   } else if (m.media_type === 'file') {
     parts.push(`<a class="row g2" href="${esc(safeUrl(m.media_url))}" download>
-        ${icon('paperclip', { size: 16 })}<span class="truncate">${esc(m.media_name || 'Fichier')}</span>
+        ${icon('paperclip', { size: 16 })}<span class="truncate">${esc(m.media_name || t('dm.file'))}</span>
       </a>`);
   }
 
@@ -573,8 +670,8 @@ function bubbleRow(m, prev, next) {
   // hover tools — the web replacement for long-press
   actionBar(row, [
     { icon: I.smile, tip: 'Réagir', onClick: e => openReactions(e.currentTarget, m) },
-    { icon: I.reply, tip: 'Répondre', onClick: () => startReply(m) },
-    { icon: I.moreH, tip: 'Plus', onClick: e => msgMenu(e, m) }
+    { icon: I.reply, tip: t('action.reply'), onClick: () => startReply(m) },
+    { icon: I.moreH, tip: t('action.more'), onClick: e => msgMenu(e, m) }
   ], { side: mine ? 'left' : 'right' });
 
   on(row, 'contextmenu', e => msgMenu(e, m));
@@ -596,7 +693,7 @@ function renderThread({ keepScroll = false } = {}) {
     body.append(emptyState({
       icon: I.message,
       title: 'Dites bonjour',
-      text: `Aucun message avec ${peer?.full_name || ''} pour l'instant.`
+      text: t('dm.noMessages', { name: peer?.full_name || '' })
     }));
     return;
   }
@@ -808,7 +905,7 @@ function renderInfoPanel() {
         <div class="av xl" style="background:${avatarColor(peer.id)}">${esc(initials(peer.full_name))}</div>
         <div class="tg-hero-name">${esc(pref.nickname || peer.full_name)}</div>
         ${pref.nickname ? `<div class="t-xs t-dim2">${esc(peer.full_name)}</div>` : ''}
-        <div class="t-sm t-dim">${peer.online ? 'En ligne' : 'Vu récemment'}</div>
+        <div class="t-sm t-dim">${peer.online ? t('dm.online') : t('dm.offline')}</div>
         <div class="tg-actions">
           <button class="tg-action" id="aProfile" data-tip="Profil">${I.user}</button>
           <button class="tg-action${pref.muted ? ' on' : ''}" id="aMute" data-tip="${pref.muted ? 'Réactiver' : 'Couper le son'}">${I.mute}</button>
@@ -819,7 +916,7 @@ function renderInfoPanel() {
 
       <!-- identity -->
       <section class="tg-sec">
-        ${sectionTitle('Infos')}
+        ${sectionTitle(t('dm.info'))}
         <div class="tg-row"><span class="tg-ic">${icon('user', { size: 16 })}</span>
           <div class="grow"><div class="t-sm">@${esc(peer.username || '')}</div>
           <div class="t-xs t-dim">Nom d'utilisateur</div></div>
@@ -835,7 +932,7 @@ function renderInfoPanel() {
 
       <!-- nickname -->
       <section class="tg-sec">
-        ${sectionTitle('Surnom', 'Vous seul le voyez')}
+        ${sectionTitle(t('dm.nickname'), 'Vous seul le voyez')}
         <input class="input" id="nickInput" placeholder="Ajouter un surnom…" value="${esc(pref.nickname || '')}">
       </section>
 
@@ -863,21 +960,21 @@ function renderInfoPanel() {
                  <img src="${esc(safeUrl(m.media_url))}" alt="" loading="lazy">
                  ${m.media_type === 'video' ? `<span class="info-tile-play">${icon('play', { size: 15 })}</span>` : ''}
                </button>`).join('')}</div>`
-          : `<div class="tg-empty">${icon('image', { size: 22 })}<span>Aucun média</span></div>`}
+          : `<div class="tg-empty">${icon('image', { size: 22 })}<span>${t('dm.noMedia')}</span></div>`}
       </section>
 
       <!-- files -->
       <section class="tg-sec">
-        ${sectionTitle(`Fichiers${files.length ? ' · ' + files.length : ''}`)}
+        ${sectionTitle(`${t('dm.files')}${files.length ? ' · ' + files.length : ''}`)}
         ${files.length
           ? files.map(m => `<a class="tg-row" href="${esc(safeUrl(m.media_url))}" download>
               <span class="tg-ic">${icon('paperclip', { size: 16 })}</span>
               <div class="grow" style="min-width:0">
-                <div class="t-sm truncate">${esc(m.media_name || 'Fichier')}</div>
+                <div class="t-sm truncate">${esc(m.media_name || t('dm.file'))}</div>
                 <div class="t-xs t-dim">${timeAgo(m.created_at)}</div>
               </div>
               <span class="tg-ic">${icon('download', { size: 15 })}</span></a>`).join('')
-          : `<div class="tg-empty">${icon('paperclip', { size: 22 })}<span>Aucun fichier</span></div>`}
+          : `<div class="tg-empty">${icon('paperclip', { size: 22 })}<span>${t('dm.noFiles')}</span></div>`}
       </section>
 
       <!-- links -->
@@ -890,7 +987,7 @@ function renderInfoPanel() {
                 <div class="t-sm truncate">${esc(m._url.replace(/^https?:\/\//, ''))}</div>
                 <div class="t-xs t-dim">${timeAgo(m.created_at)}</div>
               </div></a>`).join('')
-          : `<div class="tg-empty">${icon('link', { size: 22 })}<span>Aucun lien</span></div>`}
+          : `<div class="tg-empty">${icon('link', { size: 22 })}<span>${t('dm.noLinks')}</span></div>`}
       </section>
 
       <!-- voice -->
@@ -925,15 +1022,15 @@ function renderInfoPanel() {
         </button>
         <button class="tg-row tg-btn" id="optDelete">
           <span class="tg-ic">${icon('trash', { size: 16 })}</span>
-          <span class="grow t-sm" style="text-align:start">Supprimer la conversation</span>
+          <span class="grow t-sm" style="text-align:start">${t('dm.deleteConv')}</span>
         </button>
         <button class="tg-row tg-btn" id="optBlock">
           <span class="tg-ic">${icon('block', { size: 16 })}</span>
-          <span class="grow t-sm" style="text-align:start">Bloquer ${esc(peer.full_name)}</span>
+          <span class="grow t-sm" style="text-align:start">${esc(t('dm.blockUser', { name: peer.full_name }))}</span>
         </button>
         <button class="tg-row tg-btn" id="optReport">
           <span class="tg-ic">${icon('flag', { size: 16 })}</span>
-          <span class="grow t-sm" style="text-align:start">Signaler</span>
+          <span class="grow t-sm" style="text-align:start">${t('action.report')}</span>
         </button>
       </section>
     </div>`;
@@ -959,7 +1056,7 @@ function wireInfoPanel(pref) {
 
   on($('#copyUser'), 'click', async () => {
     const { copyText } = await import('../core/utils_sm.js');
-    toast(await copyText('@' + peer.username) ? 'Copié' : 'Copie impossible', 'ok');
+    toast(await copyText('@' + peer.username) ? t('action.copied') : 'Copie impossible', 'ok');
   });
 
   const nick = $('#nickInput');
@@ -1012,9 +1109,9 @@ function wireInfoPanel(pref) {
 
   on($('#optDelete'), 'click', async () => {
     if (!await confirmDialog({
-      title: 'Supprimer la conversation ?',
+      title: t('dm.deleteConvQ'),
       message: `La conversation avec ${peer.full_name} sera supprimée définitivement.`,
-      confirmLabel: 'Supprimer', danger: true
+      confirmLabel: t('action.delete'), danger: true
     })) return;
     toggleInfo(false);
     $('#dm')?.removeAttribute('data-open');
@@ -1024,9 +1121,9 @@ function wireInfoPanel(pref) {
 
   on($('#optBlock'), 'click', async () => {
     if (!await confirmDialog({
-      title: `Bloquer ${peer.full_name} ?`,
+      title: t('dm.blockQ', { name: peer.full_name }),
       message: 'Cette personne ne pourra plus vous écrire.',
-      confirmLabel: 'Bloquer', danger: true
+      confirmLabel: t('action.block'), danger: true
     })) return;
     try {
       const { profileApi } = await import('../core/api_sm.js');
@@ -1087,7 +1184,7 @@ function openThreadSearch() {
   }, 220);
 
   on(input, 'input', run);
-  const m = modal({ title: 'Rechercher', body: el('div', { class: 'col g3' }, input, results) });
+  const m = modal({ title: t('action.search'), body: el('div', { class: 'col g3' }, input, results) });
 
   on(results, 'click', e => {
     const btn = e.target.closest('[data-goto]');
@@ -1172,7 +1269,7 @@ async function forwardMessage(m) {
 
   on(search, 'input', refresh);
   list.innerHTML = skeletonList(3, 'conv');
-  const dlg = modal({ title: 'Transférer', body: el('div', { class: 'col g3' }, search, list) });
+  const dlg = modal({ title: t('dm.forward'), body: el('div', { class: 'col g3' }, search, list) });
 
   on(list, 'click', async e => {
     const btn = e.target.closest('[data-to]');
@@ -1212,7 +1309,7 @@ function contactRow(u) {
   const tag = u.i_follow && u.follows_me ? 'Vous vous suivez'
             : u.i_follow               ? 'Vous le suivez'
             : u.follows_me             ? 'Vous suit'
-            : u.is_private             ? 'Compte privé' : '';
+            : u.is_private             ? t('profile.privateAccount') : '';
   return `<button class="tg-row contact-row" data-to="${esc(u.id)}" style="text-align:start">
       ${u.avatar_url
         ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
@@ -1248,7 +1345,7 @@ export async function openNewConversation(prefill = '') {
       list.innerHTML = `<div class="tg-empty failed">
           ${icon('close', { size: 22 })}
           <span>${esc(err?.status === 401
-            ? 'Session expirée — reconnectez-vous.'
+            ? t('error.session')
             : (err?.message || 'Chargement impossible.'))}</span>
           <button class="btn btn-outline btn-sm" id="contactRetry">Réessayer</button>
         </div>`;
@@ -1260,7 +1357,7 @@ export async function openNewConversation(prefill = '') {
   on(search, 'input', debounced);
 
   const dlg = modal({
-    title: 'Nouveau message',
+    title: t('dm.new'),
     body: el('div', { class: 'col g3' }, search, list)
   });
 
@@ -1321,30 +1418,30 @@ export function toggleInfo(force) {
 function msgMenu(e, m) {
   const mine = m.sender_id === me.id;
   contextMenu(e, [
-    { title: 'Message' },
-    { label: 'Répondre',  icon: I.reply,   kbd: 'R', onClick: () => startReply(m) },
+    { title: t('action.message') },
+    { label: t('action.reply'),  icon: I.reply,   kbd: 'R', onClick: () => startReply(m) },
     { label: 'Réagir',    icon: I.smile,   onClick: () => openReactions(e.target, m) },
-    { label: 'Copier',    icon: I.copy,    kbd: 'C', onClick: () => copyMsg(m) },
-    { label: 'Transférer', icon: I.forward, onClick: () => forwardMessage(m) },
-    mine ? { label: 'Modifier', icon: I.edit, onClick: () => startEdit(m) } : null,
+    { label: t('action.copy'),    icon: I.copy,    kbd: 'C', onClick: () => copyMsg(m) },
+    { label: t('dm.forward'), icon: I.forward, onClick: () => forwardMessage(m) },
+    mine ? { label: t('action.edit'), icon: I.edit, onClick: () => startEdit(m) } : null,
     { sep: true },
     mine
-      ? { label: 'Supprimer', icon: I.trash, danger: true, onClick: () => removeMsg(m) }
-      : { label: 'Signaler',  icon: I.flag,  danger: true, onClick: () => toast('Signalement envoyé', 'ok') }
+      ? { label: t('action.delete'), icon: I.trash, danger: true, onClick: () => removeMsg(m) }
+      : { label: t('action.report'),  icon: I.flag,  danger: true, onClick: () => toast('Signalement envoyé', 'ok') }
   ]);
 }
 
 async function copyMsg(m) {
   const { copyText } = await import('../core/utils_sm.js');
   const okCopy = await copyText(m.text || m.media_url || '');
-  toast(okCopy ? 'Copié' : 'Copie impossible', okCopy ? 'ok' : 'err');
+  toast(okCopy ? t('action.copied') : 'Copie impossible', okCopy ? 'ok' : 'err');
 }
 
 async function removeMsg(m) {
   if (!await confirmDialog({
     title: 'Supprimer ce message ?',
     message: 'Il sera retiré pour tout le monde.',
-    confirmLabel: 'Supprimer', danger: true
+    confirmLabel: t('action.delete'), danger: true
   })) return;
   const keep = msgs;
   msgs = msgs.filter(x => x.id !== m.id);
@@ -1366,7 +1463,7 @@ async function removeMsg(m) {
 
 function startReply(m) {
   replyTo = m; editing = null;
-  showContextBar('Réponse à', m.text || mediaLabel(m.media_type), I.reply);
+  showContextBar(t('dm.replyTo'), m.text || mediaLabel(m.media_type), I.reply);
   $('#composerInput')?.focus();
 }
 
@@ -1374,7 +1471,7 @@ function startEdit(m) {
   editing = m; replyTo = null;
   const input = $('#composerInput');
   if (input) { input.value = m.text || ''; input.focus(); autoGrow(input); syncSendState(); }
-  showContextBar('Modification', m.text || '', I.edit);
+  showContextBar(t('dm.editing'), m.text || '', I.edit);
 }
 
 function showContextBar(label, text, ic) {
@@ -1727,7 +1824,7 @@ export async function openThread(peerId) {
       <div class="av sm" style="background:${avatarColor(peer.id)}" data-online="${!!peer.online}">${esc(initials(peer.full_name))}</div>
       <div class="grow" style="min-width:0">
         <div class="t-bold truncate">${esc(pref.nickname || peer.full_name)}</div>
-        <div class="presence">${peer.online ? 'En ligne' : 'Vu récemment'}</div>
+        <div class="presence">${peer.online ? t('dm.online') : t('dm.offline')}</div>
       </div>
       ${pref.muted ? `<span class="head-muted" data-tip="Notifications coupées">${icon('mute', { size: 15 })}</span>` : ''}`;
 
@@ -1758,7 +1855,7 @@ export async function openThread(peerId) {
     $('#threadBody').append(emptyState({
       icon: I.message, title: 'Conversation indisponible',
       text: err?.message || 'Réessayez dans un instant.',
-      action: { label: 'Réessayer', onClick: () => openThread(peerId) }
+      action: { label: t('action.retry'), onClick: () => openThread(peerId) }
     }));
     return;
   }
@@ -1794,7 +1891,8 @@ function markup() {
           <span class="input-icon">${icon('search', { size: 16 })}</span>
           <input class="input has-icon" id="convSearch" placeholder="Rechercher…" aria-label="Rechercher une conversation">
         </div>
-        <button class="icon-btn" id="btnNewConv" data-tip="Nouveau message">${I.plus}</button>
+        <button class="icon-btn" id="btnNewConv" data-tip="${esc(t('dm.new'))}">${I.plus}</button>
+        <button class="icon-btn dm-fold-btn" id="btnDmFold" aria-label="Fold">${I.chevron}</button>
       </div>
       <div class="dm-list-scroll" id="convScroll"></div>
     </section>
@@ -1811,7 +1909,7 @@ function markup() {
         <div class="composer" id="composer" data-has-text="false">
           <button class="icon-btn" id="btnPhoto" data-tip="Photo">${I.image}</button>
           <button class="icon-btn" id="btnGif" data-tip="GIF">${I.gif}</button>
-          <button class="icon-btn" id="btnFile" data-tip="Fichier">${I.paperclip}</button>
+          <button class="icon-btn" id="btnFile" data-tip="${esc(t('dm.file'))}">${I.paperclip}</button>
           <button class="icon-btn" id="btnEmoji" data-tip="Emoji">${I.smile}</button>
           <input type="file" id="filePick" hidden multiple>
           <input type="file" id="imgPick" hidden multiple accept="image/*">
@@ -1838,6 +1936,7 @@ export function initMessages(mountFn) {
     wireDropZone();
 
     on($('#btnNewConv'), 'click', openNewConversation);
+    wireDmFold();
 
     on($('#convSearch'), 'input', debounce(e => {
       const q = e.target.value.trim().toLowerCase();
@@ -1848,7 +1947,19 @@ export function initMessages(mountFn) {
     }, 160));
 
     await renderConvList();
-    if (arg) openThread(arg);
+
+    // OPEN A CONVERSATION IMMEDIATELY.
+    // Before this, landing on /messages rendered the shell and
+    // stopped — an empty grey panel until you happened to click a
+    // row. No messaging app does that. Pick, in order: the one asked
+    // for in the URL, the one you had open last, then the most
+    // recent conversation.
+    const wanted = arg
+      || (convs.some(c => String(c.peer.id) === String(state.activeChat)) ? state.activeChat : null)
+      || convs[0]?.peer?.id;
+
+    if (wanted) await openThread(wanted);
+    else showNoConversations();
   });
 
   // Leaving the screen must stop the poll; a chat that keeps querying

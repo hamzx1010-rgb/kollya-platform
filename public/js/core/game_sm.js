@@ -26,6 +26,7 @@
 import { db } from './db_sm.js';
 import { me, emit, on as onEvent, scoped } from './store_sm.js';
 import { toast } from './ui_sm.js';
+import { t } from './i18n_sm.js';
 
 /* ------------------------------------------------------------
    THE NUMBERS
@@ -79,14 +80,23 @@ export function levelFromXp(xp) {
    is per student and lives in Postgres.
    ------------------------------------------------------------ */
 
+/**
+ * Labels are i18n KEYS resolved at render time, not text.
+ * A quest stored with a French label would still read French after
+ * the student switches to English — the label has to be looked up
+ * every time it is drawn, not once when the pool is defined.
+ */
 export const QUEST_POOL = [
-  { id: 'visit',   label: 'Ouvrir Koliya',            target: 1, icon: 'home' },
-  { id: 'post',    label: 'Publier une fois',         target: 1, icon: 'edit' },
-  { id: 'comment', label: 'Commenter 3 publications', target: 3, icon: 'comment' },
-  { id: 'like',    label: 'Aimer 5 publications',     target: 5, icon: 'fire' },
-  { id: 'answer',  label: 'Répondre à une question',  target: 1, icon: 'help' },
-  { id: 'story',   label: 'Publier une story',        target: 1, icon: 'camera' }
+  { id: 'visit',   key: 'quest.visit',   target: 1, icon: 'home' },
+  { id: 'post',    key: 'quest.post',    target: 1, icon: 'edit' },
+  { id: 'comment', key: 'quest.comment', target: 3, icon: 'comment' },
+  { id: 'like',    key: 'quest.like',    target: 5, icon: 'fire' },
+  { id: 'answer',  key: 'quest.answer',  target: 1, icon: 'help' },
+  { id: 'story',   key: 'quest.story',   target: 1, icon: 'camera' }
 ];
+
+/** The human label for a quest, in the current language. */
+export const questLabel = q => t(q.key || `quest.${q.id}`);
 
 export const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -234,7 +244,7 @@ export async function trackQuest(id, amount = 1) {
       // The hub owns the presentation; the engine only reports facts.
       emit('game:quest-done', {
         id: q.id,
-        label: q.label,
+        label: questLabel(q),
         remaining: quests.filter(x => !x.done).length
       });
     }

@@ -113,28 +113,45 @@ export function onVisible(node, cb, { threshold = 0.5, once = true } = {}) {
 const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 
 /** "now" · "5m" · "3h" · "2d" · "12 Mar" */
-export function timeAgo(ts, locale = 'fr') {
+/**
+ * Relative time, in whatever language is active.
+ *
+ * These used to default to 'fr' and every call site omitted the
+ * argument, so dates stayed French no matter what the student chose.
+ * The locale is now read from <html lang>, which i18n_sm keeps
+ * current — no import, so there is no cycle between utils and i18n.
+ */
+export const activeLocale = () =>
+  (typeof document !== 'undefined' && document.documentElement.lang) || 'en';
+
+export function timeAgo(ts, locale = activeLocale()) {
   const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
   const d = Date.now() - t;
-  if (d < MIN)        return locale === 'ar' ? 'الآن' : 'now';
-  if (d < HOUR)       return Math.floor(d / MIN) + 'm';
-  if (d < DAY)        return Math.floor(d / HOUR) + 'h';
-  if (d < DAY * 7)    return Math.floor(d / DAY) + 'd';
+  const unit = { ar: { now:'الآن', m:' د', h:' س', d:' ي' },
+                 fr: { now:"à l'instant", m:' min', h:' h', d:' j' },
+                 en: { now:'now', m:'m', h:'h', d:'d' } }[locale] ||
+               { now:'now', m:'m', h:'h', d:'d' };
+  if (d < MIN)     return unit.now;
+  if (d < HOUR)    return Math.floor(d / MIN) + unit.m;
+  if (d < DAY)     return Math.floor(d / HOUR) + unit.h;
+  if (d < DAY * 7) return Math.floor(d / DAY) + unit.d;
   return new Date(t).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 }
 
 /** "14:32" */
-export function clockTime(ts, locale = 'fr') {
+export function clockTime(ts, locale = activeLocale()) {
   return new Date(ts).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 }
 
 /** "Aujourd'hui" · "Hier" · "lundi" · "12 mars 2026" — for chat date separators */
-export function dayLabel(ts, locale = 'fr') {
+export function dayLabel(ts, locale = activeLocale()) {
   const d = new Date(ts), now = new Date();
   const strip = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = (strip(now) - strip(d)) / DAY;
-  if (diff === 0) return locale === 'ar' ? 'اليوم' : "Aujourd'hui";
-  if (diff === 1) return locale === 'ar' ? 'أمس'  : 'Hier';
+  const TODAY = { ar: 'اليوم', fr: "Aujourd'hui", en: 'Today' };
+  const YEST  = { ar: 'أمس',   fr: 'Hier',        en: 'Yesterday' };
+  if (diff === 0) return TODAY[locale] || TODAY.en;
+  if (diff === 1) return YEST[locale]  || YEST.en;
   if (diff < 7)   return d.toLocaleDateString(locale, { weekday: 'long' });
   return d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
 }

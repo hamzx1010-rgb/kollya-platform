@@ -109,12 +109,12 @@
   <!-- ---- NAV RAIL ----
        No fold button. It collapses on its own when you open a
        conversation and expands when the mouse comes near. -->
-  <nav class="nav-rail" id="rail" aria-label="Navigation principale">
+  <nav class="nav-rail" id="rail" aria-label="Navigation" data-i18n-attr="aria-label:nav.main">
     <div class="rail-logo">
       <span class="mark">K</span>
       <span class="word">Koliya</span>
       <!-- Fold, like the original app. A state you own, remembered. -->
-      <button class="icon-btn sm rail-fold" id="btnFold" aria-label="Collapse">
+      <button class="icon-btn sm rail-fold" id="btnFold" data-i18n-attr="aria-label:nav.collapse">
         <i data-icon="chevron"></i>
       </button>
     </div>
@@ -122,52 +122,52 @@
     <div class="rail-nav" id="railNav">
       <a class="nav-item primary" href="#/feed" data-nav="feed">
         <i data-icon="home"></i>
-        <span class="lbl">Accueil</span>
+        <span class="lbl" data-i18n="nav.home"></span>
       </a>
       <a class="nav-item primary" href="#/explore" data-nav="explore">
         <i data-icon="compass"></i>
-        <span class="lbl">Explorer</span>
+        <span class="lbl" data-i18n="nav.explore"></span>
       </a>
       <a class="nav-item primary" href="#/messages" data-nav="messages">
         <i data-icon="message"></i>
-        <span class="lbl">Messages</span>
+        <span class="lbl" data-i18n="nav.messages"></span>
         <span class="count hidden" id="badgeMessages">0</span>
       </a>
       <a class="nav-item primary" href="#/notifications" data-nav="notifications">
         <i data-icon="bell"></i>
-        <span class="lbl">Notifications</span>
+        <span class="lbl" data-i18n="nav.notifications"></span>
         <span class="count hidden" id="badgeNotifs">0</span>
       </a>
       <a class="nav-item primary" href="#/hub" data-nav="hub">
         <i data-icon="trophy"></i>
-        <span class="lbl">Hub</span>
+        <span class="lbl" data-i18n="nav.hub"></span>
       </a>
       <a class="nav-item" href="#/channels" data-nav="channels">
         <i data-icon="hash"></i>
-        <span class="lbl">Canaux</span>
+        <span class="lbl" data-i18n="nav.channels"></span>
       </a>
       <a class="nav-item" href="#/events" data-nav="events">
         <i data-icon="calendar"></i>
-        <span class="lbl">Événements</span>
+        <span class="lbl" data-i18n="nav.events"></span>
       </a>
       <a class="nav-item" href="#/qa" data-nav="qa">
         <i data-icon="help"></i>
-        <span class="lbl">Questions</span>
+        <span class="lbl" data-i18n="nav.qa"></span>
       </a>
       <a class="nav-item" href="#/saved" data-nav="saved">
         <i data-icon="bookmark"></i>
-        <span class="lbl">Enregistrés</span>
+        <span class="lbl" data-i18n="nav.saved"></span>
       </a>
     </div>
 
     <div class="rail-compose">
       <button class="btn btn-primary btn-full btn-round" id="btnCompose" data-tip="N">
         <i data-icon="plus"></i>
-        <span class="lbl">Publier</span>
+        <span class="lbl" data-i18n="nav.compose"></span>
       </button>
     </div>
 
-    <button class="rail-foot" id="railMe" aria-label="Mon profil">
+    <button class="rail-foot" id="railMe" data-i18n-attr="aria-label:nav.profile">
       <div class="av sm" id="myAvatar">?</div>
       <div class="who grow col" style="align-items:flex-start;line-height:1.2">
         <span class="t-bold t-sm truncate" id="myName">—</span>
@@ -179,7 +179,7 @@
   <!-- ---- MAIN ---- -->
   <main class="main" id="main">
     <header class="topbar blur-bar">
-      <button class="icon-btn back-btn" id="btnBack" aria-label="Retour" data-tip="Alt+←">
+      <button class="icon-btn back-btn" id="btnBack" data-i18n-attr="aria-label:action.back" data-tip="Alt+←">
         <i data-icon="arrowLeft"></i>
       </button>
       <span class="topbar-title" id="topbarTitle">Accueil</span>
@@ -189,13 +189,13 @@
         <button class="icon-btn lang-btn" id="btnLang" aria-label="Language" data-tip="Language">
           <span class="lang-code" id="langCode">EN</span>
         </button>
-        <button class="icon-btn" id="btnSearch" aria-label="Rechercher" data-tip="Ctrl+K">
+        <button class="icon-btn" id="btnSearch" data-i18n-attr="aria-label:action.search" data-tip="Ctrl+K">
           <i data-icon="search"></i>
         </button>
-        <button class="icon-btn" id="btnTheme" aria-label="Changer le thème">
+        <button class="icon-btn" id="btnTheme" data-i18n-attr="aria-label:settings.theme">
           <i data-icon="moon"></i>
         </button>
-        <button class="icon-btn" id="btnHelp" aria-label="Raccourcis clavier" data-tip="Ctrl+/">
+        <button class="icon-btn" id="btnHelp" data-i18n-attr="aria-label:nav.shortcuts" data-tip="Ctrl+/">
           <i data-icon="keyboard"></i>
         </button>
       </div>
@@ -207,7 +207,7 @@
   </main>
 
   <!-- ---- RIGHT RAIL: only appears above 1180px ---- -->
-  <aside class="right-rail" id="rightRail" aria-label="Panneau latéral"></aside>
+  <aside class="right-rail" id="rightRail" data-i18n-attr="aria-label:nav.sidePanel"></aside>
 </div>
 
 <!-- ============ OVERLAY LAYERS ============ -->

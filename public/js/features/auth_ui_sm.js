@@ -15,6 +15,7 @@
  */
 
 import { $, $$, el, on, esc } from '../core/utils_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast } from '../core/ui_sm.js';
 import {
@@ -60,7 +61,7 @@ function signinMarkup() {
       <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">Se connecter</button>
     </form>
     <p class="auth-switch">Pas encore de compte ?
-      <button class="auth-link" id="toSignup">Créer un compte</button></p>`;
+      <button class="auth-link" id="toSignup">${t('auth.createAccount')}</button></p>`;
 }
 
 function signupMarkup() {
@@ -83,7 +84,7 @@ function signupMarkup() {
       ${field({ id:'inPass', label:'Mot de passe *', type:'password',
                 placeholder:'8 caractères minimum', autocomplete:'new-password' })}
       <div class="pw-meter" id="pwMeter"><i></i><i></i><i></i><i></i></div>
-      <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">Créer mon compte</button>
+      <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">${t('auth.createMine')}</button>
       <p class="t-xs t-dim2" style="text-align:center">
         Votre compte sera validé par un administrateur avant activation.
       </p>
@@ -155,7 +156,7 @@ export function renderAuth(onSuccess) {
           <span class="auth-mark">K</span>
           <div>
             <div class="auth-title">Koliya</div>
-            <div class="t-xs t-dim">${mode === 'signin' ? 'Bon retour parmi nous' : 'Rejoignez votre campus'}</div>
+            <div class="t-xs t-dim">${mode === 'signin' ? t('auth.welcomeBack') : t('auth.joinCampus')}</div>
           </div>
         </div>
         <div class="auth-error hidden" id="authError"></div>

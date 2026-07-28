@@ -123,8 +123,11 @@ cards[0].dispatchEvent(new window.MouseEvent('contextmenu',{bubbles:true,clientX
 await new Promise(r=>setTimeout(r,20));
 const menu=D.querySelector('.menu');
 ok('right-click opens menu', !!menu);
-ok('menu has copy link', menu.textContent.includes('Copier le lien'));
-ok('menu has report or delete', /Signaler|Supprimer/.test(menu.textContent));
+ok('menu has copy link', /Copy link|Copier le lien|نسخ/.test(menu.textContent));
+// language-independent: the menu offers a destructive action
+ok('menu has report or delete',
+   !!menu.querySelector('.danger, [data-danger]') ||
+   /Signaler|Supprimer|Report|Delete|إبلاغ|حذف/.test(menu.textContent));
 UI.closeMenu();
 
 // comments
