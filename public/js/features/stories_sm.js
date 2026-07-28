@@ -119,7 +119,7 @@ export async function openStoryComposer() {
           const row = await api.createStory({ file: edited, text: caption.value.trim() });
           act('story', row?.id);
           m.close();
-          toast('Story publiée — visible 24 h', 'ok');
+          toast(t('toast.storyPosted'), 'ok');
           done(row);
         } catch (err) {
           btn.disabled = false;
@@ -143,7 +143,7 @@ export async function openStories(startUserId) {
   if (viewer) return;
   const groups = await loadStories();
   if (!groups.length) {
-    toast('Aucune story pour le moment', {
+    toast(t('toast.noStories'), {
       action: { label: t('empty.createOne'), fn: () => openStoryComposer() }
     });
     return;
@@ -158,7 +158,7 @@ export async function openStories(startUserId) {
 
   const root = el('div', { class: 'sv', role: 'dialog', 'aria-modal': 'true', tabindex: '-1' });
   root.innerHTML = `
-    <button class="sv-close icon-btn" aria-label="Fermer">${I.close}</button>
+    <button class="sv-close icon-btn" aria-label="${t('action.close')}">${I.close}</button>
     <button class="sv-nav prev" aria-label=t('a11y.prev')><span>${I.chevron}</span></button>
     <button class="sv-nav next" aria-label="Suivant"><span>${I.chevron}</span></button>
     <div class="sv-stage">
@@ -169,7 +169,7 @@ export async function openStories(startUserId) {
         <div class="sv-reacts" id="svReacts"></div>
         <div class="sv-reply">
           <input class="input" id="svReply" placeholder=t('story.replyPh') aria-label=t('story.replyAria')>
-          <button class="icon-btn btn-primary" id="svSend" aria-label="Envoyer">${I.send}</button>
+          <button class="icon-btn btn-primary" id="svSend" aria-label="${esc(t('action.send'))}">${I.send}</button>
         </div>
       </footer>
     </div>`;
@@ -199,7 +199,7 @@ export async function openStories(startUserId) {
         <div class="t-xs" style="opacity:.75">${timeAgo(item.created_at)}</div>
       </div>
       ${isMine ? `<button class="icon-btn sv-viewers" id="svViewers" aria-label="Vues">${I.user}</button>
-                  <button class="icon-btn sv-del" id="svDelete" aria-label="Supprimer">${I.trash}</button>` : ''}`;
+                  <button class="icon-btn sv-del" id="svDelete" aria-label="${esc(t('action.delete'))}">${I.trash}</button>` : ''}`;
 
     // A story that cannot load says so, instead of a black rectangle
     // with a spinner that never resolves.
@@ -310,10 +310,10 @@ export async function openStories(startUserId) {
   async function sendReply(text) {
     const g = groups[gi];
     if (!text.trim()) return;
-    if (String(g.user_id) === String(me.id)) { toast('C\'est votre propre story'); return; }
+    if (String(g.user_id) === String(me.id)) { toast(t('toast.ownStory')); return; }
     try {
       await api.reply(g.user_id, text.trim());
-      toast(`Réponse envoyée à ${g.user.full_name}`, 'ok');
+      toast(t('toast.replySent', { name: g.user.full_name }), 'ok');
     } catch { toast(t('toast.replyFailed'), 'err'); }
   }
 

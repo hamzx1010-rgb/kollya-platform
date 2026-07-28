@@ -83,7 +83,7 @@ function headerMarkup(u) {
                         data-request="${u.willBeRequest ? '1' : ''}">
                   ${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}
                 </button>` : ''}
-           <button class="icon-btn" id="pfMore" data-tip="Plus">${I.moreH}</button>`}
+           <button class="icon-btn" id="pfMore" data-tip="${esc(t('action.more'))}">${I.moreH}</button>`}
     </div>
   </div>
 
@@ -94,7 +94,7 @@ function headerMarkup(u) {
       ${u.role === 'admin' ? '<span class="pill on">Admin</span>' : ''}
       <span id="pfRank"></span>
     </div>
-    <div class="t-sm t-dim">@${esc(u.username)} · ${esc(u.faculty || '')}</div>
+    <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div>
     ${u.bio ? `<p class="pf-bio">${richText(u.bio)}</p>` : ''}
     ${profileLinks(u)}
 
@@ -216,7 +216,7 @@ async function renderTabBody(u) {
           : `<div class="av" style="background:${avatarColor(author.id)}">${esc(initials(author.full_name))}</div>`}
         <div class="grow" style="min-width:0">
           <div class="row g2"><span class="post-name">${esc(author.full_name)}</span>
-          <span class="post-handle">@${esc(author.username)}</span>
+          <span class="post-handle handle">@${esc(author.username)}</span>
           <span class="post-handle">·</span><span class="post-time">${timeAgo(p.created_at)}</span></div>
         </div>
       </div>
@@ -322,7 +322,7 @@ function wireActions(u) {
   on($('#pfMore'), 'click', e => contextMenu(e, [
     { title: esc(u.full_name) },
     { label: t('menu.copyLink'), icon: I.link,
-      onClick: async () => toast(await copyText(`${location.origin}/#/profile/${u.username}`) ? t('toast.linkCopied') : 'Échec', 'ok') },
+      onClick: async () => toast(await copyText(`${location.origin}/#/profile/${u.username}`) ? t('toast.linkCopied') : t('toast.failed'), 'ok') },
     { label: 'Couper les notifications', icon: I.mute, onClick: () => toast(t('toast.notifMuted'), 'ok') },
     { sep: true },
     { label: t('action.block'), icon: I.block, danger: true, onClick: async () => {
@@ -368,11 +368,12 @@ function wireActions(u) {
       if (target === 'avatar' && avNode) avNode.innerHTML = `<img src="${localUrl}" alt="">`;
       if (target === 'banner' && coverNode) coverNode.style.background = `url(${localUrl}) center/cover`;
 
-      const t = toast('Enregistrement de l\'image…', { duration: 30000 });
+      // NOT `const t` — that would shadow the translation function t()
+      const saving = toast(t('toast.savingImage'), { duration: 30000 });
       try {
         const updated = await api.updateProfile({},
           target === 'avatar' ? { avatarFile: out } : { bannerFile: out });
-        t?.close?.();
+        saving?.close?.();
         Object.assign(u, updated);
         cachePeople(updated);
         // repaint from the stored value, so what you see is what is saved
@@ -382,9 +383,9 @@ function wireActions(u) {
         if (target === 'banner' && coverNode && updated.banner_url) {
           coverNode.style.background = `url('${esc(safeUrl(updated.banner_url))}') center/cover`;
         }
-        toast(target === 'avatar' ? 'Photo de profil mise à jour' : 'Couverture mise à jour', 'ok');
+        toast(t(target === 'avatar' ? 'toast.avatarUpdated' : 'toast.bannerUpdated'), 'ok');
       } catch (err) {
-        t?.close?.();
+        saving?.close?.();
         u.avatar_url = prevAvatar;
         u.banner_url = prevBanner;
         if (target === 'avatar' && avNode) {
@@ -437,7 +438,7 @@ async function openPeopleList(kind, u) {
           ? `<span class="av sm"><img src="${esc(safeUrl(p.avatar_url))}" alt=""></span>`
           : `<span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>`}
         <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
-        <div class="t-xs t-dim">@${esc(p.username)} · ${esc(p.faculty || '')}</div></div>
+        <div class="t-xs t-dim"><span class="handle">@${esc(p.username)}</span> · ${esc(p.faculty || '')}</div></div>
       </a>`).join('')
     : `<div class="tg-empty">${icon('user', { size: 22 })}<span>Personne pour l'instant</span></div>`;
 }
@@ -603,7 +604,7 @@ function openEditProfile(u) {
 
   async function submit() {
     const username = userInput.value.trim().toLowerCase();
-    if (nameInput.value.trim().length < 2) { toast('Le nom est trop court', 'err'); nameInput.focus(); return; }
+    if (nameInput.value.trim().length < 2) { toast(t('toast.nameTooShort2'), 'err'); nameInput.focus(); return; }
 
     // Changing your display name twice in 15 days confuses everyone
     // who knows you. Warn with the real number of days, then allow —
@@ -624,7 +625,7 @@ function openEditProfile(u) {
       }
     }
     if (!/^[a-z0-9._]{3,24}$/.test(username)) {
-      toast("Nom d'utilisateur invalide (3–24, lettres, chiffres, . et _)", 'err');
+      toast(t('toast.badUsername'), 'err');
       userInput.focus();
       return;
     }

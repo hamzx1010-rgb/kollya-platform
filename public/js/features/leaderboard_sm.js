@@ -132,11 +132,11 @@ function render() {
       <span class="lb-rank t-mono">${mine.rank}</span>
       <span class="av sm" style="background:${avatarColor(mine.id)}">${esc(initials(mine.full_name))}</span>
       <span class="grow" style="min-width:0;text-align:start">
-        <span class="t-sm t-bold">Votre position</span>
-        <span class="t-xs t-dim">${mine.rank === 1 ? t('hub.leading') : `${mine.rank - 1} devant vous`}</span>
+        <span class="t-sm t-bold">${esc(t('lb.yourRank'))}</span>
+        <span class="t-xs t-dim">${mine.rank === 1 ? t('hub.leading') : t('lb.ahead', { n: mine.rank - 1 })}</span>
       </span>
       <span class="t-sm t-mono t-bold">${value(mine)}</span>
-      <button class="btn btn-ghost btn-sm" id="lbJump">Voir</button>`;
+      <button class="btn btn-ghost btn-sm" id="lbJump">${esc(t('action.view'))}</button>`;
     on($('#lbJump'), 'click', () => {
       const node = $$('.lb-row.me, .lb-slot.me')[0];
       node?.scrollIntoView({ block: 'center', behavior: env.reducedMotion ? 'auto' : 'smooth' });

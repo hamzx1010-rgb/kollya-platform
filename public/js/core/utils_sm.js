@@ -223,7 +223,7 @@ export function richText(text) {
   out = out.replace(URL_RE, u =>
     `<a class="rt-link" href="${escAttr(u)}" target="_blank" rel="noopener noreferrer">${esc(truncate(u.replace(/^https?:\/\//, ''), 40))}</a>`);
   out = out.replace(MENTION_RE, (_m, pre, name) =>
-    `${pre}<button class="rt-mention" data-user="${escAttr(name)}">@${esc(name)}</button>`);
+    `${pre}<button class="rt-mention handle" data-user="${escAttr(name)}">@${esc(name)}</button>`);
   out = out.replace(TAG_RE, (_m, pre, tag) =>
     `${pre}<button class="rt-tag" data-tag="${escAttr(tag)}">#${esc(tag)}</button>`);
   return out;

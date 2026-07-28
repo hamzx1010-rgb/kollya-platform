@@ -505,6 +505,21 @@ async function renderConvList() {
   setState({ unread: { ...state.unread, messages: totalUnread } });
 }
 
+/** Narrow panel, no thread chosen: the list is the screen. */
+function showPickAConversation() {
+  const body = $('#threadBody');
+  const head = $('#threadHead');
+  if (head) head.innerHTML = '';
+  $('#composerWrap')?.classList.add('hidden');
+  if (!body) return;
+  body.innerHTML = '';
+  body.append(emptyState({
+    icon: I.message,
+    title: t('dm.pickTitle'),
+    text: t('dm.pickText')
+  }));
+}
+
 /** Nothing to open: say so in the thread pane, not with a blank box. */
 function showNoConversations() {
   const body = $('#threadBody');
@@ -537,7 +552,7 @@ function requestCard(r) {
           : `<span class="av" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>`}
         <div class="grow" style="min-width:0">
           <div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
-          <div class="t-xs t-dim truncate">@${esc(p.username)}${p.faculty ? ' · ' + esc(p.faculty) : ''}</div>
+          <div class="t-xs t-dim truncate"><span class="handle">@${esc(p.username)}</span>${p.faculty ? ' · ' + esc(p.faculty) : ''}</div>
           ${r.mutuals > 0
             ? `<div class="t-xs req-mutual">${icon('users', { size: 11 })} ${t('dm.mutuals', { n: r.mutuals })}</div>`
             : ''}
@@ -974,9 +989,9 @@ function renderInfoPanel() {
 
   panel.innerHTML = `
     <header class="info-head blur-bar">
-      <button class="icon-btn" id="infoClose" aria-label="Fermer" data-tip=t('a11y.escape')>${I.close}</button>
+      <button class="icon-btn" id="infoClose" aria-label="${esc(t('action.close'))}" data-tip="${esc(t('a11y.escape'))}">${I.close}</button>
       <span class="t-bold grow">Infos</span>
-      <button class="icon-btn" id="infoMore" aria-label="Plus">${I.moreH}</button>
+      <button class="icon-btn" id="infoMore" aria-label="${esc(t('action.more'))}">${I.moreH}</button>
     </header>
 
     <div class="info-scroll">
@@ -990,7 +1005,7 @@ function renderInfoPanel() {
         <div class="tg-actions">
           <button class="tg-action" id="aProfile" data-tip="Profil">${I.user}</button>
           <button class="tg-action${pref.muted ? ' on' : ''}" id="aMute" data-tip="${pref.muted ? t('dm.unmuteShort') : t('dm.muteShort')}">${I.mute}</button>
-          <button class="tg-action" id="aSearch" data-tip="Rechercher">${I.search}</button>
+          <button class="tg-action" id="aSearch" data-tip="${esc(t('action.search'))}">${I.search}</button>
           <button class="tg-action accent" id="aMessage" data-tip="Écrire">${I.message}</button>
         </div>
       </div>
@@ -999,9 +1014,9 @@ function renderInfoPanel() {
       <section class="tg-sec">
         ${sectionTitle(t('dm.info'))}
         <div class="tg-row"><span class="tg-ic">${icon('user', { size: 16 })}</span>
-          <div class="grow"><div class="t-sm">@${esc(peer.username || '')}</div>
+          <div class="grow"><div class="t-sm handle">@${esc(peer.username || '')}</div>
           <div class="t-xs t-dim">Nom d'utilisateur</div></div>
-          <button class="icon-btn sm" id="copyUser" data-tip="Copier">${I.copy}</button>
+          <button class="icon-btn sm" id="copyUser" data-tip="${esc(t('action.copy'))}">${I.copy}</button>
         </div>
         ${peer.faculty ? `<div class="tg-row"><span class="tg-ic">${icon('graduation', { size: 16 })}</span>
           <div class="grow"><div class="t-sm">${esc(peer.faculty)}</div>
@@ -1013,8 +1028,8 @@ function renderInfoPanel() {
 
       <!-- nickname -->
       <section class="tg-sec">
-        ${sectionTitle(t('dm.nickname'), 'Vous seul le voyez')}
-        <input class="input" id="nickInput" placeholder="Ajouter un surnom…" value="${esc(pref.nickname || '')}">
+        ${sectionTitle(t('dm.nickname'), t('dm.onlyYou'))}
+        <input class="input" id="nickInput" placeholder="${esc(t('dm.nickPh'))}" value="${esc(pref.nickname || '')}">
       </section>
 
       <!-- themes -->
@@ -1137,7 +1152,7 @@ function wireInfoPanel(pref) {
 
   on($('#copyUser'), 'click', async () => {
     const { copyText } = await import('../core/utils_sm.js');
-    toast(await copyText('@' + peer.username) ? t('action.copied') : 'Copie impossible', 'ok');
+    toast(await copyText('@' + peer.username) ? t('action.copied') : t('toast.copyFailed'), 'ok');
   });
 
   const nick = $('#nickInput');
@@ -1185,7 +1200,7 @@ function wireInfoPanel(pref) {
       renderThread();
       renderConvList();
       toast(t('toast.convCleared'), 'ok');
-    } catch { toast('Impossible de vider la conversation', 'err'); }
+    } catch { toast(t('toast.clearFailed'), 'err'); }
   });
 
   on($('#optDelete'), 'click', async () => {
@@ -1338,7 +1353,7 @@ async function forwardMessage(m) {
               ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
               : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
             <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(u.full_name)}</div>
-            <div class="t-xs t-dim">@${esc(u.username)}</div></div>
+            <div class="t-xs t-dim handle">@${esc(u.username)}</div></div>
           </button>`).join('')
       : `<div class="tg-empty">${icon('user',{size:22})}<span>Personne trouvée</span></div>`;
   };
@@ -1400,7 +1415,7 @@ function contactRow(u) {
           <span class="t-sm t-bold truncate">${esc(u.full_name)}</span>
           ${u.is_private ? `<span class="tg-ic" data-tip=t('profile.privateChip')>${icon('lock', { size: 12 })}</span>` : ''}
         </div>
-        <div class="t-xs t-dim">@${esc(u.username)}${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
+        <div class="t-xs t-dim"><span class="handle">@${esc(u.username)}</span>${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
       </div>
       ${tag ? `<span class="pill" style="height:20px">${esc(tag)}</span>` : ''}
     </button>`;
@@ -1534,7 +1549,7 @@ function msgMenu(e, m) {
 async function copyMsg(m) {
   const { copyText } = await import('../core/utils_sm.js');
   const okCopy = await copyText(m.text || m.media_url || '');
-  toast(okCopy ? t('action.copied') : 'Copie impossible', okCopy ? 'ok' : 'err');
+  toast(okCopy ? t('action.copied') : t('toast.copyFailed'), okCopy ? 'ok' : 'err');
 }
 
 async function removeMsg(m) {
@@ -1605,6 +1620,36 @@ function cancelContext() {
 function autoGrow(input) {
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 132) + 'px';
+  publishComposerHeight();
+}
+
+/**
+ * Publish the composer's real height as --composer-h.
+ *
+ * The info panel is an absolute overlay below 1400px and has to stop
+ * where the composer starts. A hardcoded 64px would be wrong the
+ * moment the textarea grows to a second line (it goes up to 132px), so
+ * the actual measured height is written to the DM element and the CSS
+ * reads it. Measured, not assumed.
+ */
+function publishComposerHeight() {
+  const wrap = $('#composerWrap');
+  const dm = $('.dm');
+  if (!wrap || !dm) return;
+  const h = wrap.classList.contains('hidden') ? 0 : Math.round(wrap.getBoundingClientRect().height);
+  dm.style.setProperty('--composer-h', h + 'px');
+}
+
+/** Keep --composer-h honest even when the height changes for reasons
+    other than typing: attachments, the request bar, a font swap. */
+function watchComposerHeight() {
+  const wrap = $('#composerWrap');
+  if (!wrap || wrap.dataset.observed === '1') return;
+  wrap.dataset.observed = '1';
+  try {
+    new ResizeObserver(publishComposerHeight).observe(wrap);
+  } catch { /* no ResizeObserver: the initial measurement still applies */ }
+  publishComposerHeight();
 }
 
 function syncSendState() {
@@ -1732,6 +1777,26 @@ function wireComposer() {
   const input = $('#composerInput');
   const composer = $('#composer');
   if (!input) return;
+
+  // IDEMPOTENT.
+  // The composer markup is rendered once with the messages screen, but
+  // openThread() calls this on EVERY thread you open, and accept-request
+  // calls it again. addEventListener does not de-duplicate distinct
+  // arrow functions, so the handlers stacked up: verified over CDP with
+  // DOMDebugger.getEventListeners, #btnGif had 3 click listeners, two of
+  // them this function's. Two handlers meant openGifPicker() ran twice
+  // per click — the second call hit its own `if (panel) close()` toggle,
+  // so the picker opened and shut in the same tick and the button looked
+  // completely dead. Same latent double-fire on send, mic and emoji.
+  if (composer?.dataset.wired === '1') {
+    // still refresh the per-peer bits that legitimately change
+    const saved = draft.get(peer.id);
+    input.value = saved || '';
+    autoGrow(input);
+    syncSendState();
+    return;
+  }
+  if (composer) composer.dataset.wired = '1';
 
   // restore an unfinished message
   const saved = draft.get(peer.id);
@@ -1896,7 +1961,7 @@ function wireThreadEvents() {
 
 function jumpTo(id) {
   const row = $(`#threadBody .bubble-row[data-id="${cssEscape(id)}"]`);
-  if (!row) { toast('Message introuvable'); return; }
+  if (!row) { toast(t('toast.msgNotFound')); return; }
   row.scrollIntoView({ block: 'center', behavior: env.reducedMotion ? 'auto' : 'smooth' });
   const bub = row.querySelector('.bubble');
   bub.classList.remove('flash');
@@ -1925,7 +1990,7 @@ export async function openThread(peerId, { asRequest = false } = {}) {
   if (head) {
     const pref = getChatPref(peer.id);
     head.innerHTML = `
-      <button class="icon-btn thread-back" id="threadBack" aria-label="Retour">${I.arrowLeft}</button>
+      <button class="icon-btn thread-back" id="threadBack" aria-label="${esc(t('action.back'))}">${I.arrowLeft}</button>
       <div class="av sm" style="background:${avatarColor(peer.id)}" data-online="${!!peer.online}">${esc(initials(peer.full_name))}</div>
       <div class="grow" style="min-width:0">
         <div class="t-bold truncate">${esc(pref.nickname || peer.full_name)}</div>
@@ -1937,7 +2002,7 @@ export async function openThread(peerId, { asRequest = false } = {}) {
     // click anywhere on it to open the conversation info.
     head.setAttribute('role', 'button');
     head.setAttribute('tabindex', '0');
-    head.setAttribute('aria-label', 'Infos sur la conversation');
+    head.setAttribute('aria-label', t('dm.infoAria'));
     head.classList.add('is-clickable');
 
     on(head, 'click', e => {
@@ -1982,7 +2047,12 @@ export async function openThread(peerId, { asRequest = false } = {}) {
 
   // The panel is part of the conversation view, not a thing you hunt
   // for in a menu — it opens with the thread on wide screens.
-  if (innerWidth >= 1280) toggleInfo(true);
+  // 1400, not 1280. layout_sm.css only gives the info panel its own
+  // grid column at >=1400px; below that it is an ABSOLUTE overlay.
+  // Auto-opening it at 1280 therefore covered the conversation — and,
+  // measured in Chrome at 1360px, 46% of the composer including the
+  // Send button. Auto-open only where there is a real column for it.
+  if (innerWidth >= 1400) toggleInfo(true);
   else if (infoOpen) renderInfoPanel();
 
   // A request is readable but not repliable until it is accepted:
@@ -1996,6 +2066,7 @@ export async function openThread(peerId, { asRequest = false } = {}) {
     $('#composerWrap')?.classList.remove('hidden');
     wireComposer();
   }
+  watchComposerHeight();
   startPolling();
 }
 
@@ -2052,7 +2123,7 @@ function markup() {
       <div class="dm-list-head row g2">
         <div class="grow" style="position:relative">
           <span class="input-icon">${icon('search', { size: 16 })}</span>
-          <input class="input has-icon" id="convSearch" placeholder="Rechercher…" aria-label="Rechercher une conversation">
+          <input class="input has-icon" id="convSearch" placeholder="${esc(t('dm.search'))}" aria-label="${esc(t('dm.searchConv'))}">
         </div>
         <button class="icon-btn" id="btnNewConv" data-tip="${esc(t('dm.new'))}">${I.plus}</button>
       </div>
@@ -2076,14 +2147,14 @@ function markup() {
           <input type="file" id="filePick" hidden multiple>
           <input type="file" id="imgPick" hidden multiple accept="image/*">
           <textarea class="composer-input" id="composerInput" rows="1"
-                    placeholder="Écrivez un message…" aria-label="Message"></textarea>
-          <button class="icon-btn" id="btnMic" data-tip="Message vocal" aria-label="Enregistrer un message vocal">${I.mic}</button>
-          <button class="icon-btn send-btn" id="btnSend" data-tip="Envoyer" aria-label="Envoyer" disabled>${I.send}</button>
+                    placeholder="${esc(t('dm.placeholder'))}" aria-label="${esc(t('dm.placeholder'))}"></textarea>
+          <button class="icon-btn" id="btnMic" data-tip="${esc(t('dm.voice'))}" aria-label="${esc(t('dm.voice'))}">${I.mic}</button>
+          <button class="icon-btn send-btn" id="btnSend" data-tip="${esc(t('action.send'))}" aria-label="${esc(t('action.send'))}" disabled>${I.send}</button>
         </div>
       </div>
     </section>
 
-    <aside class="info-panel" id="infoPanel" aria-label="Infos sur la conversation"></aside>
+    <aside class="info-panel" id="infoPanel" aria-label="${esc(t('dm.infoAria'))}"></aside>
   </div>`;
 }
 
@@ -2115,8 +2186,39 @@ export function initMessages(mountFn) {
     // row. No messaging app does that. Pick, in order: the one asked
     // for in the URL, the one you had open last, then the most
     // recent conversation.
-    const wanted = arg
-      || (convs.some(c => String(c.peer.id) === String(state.activeChat)) ? state.activeChat : null)
+    // WHAT CLICKING "Messages" DOES
+    //
+    // Instagram: the nav takes you to the LIST. On a wide screen the
+    // list and the open thread live side by side, so the thread stays
+    // put; on a narrow one the list is the whole screen and the
+    // thread is a level deeper.
+    //
+    // With no argument we still open the most relevant conversation
+    // on a wide screen — an empty right-hand pane is dead space —
+    // but never on a narrow one, where it would hide the list you
+    // just asked for.
+    // Measure the PANEL, not the window: in a split screen the window
+    // may be narrow while this panel is wide, or the reverse.
+    //
+    // `clientWidth` is 0 before the first layout pass (and always in
+    // jsdom), and `0 || innerWidth` would silently fall back to the
+    // window — taking the wide path on a phone. Treat an unmeasurable
+    // panel as narrow: showing the list is always safe, opening a
+    // thread over it is not.
+    const measured = $('#dm')?.clientWidth ?? 0;
+    const panelWide = measured > 720;
+
+    if (arg) {
+      await openThread(arg);
+      return;
+    }
+
+    $('#dm')?.removeAttribute('data-open');     // show the list
+
+    if (!panelWide) { showPickAConversation(); return; }
+
+    const wanted =
+      (convs.some(c => String(c.peer.id) === String(state.activeChat)) ? state.activeChat : null)
       || convs[0]?.peer?.id;
 
     if (wanted) await openThread(wanted);

@@ -18,6 +18,7 @@
   --brand-800: #1E40AF;
   --brand:     var(--brand-600);
   --brand-hover: var(--brand-700);
+  --brand-on-tint: var(--brand-700);   /* readable brand text sitting on a brand tint */
 
   /* semantic */
   --ok:      #16A34A;
@@ -28,7 +29,7 @@
 
   /* spacing — 4px scale */
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
-  --s5: 20px; --s6: 24px; --s8: 32px; --s10: 40px; --s12: 48px;
+  --s5: 20px; --s6: 24px; --s7: 28px; --s8: 32px; --s10: 40px; --s12: 48px;
 
   /* gradients — the signature Koliya look, kept from the original */
   --grad:        linear-gradient(135deg, #5B7CFA, #7C5BE8);
@@ -49,7 +50,14 @@
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-ar: 'IBM Plex Sans Arabic', 'Cairo', var(--font);
   --fs-xs: 11px; --fs-sm: 13px; --fs-base: 14px;
-  --fs-md: 15px; --fs-lg: 17px; --fs-xl: 20px; --fs-2xl: 26px; --fs-3xl: 34px;
+  --fs-md: 15px; --fs-lg: 17px;
+  /* The large sizes scale with the viewport so a split window shrinks
+     headings instead of letting them dominate a narrow column. Body
+     text stays fixed on purpose — fluid body text hurts readability
+     and fails WCAG resize requirements. */
+  --fs-xl:  clamp(18px, 1.4vw + 12px, 20px);
+  --fs-2xl: clamp(21px, 2.0vw + 14px, 26px);
+  --fs-3xl: clamp(25px, 2.8vw + 16px, 34px);
 
   /* motion — one place to tune the whole app's feel */
   --t-fast:  120ms;
@@ -70,10 +78,15 @@
   --nav-w: 248px;
   --nav-w-collapsed: 64px;   /* 44px target + 2×6px padding + 8px breathing */
   --rail-w: 320px;
-  /* Wider posts. 620px was tuned for a narrow column, but with the
-     rail always expanded there is room to breathe — and photos in a
-     620px column looked like thumbnails. */
-  --feed-w: 720px;
+  /* FLUID, not fixed.
+     A fixed width plus ten breakpoints means the layout stays put
+     until it crosses a threshold and then JUMPS — which is what you
+     see when the browser is split to half the screen: too wide for
+     the small layout, too narrow for the big one, so it looks
+     shrunken. clamp() removes the jump: the column simply follows
+     the window between a readable minimum and a comfortable
+     maximum. */
+  --feed-w: clamp(300px, 88vw, 780px);
   --topbar-h: 56px;
   /* LAYERING — ordered by "what can open on top of what".
      The old scale had the story viewer at the very top (500), so the
@@ -104,7 +117,7 @@
 
   --text:      #16181C;
   --text-2:    #5B6169;
-  --text-3:    #8B9199;
+  --text-3:    #686F77;   /* was #8B9199 = 3.18:1 on white, measured in Chrome — below AA 4.5 for the 11px faculty labels. #686F77 = 4.87:1 on the app surface #FAFAF9 */
   --text-inv:  #FFFFFF;
 
   --bar:       rgba(250, 250, 249, .78);
@@ -132,7 +145,7 @@
 
   --text:      #E9EBEE;
   --text-2:    #9BA3AE;
-  --text-3:    #6B7480;
+  --text-3:    #858D99;   /* was #6B7480 = 3.75:1 on the dark surface — below AA. #858D99 = 5.3:1 */
   --text-inv:  #0F1115;
 
   --bar:       rgba(15, 17, 21, .72);
@@ -142,6 +155,7 @@
 
   --brand:     var(--brand-500);
   --brand-hover: var(--brand-400);
+  --brand-on-tint: var(--brand-400);   /* dark theme needs a LIGHTER brand, not a darker one */
 
   --shadow-xs: 0 1px 2px rgba(0,0,0,.3);
   --shadow-sm: 0 2px 8px rgba(0,0,0,.36);
@@ -226,6 +240,16 @@ h3 { font-size: var(--fs-xl); }  h4 { font-size: var(--fs-lg); }
 .t-lg   { font-size: var(--fs-lg); }
 .t-dim  { color: var(--text-2); }
 .t-dim2 { color: var(--text-3); }
+
+/* An @handle is an LTR identifier. Dropped into an Arabic (RTL)
+   paragraph, the Unicode bidi algorithm treats the leading '@' as
+   neutral punctuation and reorders it to the other end, so "@sara.b"
+   renders as "sara.b@" — seen in the RTL screenshot. Isolating the run
+   keeps it LTR without affecting the surrounding line. */
+.handle {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
 .t-bold { font-weight: 650; }
 .t-mono { font-variant-numeric: tabular-nums; }
 

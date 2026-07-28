@@ -117,7 +117,7 @@ export function renderMe() {
     av.style.background = avatarColor(u.id);
   }
   if (nm) nm.textContent = u.full_name || u.username || '—';
-  if (hd) hd.textContent = u.username ? '@' + u.username : '—';
+  if (hd) { hd.textContent = u.username ? '@' + u.username : '—'; hd.classList.add('handle'); }
 }
 
 /* ------------------------------------------------------------
@@ -260,7 +260,7 @@ export function initShell() {
     } else {
       offlineToast?.();
       offlineToast = null;
-      toast('De retour en ligne', { kind: 'ok', duration: 1800 });
+      toast(t('toast.backOnline'), { kind: 'ok', duration: 1800 });
     }
   });
 

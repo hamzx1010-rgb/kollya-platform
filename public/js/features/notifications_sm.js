@@ -124,7 +124,7 @@ function row(g) {
         <button class="btn btn-primary btn-sm" data-accept>Accepter</button>
         <button class="btn btn-ghost btn-sm" data-decline>Refuser</button>
       </div>` : ''}
-    <button class="icon-btn sm notif-x hover-reveal" data-dismiss aria-label="Supprimer">${I.close}</button>`;
+    <button class="icon-btn sm notif-x hover-reveal" data-dismiss aria-label="${esc(t('action.delete'))}">${I.close}</button>`;
 
   node.classList.add('hover-host', 'hover-on-hover');
   return node;

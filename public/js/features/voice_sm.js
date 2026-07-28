@@ -41,7 +41,7 @@ export async function startRecording(host, { onSend, onCancel } = {}) {
   } catch (e) {
     toast(e.name === 'NotAllowedError'
       ? t('voice.micDenied')
-      : 'Micro indisponible', 'err');
+      : t('toast.micUnavailable'), 'err');
     return;
   }
 
@@ -173,13 +173,13 @@ function openPreview(host, clip, { onSend, onCancel }) {
   const url = URL.createObjectURL(clip.blob);
   const bar = el('div', { class: 'rec-bar preview' });
   bar.innerHTML = `
-    <button class="icon-btn rec-cancel" data-tip="Supprimer" aria-label="Supprimer">${I.trash}</button>
+    <button class="icon-btn rec-cancel" data-tip="${t('action.delete')}" aria-label="${t('action.delete')}">${I.trash}</button>
     <button class="icon-btn prev-play" aria-label="Écouter">${I.play}</button>
     <div class="voice-wave preview-wave">
       ${clip.waveform.map(h => `<i style="--h:${Math.round(h * 100)}%"></i>`).join('')}
     </div>
     <span class="voice-time t-mono">${duration(clip.seconds)}</span>
-    <button class="icon-btn btn-primary prev-send" data-tip="Envoyer" aria-label="Envoyer">${I.send}</button>`;
+    <button class="icon-btn btn-primary prev-send" data-tip="${t('action.send')}" aria-label="${t('action.send')}">${I.send}</button>`;
 
   host.classList.add('recording');
   host.append(bar);
@@ -265,7 +265,7 @@ function setupPlayer(node) {
       // is never what you meant
       if (current && current !== a) { current.pause(); }
       current = a;
-      a.play().catch(() => toast('Lecture impossible', 'err'));
+      a.play().catch(() => toast(t('toast.playFailed'), 'err'));
       playBtn.innerHTML = I.pause;
     } else {
       a.pause();

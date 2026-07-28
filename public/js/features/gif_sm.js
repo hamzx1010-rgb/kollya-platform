@@ -279,9 +279,25 @@ export function openGifPicker(anchor, onPick) {
 
   on($('#gifClose'), 'click', closeGifPicker);
 
-  const offOutside = on(document, 'pointerdown', e => {
-    if (panel && !panel.contains(e.target) && e.target !== anchor) closeGifPicker();
-  }, true);
+  // `e.target !== anchor` was not enough: the button contains an <svg>,
+  // and a real click lands on the <svg> (or its <path>), not the button.
+  // The identity check therefore failed, this listener treated the very
+  // click that opened the picker as an outside click, and the panel was
+  // removed in the same tick — measured in Chrome as ADDED then REMOVED,
+  // which is why the button looked completely dead. `anchor.contains()`
+  // covers the whole subtree.
+  //
+  // The listener is also attached on the NEXT frame, so the opening
+  // click has finished propagating before we start watching for the
+  // closing one.
+  // `e.target !== anchor` was not enough: the button contains an <svg>,
+  // so a real click lands on the <svg> (or its <path>) and the identity
+  // check missed it. anchor.contains() covers the whole subtree.
+  const outside = e => {
+    if (panel && !panel.contains(e.target) && !anchor.contains(e.target)) closeGifPicker();
+  };
+  document.addEventListener('pointerdown', outside, true);
+  const offOutside = () => document.removeEventListener('pointerdown', outside, true);
   const offKeys = on(document, 'keydown', e => { if (e.key === 'Escape') closeGifPicker(); });
   panel._cleanup = () => { offOutside(); offKeys(); };
 
@@ -298,21 +314,37 @@ export function closeGifPicker() {
 
 function place(node, anchor) {
   const a = anchor.getBoundingClientRect();
-  const r = node.getBoundingClientRect();
 
-  // Clamp on BOTH axes and flip when there is no room below. The
-  // picker's button lives in the composer, at the bottom of the
-  // screen — exactly where an unclamped panel gets cut off.
+  // OPEN UPWARD BY DEFAULT.
+  // The trigger lives in the composer at the bottom of the screen,
+  // so above is where the panel belongs — every messaging app does
+  // this. Downward is the exception, taken only when there is
+  // genuinely no room above.
+  //
+  // Anchor by BOTTOM, never by top. Measured in Chrome: at the moment
+  // place() runs the grid is still skeletons, so the panel is ~150px;
+  // it grows to its 460px max-height once the tiles load. Setting
+  // `top` freezes the small measurement and the grown panel spills
+  // off the bottom of the window (measured bottom 1113 in an 860px
+  // viewport). Pinning `bottom` to the button means later growth
+  // expands upward, which is the direction we wanted anyway.
   const spaceBelow = innerHeight - a.bottom;
   const spaceAbove = a.top;
-  const openUp = spaceBelow < r.height + pad && spaceAbove > spaceBelow;
+  const openUp = spaceAbove >= spaceBelow;
 
-  const top = openUp
-    ? Math.max(pad, a.top - r.height - 8)
-    : Math.min(a.bottom + 8, innerHeight - r.height - pad);
+  if (openUp) {
+    node.style.bottom = Math.max(pad, innerHeight - a.top + 8) + 'px';
+    node.style.top = 'auto';
+    // never let it grow past the top edge
+    node.style.maxHeight = Math.max(160, a.top - 8 - pad) + 'px';
+  } else {
+    node.style.top = Math.round(a.bottom + 8) + 'px';
+    node.style.bottom = 'auto';
+    node.style.maxHeight = Math.max(160, spaceBelow - 8 - pad) + 'px';
+  }
 
-  node.style.top = Math.max(pad, top) + 'px';
-  node.style.left = Math.min(Math.max(pad, a.left), innerWidth - r.width - pad) + 'px';
+  const w = node.getBoundingClientRect().width;
+  node.style.left = Math.min(Math.max(pad, a.left), innerWidth - w - pad) + 'px';
   node.dataset.flip = openUp ? 'up' : 'down';
 }
 

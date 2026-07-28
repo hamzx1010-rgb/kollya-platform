@@ -114,7 +114,7 @@ function render(host) {
           <span class="set-ic">${icon('user', { size: 17 })}</span>
           <div class="grow">
             <div class="set-title">${esc(t('settings.account'))}</div>
-            <div class="set-hint">@${esc(u.username || '')}${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
+            <div class="set-hint"><span class="handle">@${esc(u.username || '')}</span>${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
           </div>
         </div>
         <div class="set-actions">

@@ -127,7 +127,7 @@ function openChannelComposer() {
     el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
-      if (name.value.trim().length < 3) { toast('Nom trop court', 'err'); return; }
+      if (name.value.trim().length < 3) { toast(t('toast.nameTooShort'), 'err'); return; }
       btn.disabled = true;
       try {
         await api.createChannel({
@@ -174,7 +174,7 @@ function eventsHero() {
     <div class="hero-body">
       <div class="hero-eyebrow">${icon('calendar', { size: 14 })} Campus</div>
       <h2 class="hero-title">${t('events.title')}</h2>
-      <p class="hero-sub">Révisions, conférences, sorties — tout ce qui se passe autour de vous.</p>
+      <p class="hero-sub">${esc(t('events.sub'))}</p>
       <div class="hero-stats">
         <div class="hero-stat"><b>${upcoming}</b><span>à venir</span></div>
         <div class="hero-stat"><b>${mine}</b><span>vos inscriptions</span></div>
@@ -293,7 +293,7 @@ function openEventComposer() {
     el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
-      if (!title.value.trim() || !when.value) { toast('Titre et date obligatoires', 'err'); return; }
+      if (!title.value.trim() || !when.value) { toast(t('toast.titleDateRequired'), 'err'); return; }
       btn.disabled = true;
       btn.textContent = t('toast.creating');
       try {
@@ -330,7 +330,7 @@ function qaHero() {
     <div class="hero-body">
       <div class="hero-eyebrow">${icon('help', { size: 14 })} Entraide</div>
       <h2 class="hero-title">${t('qa.andAnswers')}</h2>
-      <p class="hero-sub">Demandez ce que vous n'osez pas demander en amphi. Anonymement si vous préférez.</p>
+      <p class="hero-sub">${esc(t('qa.sub'))}</p>
       <div class="hero-stats">
         <div class="hero-stat"><b>${questions.length}</b><span>questions</span></div>
         <div class="hero-stat"><b>${open}</b><span>sans réponse</span></div>
@@ -519,11 +519,11 @@ async function renderExplore(q = '') {
         people.map(u => `<div class="cc">
             ${avatarChip(u, 'av')}
             <div class="grow" style="min-width:0"><div class="t-bold truncate">${esc(u.full_name)}</div>
-            <div class="t-sm t-dim">@${esc(u.username)} · ${esc(u.faculty || '')}</div></div>
+            <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div></div>
             <div class="row g1">
               ${u.is_private === false || u.i_follow !== false
                 ? `<button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message">${icon('message', { size: 15 })}</button>` : ''}
-              <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
+              <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">${esc(t('action.view'))}</a>
             </div>
           </div>`).join('') : ''}
       ${posts.length ? `<div class="hub-sec-head" style="margin:var(--s4) 0 var(--s3)">${t('feed.post')} · ${posts.length}</div>` +
@@ -571,7 +571,7 @@ async function renderExplore(q = '') {
               </div>
               <div class="row g1">
                 <button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message">${icon('message', { size: 15 })}</button>
-                <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">Voir</a>
+                <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">${esc(t('action.view'))}</a>
               </div>
             </div>`;
           }).join('')
@@ -624,17 +624,17 @@ async function renderSaved() {
    SHELL
    ============================================================ */
 
-const SCREENS = {
-  channels: { title: t('channels.title'),      placeholder: 'Rechercher un canal…',      render: renderChannels,
+const screenCfg = () => ({
+  channels: { title: t('channels.title'),      placeholder: t('channels.searchPh'),      render: renderChannels,
               action: { label: t('action.create'), icon: 'plus', fn: openChannelComposer } },
   events:   { title: t('events.title'),  placeholder: t('compose.searchEvent'),  render: renderEvents },
-  qa:       { title: t('qa.title'),   placeholder: 'Rechercher une question…',  render: renderQA },
+  qa:       { title: t('qa.title'),   placeholder: t('qa.searchPh'),  render: renderQA },
   explore:  { title: t('explore.title'),    placeholder: t('compose.searchPeople'), render: renderExplore },
   saved:    { title: t('saved.title'), placeholder: null,                        render: renderSaved }
-};
+});
 
 function mountScreen(name, mountFn) {
-  const cfg = SCREENS[name];
+  const cfg = screenCfg()[name];   // re-read every mount, or a language switch never reaches these labels
   const host = mountFn();
   if (!host || !cfg) return;
   host.closest('.view')?.classList.remove('full');
@@ -681,11 +681,11 @@ async function handleListClick(screen, e) {
       c.joined = !was;
       c.members = Math.max(0, (c.members || 0) + (was ? -1 : 1));
       card.replaceWith(el('div', { html: channelCard(c) }).firstElementChild);
-      try { await api.joinChannel(c.id, !was); toast(was ? `Vous avez quitté ${c.name}` : `Bienvenue dans ${c.name}`, 'ok'); }
+      try { await api.joinChannel(c.id, !was); toast(t(was ? 'toast.leftChannel' : 'toast.joinedChannel', { name: c.name }), 'ok'); }
       catch { c.joined = was; renderChannels(); toast(t('toast.actionFailed'), 'err'); }
       return;
     }
-    toast(`Le canal « ${c.name} » s'ouvrira avec la messagerie de groupe`);
+    toast(t('toast.channelSoon', { name: c.name }));
     return;
   }
 
@@ -701,7 +701,7 @@ async function handleListClick(screen, e) {
       try {
         await api.attend(ev.id, !was);
         if (!was) act('event_join', ev.id);
-        toast(was ? t('toast.attendCancelled') : 'Vous participez', 'ok');
+        toast(was ? t('toast.attendCancelled') : t('toast.attending'), 'ok');
       }
       catch {
         ev.going = was ? [...ev.going, me.id] : ev.going.filter(x => x !== me.id);
@@ -723,7 +723,7 @@ async function handleListClick(screen, e) {
 }
 
 export function initCampus(mountFn) {
-  for (const name of Object.keys(SCREENS)) {
+  for (const name of Object.keys(screenCfg())) {
     route(name, () => mountScreen(name, mountFn));
   }
 }

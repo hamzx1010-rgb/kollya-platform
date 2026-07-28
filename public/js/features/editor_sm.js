@@ -467,7 +467,7 @@ export function openImageEditor(source, mode = 'dm') {
       syncControls();
       draw();
     };
-    img.onerror = () => { toast('Image illisible', 'err'); finish(null); };
+    img.onerror = () => { toast(t('toast.imageUnreadable'), 'err'); finish(null); };
     img.src = source instanceof Blob ? URL.createObjectURL(source) : source;
 
     const offKeys = wire(() => exportBlob().then(finish));

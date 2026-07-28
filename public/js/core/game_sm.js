@@ -188,8 +188,7 @@ async function resolveStreak(completedToday) {
     // Tell the student what happened, once, and only when it matters.
     if (row.broke && row.lost > 0) {
       announceOnce(`broke:${todayKey()}`, () =>
-        toast(`Série perdue — ${row.lost} jour${row.lost > 1 ? 's' : ''} remis à zéro. ` +
-              `Terminez les défis aujourd'hui pour repartir.`,
+        toast(t('streak.lost', { n: row.lost }),
               { kind: 'err', duration: 9000 }));
     } else if (row.froze) {
       announceOnce(`froze:${todayKey()}`, () =>

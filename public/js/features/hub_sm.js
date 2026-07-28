@@ -14,7 +14,7 @@ import {
 } from '../core/utils_sm.js';
 import { me, read, write, scoped, on as onEvent } from '../core/store_sm.js';
 import { t } from '../core/i18n_sm.js';
-import { questLabel } from '../core/game_sm.js';
+import { questLabel, XP as GAME_XP } from '../core/game_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, countUp, skeletonList, emptyState, contextMenu } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
@@ -31,7 +31,8 @@ const store = scoped('hub');
 /* Levels, XP values and quest rules all live in core/game_sm.js now.
    They used to be defined here AND applied nowhere, which is how the
    hub ended up as a scoreboard for a game that was never running. */
-export { xpForLevel, levelFromXp, XP, trackQuest };
+export { xpForLevel, levelFromXp, trackQuest };
+export { XP } from '../core/game_sm.js';
 
 /* ------------------------------------------------------------
    BADGES  — thresholds, not manual awards
@@ -91,6 +92,69 @@ export async function refreshStats() {
 }
 
 export const earnedBadges = s => BADGES.filter(b => b.need(s));
+
+/* ------------------------------------------------------------
+   ACHIEVEMENT CARD
+
+   A plain toast said "done" and vanished. This is the moment the
+   game actually pays you back, so it earns a real card: the tick
+   draws itself, the label strikes through, the XP counts up, and the
+   day's progress advances in front of you.
+
+   It also answers the question you asked — how does the app read a
+   completed mission? It does not poll: game_sm emits when Postgres
+   confirms the write, so this card only appears for progress that is
+   genuinely saved.
+   ------------------------------------------------------------ */
+
+let achievementQueue = [];
+let achievementBusy = false;
+
+export function showAchievement({ label, remaining, xp = GAME_XP.post } = {}) {
+  achievementQueue.push({ label, remaining, xp });
+  if (!achievementBusy) drainAchievements();
+}
+
+function drainAchievements() {
+  const next = achievementQueue.shift();
+  if (!next) { achievementBusy = false; return; }
+  achievementBusy = true;
+
+  const total = getQuests().length;
+  const done = total - (next.remaining ?? 0);
+
+  const card = el('div', { class: 'ach', role: 'status', 'aria-live': 'polite' });
+  card.innerHTML = `
+    <div class="ach-tick">
+      <svg viewBox="0 0 36 36" aria-hidden="true">
+        <circle class="ach-ring" cx="18" cy="18" r="16"/>
+        <path class="ach-check" d="M11 18.5l4.5 4.5L25 13.5"/>
+      </svg>
+    </div>
+    <div class="ach-body">
+      <div class="ach-title">${esc(t('hub.questDone'))}</div>
+      <div class="ach-label">${esc(next.label || '')}</div>
+      <div class="ach-progress">
+        <div class="bar"><div class="bar-fill" style="width:${Math.round(done / total * 100)}%"></div></div>
+        <span class="t-xs t-mono">${done}/${total}</span>
+      </div>
+      <div class="ach-note">${esc(next.remaining
+        ? t('hub.questsLeft', { n: next.remaining })
+        : t('hub.dayDone'))}</div>
+    </div>
+    <div class="ach-xp">+<span class="ach-xp-n">0</span></div>`;
+
+  document.body.append(card);
+  requestAnimationFrame(() => card.classList.add('in'));
+
+  countUp(card.querySelector('.ach-xp-n'), next.xp, 700);
+
+  const life = next.remaining ? 3600 : 4600;
+  setTimeout(() => {
+    card.classList.remove('in');
+    setTimeout(() => { card.remove(); drainAchievements(); }, 260);
+  }, life);
+}
 
 /* ------------------------------------------------------------
    CELEBRATION
@@ -351,11 +415,7 @@ export function wireGameEvents() {
 
   // A quest finishing anywhere in the app is worth saying out loud,
   // even when the hub is closed — that is the feedback loop.
-  onEvent('game:quest-done', ({ label, remaining }) => {
-    toast(`Défi accompli · ${label}` +
-          (remaining ? ` — ${remaining}` : ' ' + t('hub.dayDone')),
-          { kind: 'ok', duration: 3500 });
-  });
+  onEvent('game:quest-done', payload => showAchievement(payload));
 }
 
 /** Repaint the hub from whatever the cache currently holds. */

@@ -34,8 +34,6 @@
 }
 
 /* --- collapsed: entered a conversation, so the rail gets out of the way */
-@media (min-width: 1180px) {
-}
 
 
 .rail-logo {
@@ -67,7 +65,10 @@
 }
 .nav-item:hover { background: var(--hover); color: var(--text); }
 .nav-item.on {
-  color: var(--brand); font-weight: 620;
+  /* --brand on the 12% brand tint below measured 4.06:1 in Chrome —
+     under AA for this 15px label. The darker step clears it (6.4:1)
+     and keeps the same hue. */
+  color: var(--brand-on-tint); font-weight: 620;
   background: linear-gradient(90deg, color-mix(in srgb, var(--brand) 12%, transparent), transparent);
 }
 .nav-item.on::before {
@@ -96,8 +97,6 @@
 
 /* Touch has no hover, so peek never fires there — the rail simply
    stays collapsed and the icons must be tappable on their own. */
-@media (hover: none) {
-}
 
 /* ---------- 3. MAIN COLUMN ---------------------------------- */
 .main {
@@ -107,6 +106,10 @@
   min-width: 0;
   overflow: hidden;
 }
+
+/* Page gutters follow the window so nothing is glued to the edge on
+   a narrow split, and nothing floats in space on a wide one. */
+.view-inner { padding-inline: clamp(0px, 1.5vw, var(--s4)); }
 
 .topbar {
   position: sticky; top: 0; z-index: var(--z-sticky);
@@ -129,7 +132,21 @@
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
 }
-.view-inner { max-width: var(--feed-w); margin: 0 auto; padding-bottom: var(--s12); }
+.view-inner {
+  max-width: var(--feed-w);
+  margin: 0 auto;
+  padding-bottom: var(--s12);
+  container-type: inline-size;
+  container-name: feed;
+}
+
+/* Posts adapt to the column, not the window — so a split screen
+   narrows the card gracefully instead of clipping it. */
+@container feed (max-width: 460px) {
+  .post { padding: var(--s3); }
+  .post-actions { gap: var(--s1); }
+  .stories { gap: var(--s2); }
+}
 
 /* FULL-BLEED VIEWS (messages) — THE HEIGHT CHAIN
    The bug: .view-inner had no height at all, so `.dm { height:100% }`
@@ -284,6 +301,7 @@
 
 /* The composer is a fixed rail at the bottom. It never shrinks. */
 #composerWrap {
+  position: relative;
   flex: 0 0 auto;
   background: var(--surface);
 }
@@ -402,7 +420,7 @@
 }
 .thread.dragging .drop-zone { display: grid; }
 
-/* recording replaces the composer in place */
+/* the row inside the recording panel */
 .rec-bar { display: flex; align-items: center; gap: var(--s3); width: 100%; }
 .rec-dot {
   width: 9px; height: 9px; border-radius: 50%;
@@ -448,10 +466,19 @@
 
 .post-actions { display: flex; align-items: center; gap: var(--s6); margin-top: var(--s3); }
 .act {
-  display: inline-flex; align-items: center; gap: var(--s2);
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--s2);
   color: var(--text-2); font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   transition: color var(--t-fast) var(--ease);
+  /* The glyph is 18px, which measured 18×18 and 26×18 in Chrome — under
+     the 24px minimum hit target. Padding grows the CLICKABLE box without
+     moving the icon or changing the visual rhythm; the negative margin
+     keeps the row's spacing exactly where it was. */
+  min-height: 32px; min-width: 32px;
+  padding-inline: var(--s2);
+  margin-inline: calc(var(--s2) * -1);
+  border-radius: var(--r-sm);
 }
 .act svg { width: 18px; height: 18px; transition: transform var(--t-fast) var(--ease-spring); }
 .act:hover { color: var(--brand); }
@@ -562,6 +589,20 @@
 @media (max-width: 900px) {
   .right-rail { display: none !important; }
 
+  /* THE SPLIT-SCREEN BUG.
+     Below 900px the rail stops being a column and becomes a bottom
+     bar (position:fixed, below). But `.app` kept its two-column
+     grid, so the first track still reserved `--nav-w` for an element
+     that no longer occupies it — and `.main` was handed the LEFTOVER
+     track. Measured in Chrome at 900px: `.app` computed
+     `grid-template-columns: 248px 652px`, `.main` came out 248px
+     wide, and `.view-inner` inside it 238px. That is why every page
+     "تظهر بشكل اصغر جدا" on a split window: not a font or a clamp,
+     a grid track reserved for a rail that had already left.
+     One column, and .main gets the whole width back. */
+  .app,
+  .app.has-rail { grid-template-columns: minmax(0, 1fr); }
+
   .nav-rail {
     position: fixed; inset: auto 0 0 0;
     flex-direction: row; align-items: center; justify-content: space-around;
@@ -577,7 +618,21 @@
   .nav-item .lbl { font-size: 10px; }
   .nav-item.on::before { top: 0; bottom: auto; left: 50%; transform: translateX(-50%); width: 22px; height: 2.5px; border-radius: 0 0 var(--r-full) var(--r-full); }
   .nav-item:not(.primary) { display: none; }   /* only 5 core items fit */
-  .nav-item.primary { display: flex; }
+  .nav-item.primary { display: flex; position: relative; }
+
+  /* In the sidebar the count sits at the END of the row, pushed there
+     by margin-inline-start:auto. In the bottom bar the row is a COLUMN
+     (icon over label), so that same auto margin pushed the badge below
+     the label and it rendered at 863-881px in an 880px window — one
+     pixel of it off the bottom of the screen. Pin it to the icon
+     instead, the way every mobile tab bar does. */
+  .nav-item .count, .nav-item .dot {
+    position: absolute;
+    top: 2px;
+    inset-inline-start: 50%;
+    margin-inline-start: 4px;
+    transform: none;
+  }
 
   .main { height: calc(100dvh - 58px); }
   .view-inner { max-width: none; }
@@ -749,7 +804,20 @@
 @media (max-width: 1399.98px) {
   .dm.info-open { grid-template-columns: clamp(260px, 26vw, 330px) minmax(0, 1fr); }
   .dm.info-open .info-panel {
-    position: absolute; inset-block: 0; inset-inline-end: 0;
+    /* Overlay the THREAD, never the composer. `inset-block: 0` made it
+       full height, so at 1360px it sat on top of 46% of the composer —
+       Send included — and typing was impossible with Info open.
+       Bottom is offset by the composer's own height instead. */
+    position: absolute;
+    inset-block-start: 0;
+    inset-block-end: var(--composer-h, 64px);
+    inset-inline-end: 0;
+    /* The base .info-panel sets height:100%, which WINS over an
+       inset-block pair and made the panel 824px tall inside an 804px
+       box — so it still reached down over the composer even with
+       bottom:63px applied. Measured in Chrome. `height:auto` lets the
+       two insets actually define the height. */
+    height: auto;
     width: min(340px, 92vw); z-index: var(--z-sticky);
     box-shadow: var(--shadow-lg);
     animation: kl-slide-in .22s var(--ease);
@@ -1003,13 +1071,24 @@
 /* ============================================================
    VOICE — recorder, preview, player
    ============================================================ */
+/* The recorder used to REPLACE the composer, so anything half-typed
+   vanished while you recorded. It now floats ABOVE it: the composer
+   dims but stays visible, and your draft survives. */
 .composer-wrap.recording .composer,
-#composerWrap.recording .composer { display: none; }
+#composerWrap.recording .composer { opacity: .35; pointer-events: none; }
 
 .rec-bar {
+  position: absolute;
+  inset-inline: var(--s3);
+  bottom: calc(100% + 8px);
+  z-index: calc(var(--z-sticky) + 3);
   display: flex; align-items: center; gap: var(--s3);
   padding: var(--s3) var(--s4);
-  border-top: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: kl-slide-up .18s var(--ease-out) both;
   animation: kl-rise var(--t-fast) var(--ease-out) both;
 }
 .rec-bar .rec-time { font-size: var(--fs-sm); color: var(--text-2); min-width: 40px; }
@@ -1827,8 +1906,8 @@ button.pf-stat:hover span { text-decoration: underline; }
   display: flex;
   align-items: stretch;
   gap: var(--s4);
-  border-radius: 28px;
-  padding: 26px;
+  border-radius: clamp(18px, 2vw, 28px);
+  padding: clamp(18px, 2.4vw, 26px);
   margin: var(--s3) var(--s4) var(--s4);
   color: #fff;
   background: linear-gradient(135deg, #4F46E5, #7C3AED 55%, #EC4899);
@@ -1845,7 +1924,7 @@ button.pf-stat:hover span { text-decoration: underline; }
   content: '';
   position: absolute;
   inset: auto -40px -70px auto;
-  width: 220px; height: 220px;
+  width: clamp(140px, 18vw, 220px); height: clamp(140px, 18vw, 220px);
   border-radius: 50%;
   background: rgba(255, 255, 255, .14);
   pointer-events: none;
@@ -1855,7 +1934,7 @@ button.pf-stat:hover span { text-decoration: underline; }
   content: '';
   position: absolute;
   inset: -60px auto auto -50px;
-  width: 150px; height: 150px;
+  width: clamp(96px, 12vw, 150px); height: clamp(96px, 12vw, 150px);
   border-radius: 50%;
   background: rgba(255, 255, 255, .08);
   pointer-events: none;
@@ -1898,7 +1977,7 @@ button.pf-stat:hover span { text-decoration: underline; }
 .hero-cta {
   position: relative; z-index: 1;
   flex-shrink: 0;
-  width: 132px;
+  width: clamp(104px, 12vw, 132px);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: var(--s2);
@@ -1959,7 +2038,7 @@ button.pf-stat:hover span { text-decoration: underline; }
 
 .pe-banner {
   position: relative;
-  height: 148px;
+  height: clamp(110px, 16vw, 168px);
   background: var(--surface-2);
   background-size: cover;
   background-position: center;
@@ -2365,10 +2444,49 @@ button.pf-stat:hover span { text-decoration: underline; }
 [dir="rtl"] .story-plus { inset-inline-end: auto; inset-inline-start: -1px; }
 
 
-.dm { --dm-list-w: clamp(260px, 26vw, 330px); }
+/* The conversation-list width, as one variable so the grid and the
+   media query below cannot drift apart. */
+.dm {
+  --dm-list-w: clamp(240px, 24vw, 330px);
+  /* CONTAINER QUERIES
+     In a split window the viewport is narrow but this panel may
+     still be wide, or the reverse. Media queries ask the wrong
+     question — they measure the window. A container query measures
+     the panel itself, which is what actually decides whether three
+     columns fit. */
+  container-type: inline-size;
+  container-name: dm;
+}
 
-.dm,
+/* Two columns only when the PANEL is wide enough, regardless of what
+   the window is doing. */
+@container dm (max-width: 720px) {
+  .dm, .dm.info-open { grid-template-columns: 1fr; }
+  .dm-list {
+    position: absolute; inset-block: 0; inset-inline-start: 0;
+    width: min(320px, 86cqw);
+    z-index: calc(var(--z-sticky) + 1);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    transition: transform var(--t) var(--ease);
+  }
+  .dm[data-open="thread"] .dm-list { transform: translateX(-102%); }
+  [dir="rtl"] .dm[data-open="thread"] .dm-list { transform: translateX(102%); }
+  .dm:not([data-open="thread"]) .thread { visibility: hidden; }
+  .thread-back { display: inline-flex !important; }
+}
 
+@container dm (max-width: 480px) {
+  .bubble { max-width: 88%; }
+  .cf-label { display: none; }
+}
+
+/* A dangling `.dm,` used to sit here — a selector list with a comma
+   and no second selector, left behind when the fold was removed.
+   CSS treats that as a syntax error and discards BOTH the rule and
+   the @media block that follows it, so .dm lost its height and the
+   messages panel only appeared after something forced a reflow.
+   That is the "I have to click an empty space" bug. */
 @media (min-width: 1400px) {
   .dm.info-open { grid-template-columns: var(--dm-list-w) minmax(420px, 1fr) 320px; }
 }
@@ -2462,3 +2580,81 @@ button.pf-stat:hover span { text-decoration: underline; }
    count is zero, so the tab does not jump around as requests arrive
    and are cleared. */
 .chat-folder[data-folder="requests"] { min-width: 40px; justify-content: center; }
+
+
+/* ============================================================
+   ACHIEVEMENT CARD
+   The moment the game pays you back. A toast said "done" and
+   vanished; this draws its own tick, counts the XP up, and shows the
+   day advancing — so completing a challenge feels like something
+   happened rather than something scrolled past.
+   ============================================================ */
+
+.ach {
+  position: fixed;
+  inset-block-end: clamp(16px, 4vh, 32px);
+  inset-inline-start: 50%;
+  transform: translate(-50%, 20px);
+  z-index: var(--z-toast);
+
+  display: flex; align-items: center; gap: var(--s3);
+  width: min(380px, calc(100vw - var(--s6)));
+  padding: var(--s3) var(--s4);
+
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--border));
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+
+  opacity: 0;
+  transition: opacity var(--t) var(--ease), transform var(--t) var(--ease-spring);
+}
+.ach.in { opacity: 1; transform: translate(-50%, 0); }
+
+.ach-tick { flex-shrink: 0; width: 38px; height: 38px; }
+.ach-tick svg { width: 100%; height: 100%; }
+.ach-ring {
+  fill: color-mix(in srgb, var(--ok) 14%, transparent);
+  stroke: var(--ok); stroke-width: 2;
+}
+/* The tick draws itself. Motion here is meaningful — it says
+   "this just completed" — so it is worth the animation. */
+.ach-check {
+  fill: none; stroke: var(--ok); stroke-width: 3;
+  stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 24; stroke-dashoffset: 24;
+  animation: ach-draw .45s var(--ease-out) .12s forwards;
+}
+@keyframes ach-draw { to { stroke-dashoffset: 0; } }
+
+.ach-body { flex: 1; min-width: 0; }
+.ach-title {
+  font-size: 10px; font-weight: 800;
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ok);
+}
+.ach-label {
+  font-size: var(--fs-sm); font-weight: 600;
+  margin-top: 1px;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--ok) 60%, transparent);
+  color: var(--text-2);
+}
+.ach-progress { display: flex; align-items: center; gap: var(--s2); margin-top: 6px; }
+.ach-progress .bar { flex: 1; height: 5px; }
+.ach-progress .bar-fill { background: var(--ok); }
+.ach-note { font-size: var(--fs-xs); color: var(--text-3); margin-top: 3px; }
+
+.ach-xp {
+  flex-shrink: 0;
+  font-size: var(--fs-lg); font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--ok);
+}
+
+/* Respect a reduced-motion preference: the card still appears and
+   still says what happened, it simply does not animate in. */
+@media (prefers-reduced-motion: reduce) {
+  .ach { transition: opacity .01ms; transform: translate(-50%, 0); }
+  .ach-check { animation: none; stroke-dashoffset: 0; }
+}

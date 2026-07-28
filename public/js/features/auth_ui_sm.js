@@ -223,7 +223,7 @@ function wire(onSuccess) {
     }
     try {
       await requestPasswordReset(value);
-      toast('Si ce compte existe, un administrateur vous contactera.', { duration: 5000 });
+      toast(t('toast.resetSent'), { duration: 5000 });
     } catch (e) {
       toast(e.message, 'err');
     }

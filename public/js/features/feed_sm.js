@@ -128,8 +128,8 @@ function postCard(p) {
       <div class="grow" style="min-width:0">
         <div class="row g2" style="flex-wrap:wrap">
           <span class="post-name">${esc(u.full_name)}</span>
-          ${anon ? '<span class="pill" style="height:20px">Anonyme</span>'
-                 : `<span class="post-handle">@${esc(u.username)}</span>`}
+          ${anon ? `<span class="pill" style="height:20px">${esc(t('feed.anonymous'))}</span>`
+                 : `<span class="post-handle handle">@${esc(u.username)}</span>`}
           <span class="post-handle">·</span>
           <span class="post-time">${timeAgo(p.created_at)}</span>
           ${p.pinned ? `<span class="pill" style="height:20px">${icon('pin',{size:11})} ${esc(t('feed.pinned'))}</span>` : ''}
@@ -144,18 +144,18 @@ function postCard(p) {
     ${commenterFaces(p)}
 
     <div class="post-actions">
-      <button class="act like${liked ? ' on' : ''}" data-act="like" aria-pressed="${liked}">
+      <button class="act like${liked ? ' on' : ''}" data-act="like" aria-pressed="${liked}" aria-label="${t('action.like')}">
         ${liked ? reactionIcon('love', 18) : I.smile.replace(I.smile, heartOutline())}
         <span class="c">${p.likes.length || ''}</span>
       </button>
-      <button class="act" data-act="comment">${I.comment}<span class="c">${p.comments?.length || ''}</span></button>
-      <button class="act" data-act="repost">${I.repost}<span class="c"></span></button>
-      <button class="act" data-act="share">${I.share}</button>
-      <button class="act${saved ? ' on' : ''}" data-act="save" style="margin-inline-start:auto">${I.bookmark}</button>
+      <button class="act" data-act="comment" aria-label="${t('action.reply')}">${I.comment}<span class="c">${p.comments?.length || ''}</span></button>
+      <button class="act" data-act="repost" aria-label="${t('action.share')}">${I.repost}<span class="c"></span></button>
+      <button class="act" data-act="share" aria-label="${t('action.share')}">${I.share}</button>
+      <button class="act${saved ? ' on' : ''}" data-act="save" aria-label="${t('action.save')}" style="margin-inline-start:auto">${I.bookmark}</button>
     </div>
 
     <div class="post-tools hover-reveal">
-      <button class="icon-btn sm" data-act="menu" data-tip="Plus">${I.moreH}</button>
+      <button class="icon-btn sm" data-act="menu" data-tip="${esc(t('action.more'))}">${I.moreH}</button>
     </div>`;
   return node;
 }
@@ -241,7 +241,7 @@ function postMenu(e, p) {
   contextMenu(e, [
     { title: t('feed.post') },
     { label: t('menu.copyLink'), icon: I.link, kbd: 'C',
-      onClick: async () => toast(await copyText(`${location.origin}/#/post/${p.id}`) ? t('toast.linkCopied') : 'Échec', 'ok') },
+      onClick: async () => toast(await copyText(`${location.origin}/#/post/${p.id}`) ? t('toast.linkCopied') : t('toast.failed'), 'ok') },
     { label: p.saves?.includes(me.id) ? t('feed.unsaved2') : t('action.save'), icon: I.bookmark,
       onClick: () => toggleSave(p, $(`.post[data-id="${cssEscape(p.id)}"]`)) },
     { sep: true },
@@ -458,12 +458,12 @@ export function openComposer(kind = 'post') {
   async function submit() {
     const text = ta.value.trim();
     if (!text && !composerFiles.length) return;
-    if (text.length > 500) { toast('500 caractères maximum', 'err'); return; }
+    if (text.length > 500) { toast(t('toast.max500'), 'err'); return; }
 
     const draft = { anonymous, text, file: composerFiles[0] || null };
     if (pollMode) {
       const opts = pollInputs.map(i => i.value.trim()).filter(Boolean);
-      if (opts.length < 2) { toast('Ajoutez au moins deux options', 'err'); return; }
+      if (opts.length < 2) { toast(t('toast.twoOptions'), 'err'); return; }
       draft.poll = { options: opts };
     }
 
@@ -502,7 +502,7 @@ function storiesBar() {
     : `<span class="story-ring${seen ? ' seen' : ''}"><span class="av lg" style="background:${avatarColor(u?.id)}">${esc(initials(u?.full_name || ''))}</span></span>`;
 
   return `<div class="stories">
-    <button class="story" data-story="new" data-tip="Ajouter à votre story">
+    <button class="story" data-story="new" data-tip="${esc(t('story.add'))}">
       <span class="story-ring add">
         ${mineGroup || mine?.avatar_url
           ? `<span class="av lg">${mine?.avatar_url
@@ -672,7 +672,7 @@ async function sharePost(p) {
   if (navigator.share) {
     try { await navigator.share({ title: 'Koliya', text: p.text?.slice(0, 80), url }); return; } catch {}
   }
-  toast(await copyText(url) ? t('toast.linkCopied') : 'Partage impossible', 'ok');
+  toast(await copyText(url) ? t('toast.linkCopied') : t('toast.shareFailed'), 'ok');
 }
 
 /* ------------------------------------------------------------
