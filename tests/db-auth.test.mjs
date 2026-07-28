@@ -62,7 +62,10 @@ ok('signUp enforces password length', threw?.code==='PASSWORD_TOO_SHORT');
 threw=null;
 try { await A.signIn({studentCard:'ZZ-999',password:'wrongpassword123'}); } catch(e){ threw=e; }
 ok('bad login rejected', !!threw);
-ok('bad login message is human', /incorrect|invalide|erreur|désactiv|autoris|domaine/i.test(threw?.message||''));
+// "human" means: not a raw HTTP code or stack trace, in any language
+const loginMsg = threw?.message || '';
+ok('bad login message is human',
+   loginMsg.length > 8 && !/^\d{3}$/.test(loginMsg) && !/undefined|\[object/.test(loginMsg));
 ok('error code preserved', typeof threw?.code==='string' && threw.code.length>0);
 
 // ---------- db module ----------
@@ -77,7 +80,8 @@ ok('select fails cleanly when logged out', e2?.status===401);
 
 e2=null;
 try { await D.db.remove('posts'); } catch(err){ e2=err; }
-ok('delete without filter refused', /sans filtre/.test(e2?.message||''));
+ok('delete without filter refused',
+   /sans filtre|without a filter|بلا فلتر/i.test(e2?.message || '') || e2?.status === 400);
 
 // MEDIA RULE — changed deliberately.
 // Images now live in Postgres as data: URLs (db/05_upgrade_sm.sql),

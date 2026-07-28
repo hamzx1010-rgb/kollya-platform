@@ -181,7 +181,9 @@ ok('no results handled',
 
 // ---------- saved ----------
 R.go('saved'); await new Promise(r=>setTimeout(r,120));
-ok('saved empty state', D.querySelector('#campusList').textContent.includes('Rien d'+String.fromCharCode(39)+'enregistré'));
+ok('saved empty state',
+   /Rien d|Nothing saved|لا شيء محفوظ/.test(D.querySelector('#campusList').textContent)
+   || !!D.querySelector('#campusList .empty'));
 
 // ---------- stories ----------
 const groups=await ST.loadStories();

@@ -15,6 +15,7 @@
  */
 
 import { $, $$, el, on, duration, clamp } from '../core/utils_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast } from '../core/ui_sm.js';
 
@@ -39,7 +40,7 @@ export async function startRecording(host, { onSend, onCancel } = {}) {
     });
   } catch (e) {
     toast(e.name === 'NotAllowedError'
-      ? 'Accès au micro refusé'
+      ? t('voice.micDenied')
       : 'Micro indisponible', 'err');
     return;
   }

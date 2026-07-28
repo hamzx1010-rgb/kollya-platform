@@ -193,8 +193,7 @@ async function resolveStreak(completedToday) {
               { kind: 'err', duration: 9000 }));
     } else if (row.froze) {
       announceOnce(`froze:${todayKey()}`, () =>
-        toast('Journée manquée rattrapée par votre gel mensuel. Votre série continue.',
-              { kind: 'ok', duration: 8000 }));
+        toast(t('streak.frozen'), { kind: 'ok', duration: 8000 }));
     }
 
     if (row.streak !== before) emit('game:streak', getStreak());

@@ -115,7 +115,7 @@ function celebrate({ streak, grew, xp }) {
     body: `<div class="col center g4" style="text-align:center;padding:var(--s4) 0">
         <div class="streak-flame big">${icon('fire', { size: 46 })}</div>
         <div style="font-size:var(--fs-2xl);font-weight:700">${streak} jour${streak > 1 ? 's' : ''}</div>
-        <p class="t-dim">+${xp} XP.${grew ? ' Votre série continue.' : ''}
+        <p class="t-dim">+${xp} XP.${grew ? ' ' + t('streak.continues') : ''}
            Revenez demain — une journée manquée la remet à zéro.</p>
       </div>`
   });
@@ -157,7 +157,7 @@ function heroMarkup(s, lv) {
           <span class="freeze-chip${s.freeze_available ? '' : ' spent'}"
                 data-tip="${s.freeze_available
                   ? 'Gel disponible : une journée manquée sera rattrapée automatiquement ce mois-ci'
-                  : 'Gel déjà utilisé ce mois-ci'}">
+                  : t('streak.freezeUsed')}">
             ${icon('spark', { size: 12 })} ${s.freeze_available ? t('hub.freezeReady') : t('hub.freezeUsed')}
           </span>
         </div>
@@ -219,7 +219,7 @@ function renderBadges(s) {
       const b = BADGES.find(x => x.id === btn.dataset.badge);
       const has = earned.has(b.id);
       modal({
-        title: has ? 'Badge obtenu' : 'Badge à débloquer',
+        title: has ? 'Badge obtenu' : t('hub.badgeToUnlock'),
         body: `<div class="col center g3" style="text-align:center;padding:var(--s4) 0">
             <div class="badge-unlock${has ? '' : ' locked'}">${icon(b.icon, { size: 36 })}</div>
             <div style="font-size:var(--fs-lg);font-weight:650">${esc(b.name)}</div>
@@ -311,7 +311,7 @@ async function showMyRank() {
   const badge = rankBadge(rank);
   host.innerHTML = `<div class="rank-strip${badge ? ' in' : ''}">
       ${icon('trophy', { size: 15 })}
-      <span><b>${rank}${rank === 1 ? 'ᵉʳ' : 'ᵉ'}</b> ${boardScope === 'faculty' ? 'de votre faculté' : 'du campus'}</span>
+      <span><b>${rank}${rank === 1 ? 'ᵉʳ' : 'ᵉ'}</b> ${boardScope === 'faculty' ? t('hub.ofFaculty') : 'du campus'}</span>
       ${badge ? `<span class="rank-reward">${icon('spark', { size: 12 })} Mis en avant dans « Étudiants à découvrir »</span>` : ''}
     </div>`;
 }
@@ -349,7 +349,7 @@ export function wireGameEvents() {
   // even when the hub is closed — that is the feedback loop.
   onEvent('game:quest-done', ({ label, remaining }) => {
     toast(`Défi accompli · ${label}` +
-          (remaining ? ` — encore ${remaining}` : ' — journée complète !'),
+          (remaining ? ` — ${remaining}` : ' ' + t('hub.dayDone')),
           { kind: 'ok', duration: 3500 });
   });
 }

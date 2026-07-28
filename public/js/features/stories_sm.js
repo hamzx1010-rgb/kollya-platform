@@ -144,7 +144,7 @@ export async function openStories(startUserId) {
   const groups = await loadStories();
   if (!groups.length) {
     toast('Aucune story pour le moment', {
-      action: { label: 'En créer une', fn: () => openStoryComposer() }
+      action: { label: t('empty.createOne'), fn: () => openStoryComposer() }
     });
     return;
   }
@@ -159,7 +159,7 @@ export async function openStories(startUserId) {
   const root = el('div', { class: 'sv', role: 'dialog', 'aria-modal': 'true', tabindex: '-1' });
   root.innerHTML = `
     <button class="sv-close icon-btn" aria-label="Fermer">${I.close}</button>
-    <button class="sv-nav prev" aria-label="Précédent"><span>${I.chevron}</span></button>
+    <button class="sv-nav prev" aria-label=t('a11y.prev')><span>${I.chevron}</span></button>
     <button class="sv-nav next" aria-label="Suivant"><span>${I.chevron}</span></button>
     <div class="sv-stage">
       <div class="sv-bars" id="svBars"></div>
@@ -168,7 +168,7 @@ export async function openStories(startUserId) {
       <footer class="sv-foot">
         <div class="sv-reacts" id="svReacts"></div>
         <div class="sv-reply">
-          <input class="input" id="svReply" placeholder="Répondre…" aria-label="Répondre à la story">
+          <input class="input" id="svReply" placeholder=t('story.replyPh') aria-label=t('story.replyAria')>
           <button class="icon-btn btn-primary" id="svSend" aria-label="Envoyer">${I.send}</button>
         </div>
       </footer>
@@ -220,7 +220,7 @@ export async function openStories(startUserId) {
     on($('#svDelete'), 'click', async () => {
       pause(true);
       const ok = await confirmDialog({
-        title: 'Supprimer cette story ?', message: 'Elle disparaîtra immédiatement.',
+        title: t('confirm.deleteStory'), message: t('confirm.deleteStoryBody'),
         confirmLabel: t('action.delete'), danger: true
       });
       if (!ok) { pause(false); return; }
@@ -233,9 +233,9 @@ export async function openStories(startUserId) {
           gi = Math.min(gi, groups.length - 1);
         }
         ii = 0;
-        toast('Story supprimée', 'ok');
+        toast(t('toast.storyDeleted'), 'ok');
         paint();
-      } catch { toast('Suppression échouée', 'err'); pause(false); }
+      } catch { toast(t('toast.deleteFailed'), 'err'); pause(false); }
     });
 
     on($('#svViewers'), 'click', async () => {
@@ -314,7 +314,7 @@ export async function openStories(startUserId) {
     try {
       await api.reply(g.user_id, text.trim());
       toast(`Réponse envoyée à ${g.user.full_name}`, 'ok');
-    } catch { toast('Réponse non envoyée', 'err'); }
+    } catch { toast(t('toast.replyFailed'), 'err'); }
   }
 
   const reply = $('#svReply');

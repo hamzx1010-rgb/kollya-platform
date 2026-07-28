@@ -31,7 +31,7 @@ import {
   confirmDialog, skeletonList, emptyState, optimistic, closeMenu
 } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { openGifPicker, closeGifPicker } from './gif_sm.js';
 import { startRecording, cancelRecording, isRecording, wireVoicePlayers } from './voice_sm.js';
 import { openImageEditor } from './editor_sm.js';
@@ -74,12 +74,12 @@ async function loadThread(peerId) {
 }
 
 async function sendMessage(payload) {
-  if (!api?.sendMessage) throw new Error('Base de données non connectée');
+  if (!api?.sendMessage) throw new Error(t('db.notConnected'));
   return api.sendMessage(payload);
 }
 
 async function persistReaction(msgId, key) {
-  if (!api?.react) throw new Error('Base de données non connectée');
+  if (!api?.react) throw new Error(t('db.notConnected'));
   return api.react(msgId, key);
 }
 
@@ -255,7 +255,7 @@ function patchText(m) {
   const meta = row.querySelector('.bubble-meta');
   if (m.edited_at && meta && !meta.querySelector('.edited-mark')) {
     meta.insertAdjacentHTML('afterbegin',
-      `<span class="edited-mark t-xs" style="opacity:.7">${esc(t('dm.edited'))}</span>`);
+      `<span class="edited-mark t-xs" style="opacity:.7">${esc(t('dm.editedMark'))}</span>`);
   }
 }
 
@@ -327,10 +327,10 @@ function showTyping(on) {
 const FOLDERS = [
   { id: 'all',      label: 'Tous',     icon: 'message'  },
   { id: 'unread',   label: 'Non lus',  icon: 'inbox'    },
-  { id: 'pinned',   label: 'Épinglés', icon: 'pin'      },
+  { id: 'pinned',   label: t('dm.pinnedFolder'), icon: 'pin'      },
   { id: 'study',    label: 'Études',   icon: 'graduation' },
   { id: 'muted',    label: 'Muets',    icon: 'mute'     },
-  { id: 'archived', label: 'Archivés', icon: 'bookmark' }
+  { id: 'archived', label: t('dm.archivedFolder'), icon: 'bookmark' }
 ];
 
 const folderOf = peerId => folders[String(peerId)] || 'all';
@@ -379,7 +379,7 @@ function convMenu(e, c) {
   contextMenu(e, [
     { title: c.peer.full_name },
     ...FOLDERS.filter(f => f.id !== 'unread').map(f => ({
-      label: f.id === 'all' ? 'Retirer du dossier' : `Déplacer vers ${f.label}`,
+      label: f.id === 'all' ? t('menu.removeFolder') : `Déplacer vers ${f.label}`,
       icon: I[f.icon] || I.message,
       kbd: current === f.id ? '✓' : '',
       onClick: async () => {
@@ -389,12 +389,12 @@ function convMenu(e, c) {
         paintConvList();
         try {
           await api.setFolder(c.peer.id, f.id);
-          toast(f.id === 'all' ? 'Retiré du dossier' : `Déplacé vers ${f.label}`, 'ok');
+          toast(f.id === 'all' ? t('toast.removedFolder') : t('dm.movedTo', { folder: f.label }), 'ok');
         } catch {
           if (before) folders[String(c.peer.id)] = before;
           else delete folders[String(c.peer.id)];
           paintConvList();
-          toast('Déplacement échoué', 'err');
+          toast(t('toast.moveFailed'), 'err');
         }
       }
     })),
@@ -413,9 +413,9 @@ function convRow(c) {
   const isOpen = peer?.id === p.id;
   const last = c.last;
   const preview = last
-    ? (last.sender_id === me.id ? 'Vous : ' : '') +
+    ? (last.sender_id === me.id ? t('dm.you') : '') +
       (last.media_type ? mediaLabel(last.media_type) : last.text)
-    : 'Nouvelle conversation';
+    : t('dm.newConversation');
 
   const f = folderOf(p.id);
   const node = el('button', {
@@ -453,9 +453,17 @@ function isOnline(p) {
   return Date.now() - new Date(p.last_seen).getTime() < 120000;
 }
 
-const mediaLabel = t => ({
-  image: t('feed.photo'), video: t('dm.video'), audio: t('dm.voice'), file: t('dm.file')
-}[t] || 'Pièce jointe');
+/**
+ * The parameter used to be called `t`, which SHADOWED the translation
+ * function imported at the top of this file. A later bulk edit then
+ * rewrote the strings inside, producing `t('feed.photo')` where `t`
+ * was the media-type string — so every attachment label rendered as
+ * `undefined`. Renamed to `kind`; the shadow is why it happened.
+ */
+const mediaLabel = kind => ({
+  image: t('dm.photo'), video: t('dm.video'),
+  audio: t('dm.voice'), file:  t('dm.file')
+}[kind] || t('dm.attachment'));
 
 async function renderConvList() {
   const box = $('#convScroll');
@@ -474,7 +482,7 @@ async function renderConvList() {
     box.append(emptyState({
       icon: I.message,
       title: t('error.loading'),
-      text: err?.status === 401 ? t('error.session') : (err?.message || ''),
+      text: errorText(err),
       action: { label: t('action.retry'), onClick: () => renderConvList() }
     }));
     return;
@@ -562,7 +570,7 @@ function paintConvList() {
       icon: I.message,
       title: folder === 'all' ? t('dm.empty.title') : `Rien dans « ${f?.label || folder} »`,
       text: folder === 'all'
-        ? 'Commencez à discuter avec les étudiants de votre faculté.'
+        ? t('empty.startChatting')
         : 'Clic droit sur une conversation pour la classer ici.',
       action: folder === 'all'
         ? { label: t('dm.new'), onClick: () => openNewConversation() }
@@ -586,7 +594,7 @@ function bubbleContent(m) {
   if (m.reply_to) {
     const src = msgs.find(x => x.id === m.reply_to);
     parts.push(`<button class="reply-quote" data-jump="${esc(m.reply_to)}">
-        ${esc(src ? (src.text || mediaLabel(src.media_type)) : 'Message supprimé')}
+        ${esc(src ? (src.text || mediaLabel(src.media_type)) : t('toast.msgDeleted'))}
       </button>`);
   }
 
@@ -656,7 +664,7 @@ function bubbleRow(m, prev, next) {
 
   bub.append(el('div', { class: 'bubble-meta', html:
     `<span>${clockTime(m.created_at)}</span>` +
-    (m.edited_at ? '<span class="t-xs" style="opacity:.7"> modifié</span>' : '') +
+    (m.edited_at ? `<span class="t-xs" style="opacity:.7"> ${esc(t('dm.editedMark'))}</span>` : '') +
     (mine ? (m._pending
       ? `<span class="tick pending" data-tip="Envoi…">${icon('clock', { size: 13 })}</span>`
       : m.seen_at
@@ -669,7 +677,7 @@ function bubbleRow(m, prev, next) {
 
   // hover tools — the web replacement for long-press
   actionBar(row, [
-    { icon: I.smile, tip: 'Réagir', onClick: e => openReactions(e.currentTarget, m) },
+    { icon: I.smile, tip: t('menu.react'), onClick: e => openReactions(e.currentTarget, m) },
     { icon: I.reply, tip: t('action.reply'), onClick: () => startReply(m) },
     { icon: I.moreH, tip: t('action.more'), onClick: e => msgMenu(e, m) }
   ], { side: mine ? 'left' : 'right' });
@@ -823,7 +831,7 @@ function applyReaction(m, key) {
     },
     () => { m.reactions = before; repaintBubble(m); },
     () => persistReaction(m.id, key),
-    'Réaction non enregistrée'
+    t('toast.reactionFailed')
   );
 }
 
@@ -850,10 +858,10 @@ function repaintBubble(m) {
    ------------------------------------------------------------ */
 
 const CHAT_THEMES = [
-  { id: 'default', label: 'Défaut',  bg: 'var(--surface-2)',                      grad: 'var(--grad)' },
+  { id: 'default', label: t('dm.themeDefault'),  bg: 'var(--surface-2)',                      grad: 'var(--grad)' },
   { id: 'dz',      label: 'Algérie', bg: 'linear-gradient(160deg,#E8F5EE,#F7FBF8)', grad: 'linear-gradient(135deg,#006233,#00A651)' },
   { id: 'sunset',  label: 'Coucher', bg: 'linear-gradient(160deg,#FFF3E8,#FFF9F4)', grad: 'linear-gradient(135deg,#F97316,#EC4899)' },
-  { id: 'ocean',   label: 'Océan',   bg: 'linear-gradient(160deg,#E9F4FF,#F6FAFF)', grad: 'linear-gradient(135deg,#0EA5E9,#6366F1)' },
+  { id: 'ocean',   label: t('dm.themeOcean'),   bg: 'linear-gradient(160deg,#E9F4FF,#F6FAFF)', grad: 'linear-gradient(135deg,#0EA5E9,#6366F1)' },
   { id: 'night',   label: 'Nuit',    bg: 'linear-gradient(160deg,#12161C,#0C0F14)', grad: 'linear-gradient(135deg,#4F46E5,#7C3AED)' }
 ];
 
@@ -893,7 +901,7 @@ function renderInfoPanel() {
 
   panel.innerHTML = `
     <header class="info-head blur-bar">
-      <button class="icon-btn" id="infoClose" aria-label="Fermer" data-tip="Échap">${I.close}</button>
+      <button class="icon-btn" id="infoClose" aria-label="Fermer" data-tip=t('a11y.escape')>${I.close}</button>
       <span class="t-bold grow">Infos</span>
       <button class="icon-btn" id="infoMore" aria-label="Plus">${I.moreH}</button>
     </header>
@@ -908,7 +916,7 @@ function renderInfoPanel() {
         <div class="t-sm t-dim">${peer.online ? t('dm.online') : t('dm.offline')}</div>
         <div class="tg-actions">
           <button class="tg-action" id="aProfile" data-tip="Profil">${I.user}</button>
-          <button class="tg-action${pref.muted ? ' on' : ''}" id="aMute" data-tip="${pref.muted ? 'Réactiver' : 'Couper le son'}">${I.mute}</button>
+          <button class="tg-action${pref.muted ? ' on' : ''}" id="aMute" data-tip="${pref.muted ? t('dm.unmuteShort') : t('dm.muteShort')}">${I.mute}</button>
           <button class="tg-action" id="aSearch" data-tip="Rechercher">${I.search}</button>
           <button class="tg-action accent" id="aMessage" data-tip="Écrire">${I.message}</button>
         </div>
@@ -938,7 +946,7 @@ function renderInfoPanel() {
 
       <!-- themes -->
       <section class="tg-sec">
-        ${sectionTitle('Thème de la conversation')}
+        ${sectionTitle(t('dm.chatTheme'))}
         <div class="tg-themes">
           ${CHAT_THEMES.map(t => `
             <button class="tg-theme${t.id === pref.theme ? ' on' : ''}" data-theme="${t.id}">
@@ -997,15 +1005,15 @@ function renderInfoPanel() {
             <span class="tg-ic">${icon('mic', { size: 16 })}</span>
             <div class="grow"><div class="t-sm">Message vocal</div>
             <div class="t-xs t-dim">${duration(m.media_duration || 0)} · ${timeAgo(m.created_at)}</div></div>
-            <button class="icon-btn sm">${I.play}</button></div>`).join('')}
+            <button class="icon-btn sm" aria-label="${esc(t('action.play'))}">${I.play}</button></div>`).join('')}
       </section>` : ''}
 
       <!-- settings, moved out of the header menu -->
       <section class="tg-sec">
-        ${sectionTitle('Paramètres')}
+        ${sectionTitle(t('dm.settings'))}
         <button class="tg-row tg-btn" id="optMute">
           <span class="tg-ic">${icon('mute', { size: 16 })}</span>
-          <span class="grow t-sm" style="text-align:start">${pref.muted ? 'Réactiver les notifications' : 'Couper les notifications'}</span>
+          <span class="grow t-sm" style="text-align:start">${pref.muted ? t('dm.unmuteNotif') : 'Couper les notifications'}</span>
           <span class="switch${pref.muted ? ' on' : ''}"></span>
         </button>
         <button class="tg-row tg-btn" id="optExport">
@@ -1047,7 +1055,7 @@ function wireInfoPanel(pref) {
   const toggleMute = () => {
     const next = !getChatPref(peer.id).muted;
     setChatPref(peer.id, { muted: next });
-    toast(next ? 'Notifications coupées' : 'Notifications réactivées', 'ok');
+    toast(next ? t('toast.notifMuted') : t('toast.notifUnmuted'), 'ok');
     renderInfoPanel();
     refreshHead();
   };
@@ -1095,7 +1103,7 @@ function wireInfoPanel(pref) {
   on($('#optClear'), 'click', async () => {
     if (!await confirmDialog({
       title: 'Vider la conversation ?',
-      message: 'Tous les messages seront retirés de votre côté.',
+      message: t('confirm.clearConv'),
       confirmLabel: 'Vider', danger: true
     })) return;
     try {
@@ -1103,7 +1111,7 @@ function wireInfoPanel(pref) {
       msgs = [];
       renderThread();
       renderConvList();
-      toast('Conversation vidée', 'ok');
+      toast(t('toast.convCleared'), 'ok');
     } catch { toast('Impossible de vider la conversation', 'err'); }
   });
 
@@ -1115,36 +1123,36 @@ function wireInfoPanel(pref) {
     })) return;
     toggleInfo(false);
     $('#dm')?.removeAttribute('data-open');
-    toast('Conversation supprimée', 'ok');
+    toast(t('toast.convDeleted'), 'ok');
     renderConvList();
   });
 
   on($('#optBlock'), 'click', async () => {
     if (!await confirmDialog({
       title: t('dm.blockQ', { name: peer.full_name }),
-      message: 'Cette personne ne pourra plus vous écrire.',
+      message: t('confirm.blockBody'),
       confirmLabel: t('action.block'), danger: true
     })) return;
     try {
       const { profileApi } = await import('../core/api_sm.js');
       await profileApi.block(peer.id);
-      toast('Utilisateur bloqué', 'ok');
-    } catch { toast('Blocage échoué', 'err'); }
+      toast(t('toast.userBlocked'), 'ok');
+    } catch { toast(t('toast.blockFailed'), 'err'); }
   });
 
   on($('#optReport'), 'click', async () => {
     try {
       const { profileApi } = await import('../core/api_sm.js');
-      await profileApi.report('user', peer.id, 'Signalé depuis la conversation');
-      toast('Signalement envoyé aux administrateurs', 'ok');
-    } catch { toast('Signalement échoué', 'err'); }
+      await profileApi.report('user', peer.id, t('report.fromChat'));
+      toast(t('toast.reportSentAdmin'), 'ok');
+    } catch { toast(t('toast.reportFailed'), 'err'); }
   });
 
   on($('#infoMore'), 'click', e => contextMenu(e, [
-    { label: 'Voir le profil', icon: I.user, onClick: () => location.hash = `#/profile/${peer.username}` },
+    { label: t('menu.viewProfile'), icon: I.user, onClick: () => location.hash = `#/profile/${peer.username}` },
     { label: 'Exporter',       icon: I.download, onClick: exportThread },
     { sep: true },
-    { label: 'Supprimer la conversation', icon: I.trash, danger: true, onClick: () => $('#optDelete')?.click() }
+    { label: t('dm.deleteConvItem'), icon: I.trash, danger: true, onClick: () => $('#optDelete')?.click() }
   ]));
 }
 
@@ -1211,7 +1219,7 @@ const highlight = (text, q) => {
    ------------------------------------------------------------ */
 
 function exportThread() {
-  if (!msgs.length) { toast('Rien à exporter'); return; }
+  if (!msgs.length) { toast(t('toast.nothingExport')); return; }
   const mine = me.get();
   const lines = [
     `Conversation Koliya — ${mine?.full_name || 'moi'} et ${peer.full_name}`,
@@ -1237,7 +1245,7 @@ function exportThread() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('Conversation exportée', 'ok');
+  toast(t('toast.convExported'), 'ok');
 }
 
 /* ------------------------------------------------------------
@@ -1245,7 +1253,7 @@ function exportThread() {
    ------------------------------------------------------------ */
 
 async function forwardMessage(m) {
-  const search = el('input', { class: 'input', placeholder: 'À qui ?' });
+  const search = el('input', { class: 'input', placeholder: t('compose.toWhom') });
   const list = el('div', { class: 'col g2', style: 'max-height:44vh;overflow:auto' });
   let people = [];
 
@@ -1284,9 +1292,9 @@ async function forwardMessage(m) {
         media_name: m.media_name || null
       });
       dlg.close();
-      toast('Message transféré', 'ok');
+      toast(t('toast.msgForwarded'), 'ok');
       renderConvList();
-    } catch { btn.disabled = false; toast('Transfert échoué', 'err'); }
+    } catch { btn.disabled = false; toast(t('toast.forwardFailed'), 'err'); }
   });
 
   refresh();
@@ -1317,7 +1325,7 @@ function contactRow(u) {
       <div class="grow" style="min-width:0">
         <div class="row g2" style="flex-wrap:wrap">
           <span class="t-sm t-bold truncate">${esc(u.full_name)}</span>
-          ${u.is_private ? `<span class="tg-ic" data-tip="Compte privé">${icon('lock', { size: 12 })}</span>` : ''}
+          ${u.is_private ? `<span class="tg-ic" data-tip=t('profile.privateChip')>${icon('lock', { size: 12 })}</span>` : ''}
         </div>
         <div class="t-xs t-dim">@${esc(u.username)}${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
       </div>
@@ -1335,7 +1343,7 @@ export async function openNewConversation(prefill = '') {
       const people = await api.contacts(q);
       if (!people.length) {
         list.innerHTML = `<div class="tg-empty">${icon('user', { size: 22 })}
-          <span>${q ? `Aucun étudiant pour « ${esc(q)} »` : 'Aucun étudiant à qui écrire pour le moment'}</span></div>`;
+          <span>${q ? `Aucun étudiant pour « ${esc(q)} »` : t('empty.noContacts')}</span></div>`;
         return;
       }
       list.innerHTML = people.map(contactRow).join('');
@@ -1346,7 +1354,7 @@ export async function openNewConversation(prefill = '') {
           ${icon('close', { size: 22 })}
           <span>${esc(err?.status === 401
             ? t('error.session')
-            : (err?.message || 'Chargement impossible.'))}</span>
+            : (errorText(err)))}</span>
           <button class="btn btn-outline btn-sm" id="contactRetry">Réessayer</button>
         </div>`;
       on($('#contactRetry'), 'click', () => load(search.value.trim()));
@@ -1372,10 +1380,29 @@ export async function openNewConversation(prefill = '') {
   setTimeout(() => search.focus(), 80);
 }
 
-/** Open a conversation from anywhere (profile, discovery, search). */
-export function messageUser(userId) {
+/**
+ * Open a conversation with someone from anywhere in the app.
+ *
+ * If messages already exist the thread opens on them. If not, the
+ * conversation is created in the UI immediately — an empty thread
+ * with a composer ready — and the first message the student sends
+ * is what actually writes the row. No empty database rows for
+ * conversations that never happened.
+ */
+export async function openConversationWith(userId, hint = null) {
+  if (!userId) return;
+  if (hint) cachePeople([{ id: userId, ...hint }]);
+
   go('messages', userId);
+
+  // If the route was already on /messages the router will not
+  // re-run, so open the thread directly.
+  await new Promise(r => setTimeout(r, 0));
+  if ($('#dm')) await openThread(userId);
 }
+
+/** Backwards-compatible alias. */
+export const messageUser = openConversationWith;
 
 /** Redraw just the header after a nickname or mute change. */
 function refreshHead() {
@@ -1387,7 +1414,7 @@ function refreshHead() {
   const existing = head?.querySelector('.head-muted');
   if (pref.muted && !existing && head) {
     head.insertAdjacentHTML('beforeend',
-      `<span class="head-muted" data-tip="Notifications coupées">${icon('mute', { size: 15 })}</span>`);
+      `<span class="head-muted" data-tip=t('toast.notifMuted')>${icon('mute', { size: 15 })}</span>`);
   } else if (!pref.muted && existing) existing.remove();
 }
 
@@ -1420,14 +1447,14 @@ function msgMenu(e, m) {
   contextMenu(e, [
     { title: t('action.message') },
     { label: t('action.reply'),  icon: I.reply,   kbd: 'R', onClick: () => startReply(m) },
-    { label: 'Réagir',    icon: I.smile,   onClick: () => openReactions(e.target, m) },
+    { label: t('menu.react'),    icon: I.smile,   onClick: () => openReactions(e.target, m) },
     { label: t('action.copy'),    icon: I.copy,    kbd: 'C', onClick: () => copyMsg(m) },
     { label: t('dm.forward'), icon: I.forward, onClick: () => forwardMessage(m) },
     mine ? { label: t('action.edit'), icon: I.edit, onClick: () => startEdit(m) } : null,
     { sep: true },
     mine
       ? { label: t('action.delete'), icon: I.trash, danger: true, onClick: () => removeMsg(m) }
-      : { label: t('action.report'),  icon: I.flag,  danger: true, onClick: () => toast('Signalement envoyé', 'ok') }
+      : { label: t('action.report'),  icon: I.flag,  danger: true, onClick: () => toast(t('toast.reportSent'), 'ok') }
   ]);
 }
 
@@ -1439,8 +1466,8 @@ async function copyMsg(m) {
 
 async function removeMsg(m) {
   if (!await confirmDialog({
-    title: 'Supprimer ce message ?',
-    message: 'Il sera retiré pour tout le monde.',
+    title: t('confirm.deleteMsg'),
+    message: t('confirm.deleteMsgBody'),
     confirmLabel: t('action.delete'), danger: true
   })) return;
   const keep = msgs;
@@ -1448,12 +1475,12 @@ async function removeMsg(m) {
   renderThread({ keepScroll: true });
   try {
     await api.deleteMessage(m.id);
-    toast('Message supprimé', 'ok');
+    toast(t('toast.msgDeleted'), 'ok');
     renderConvList();
   } catch {
     msgs = keep;
     renderThread({ keepScroll: true });
-    toast('Suppression échouée', 'err');
+    toast(t('toast.deleteFailed'), 'err');
   }
 }
 
@@ -1533,7 +1560,7 @@ async function doSend() {
     cancelContext();
     renderThread({ keepScroll: true });
     try { await api.editMessage(target.id, text); }
-    catch { target.text = before; renderThread({ keepScroll: true }); toast('Modification non enregistrée', 'err'); }
+    catch { target.text = before; renderThread({ keepScroll: true }); toast(t('toast.editFailed'), 'err'); }
     return;
   }
 
@@ -1602,7 +1629,7 @@ async function sendOne(payload, mediaType = null) {
     renderThread();
     toast(err?.message?.includes('trop lourd')
       ? err.message
-      : 'Message non envoyé — rien n\'a été enregistré', 'err');
+      : t('toast.msgFailed'), 'err');
     return null;
   }
 }
@@ -1809,7 +1836,12 @@ function jumpTo(id) {
    ------------------------------------------------------------ */
 
 export async function openThread(peerId) {
+  // A peer with no history yet is legitimate — it is exactly what
+  // "start a conversation" means. person() falls back to the cache
+  // that openConversationWith() just seeded, so the header shows a
+  // real name rather than "Étudiant".
   peer = convs.find(c => String(c.peer.id) === String(peerId))?.peer || person(peerId);
+  const isNewConversation = !convs.some(c => String(c.peer.id) === String(peerId));
 
   setState({ activeChat: peerId });
   $('#dm')?.setAttribute('data-open', 'thread');
@@ -1826,7 +1858,7 @@ export async function openThread(peerId) {
         <div class="t-bold truncate">${esc(pref.nickname || peer.full_name)}</div>
         <div class="presence">${peer.online ? t('dm.online') : t('dm.offline')}</div>
       </div>
-      ${pref.muted ? `<span class="head-muted" data-tip="Notifications coupées">${icon('mute', { size: 15 })}</span>` : ''}`;
+      ${pref.muted ? `<span class="head-muted" data-tip=t('toast.notifMuted')>${icon('mute', { size: 15 })}</span>` : ''}`;
 
     // The whole header bar is the target, exactly like Telegram:
     // click anywhere on it to open the conversation info.
@@ -1854,13 +1886,20 @@ export async function openThread(peerId) {
     $('#threadBody').innerHTML = '';
     $('#threadBody').append(emptyState({
       icon: I.message, title: 'Conversation indisponible',
-      text: err?.message || 'Réessayez dans un instant.',
+      text: errorText(err),
       action: { label: t('action.retry'), onClick: () => openThread(peerId) }
     }));
     return;
   }
   renderThread();
   applyChatTheme(getChatPref(peerId).theme);
+
+  // Show the new conversation in the list right away, so it does not
+  // look like the click did nothing.
+  if (isNewConversation && peer?.id) {
+    convs = [{ peer, last: null, unread: 0 }, ...convs];
+    paintConvList();
+  }
 
   // Land on the newest message immediately. Animating through 200
   // messages is motion for its own sake — you want to see the end.

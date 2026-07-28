@@ -622,10 +622,12 @@ export const profileApi = {
     // vanished on refresh — the "profile editing is not saving" bug.
     // Say so instead.
     if (!updated) {
-      throw new DbError(
-        'La base de données a refusé la modification (aucune ligne mise à jour). ' +
-        'Exécutez db/08_fixes_sm.sql : la politique profiles_update_self ' +
-        'bloque les comptes dont le rôle n\'est pas « student ».', 403);
+      // A 200 with an empty array means RLS filtered the row out.
+      // The student gets a plain message; the fix belongs in the
+      // console where a developer will actually see it.
+      console.error('[koliya] profiles UPDATE matched 0 rows — run db/08_fixes_sm.sql: ' +
+                    'profiles_update_self rejects roles other than "student".');
+      throw new DbError('__RLS_DENIED__', 403);
     }
 
     me.set({ ...me.get(), ...updated });

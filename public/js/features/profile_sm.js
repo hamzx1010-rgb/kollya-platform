@@ -14,7 +14,7 @@ import {
   rafThrottle, clamp, env, copyText, cssEscape
 } from '../core/utils_sm.js';
 import { me, on as onEvent } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { safeUrl } from '../core/utils_sm.js';
 import { I, icon } from '../core/icons_sm.js';
@@ -73,13 +73,13 @@ function headerMarkup(u) {
     <div class="pf-actions">
       ${u.isMe
         ? `<button class="btn btn-outline" id="pfEdit">${icon('edit',{size:16})} ${t('profile.edit')}</button>
-           <button class="icon-btn" id="pfSettings" data-tip="Réglages">${I.settings}</button>`
+           <button class="icon-btn" id="pfSettings" data-tip="${esc(t('nav.settings'))}">${I.settings}</button>`
         : `<button class="btn ${u.followState === 'following' ? 'btn-outline btn-follow' : 'btn-primary'}"
                    id="pfFollow" data-state="${u.followState || 'none'}">
              ${followLabel(u.followState)}
            </button>
            ${u.canMessage
-             ? `<button class="btn btn-outline" id="pfMessage">${icon('message', { size: 16 })} Message</button>`
+             ? `<button class="btn btn-outline" id="pfMessage">${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}</button>`
              : ''}
            <button class="icon-btn" id="pfMore" data-tip="Plus">${I.moreH}</button>`}
     </div>
@@ -97,10 +97,10 @@ function headerMarkup(u) {
     ${profileLinks(u)}
 
     <div class="pf-stats">
-      <button class="pf-stat" data-stat="posts"><b id="stPosts">0</b><span>publications</span></button>
-      <button class="pf-stat" data-stat="followers"><b id="stFollowers">0</b><span>abonnés</span></button>
-      <button class="pf-stat" data-stat="following"><b id="stFollowing">0</b><span>abonnements</span></button>
-      <div class="pf-stat"><b class="row g1" style="color:var(--streak)">${icon('fire',{size:15})} ${u.streak || 0}</b><span>série</span></div>
+      <button class="pf-stat" data-stat="posts"><b id="stPosts">0</b><span>${t('profile.posts')}</span></button>
+      <button class="pf-stat" data-stat="followers"><b id="stFollowers">0</b><span>${t('profile.followers')}</span></button>
+      <button class="pf-stat" data-stat="following"><b id="stFollowing">0</b><span>${t('profile.following')}</span></button>
+      <div class="pf-stat"><b class="row g1" style="color:var(--streak)">${icon('fire',{size:15})} ${u.streak || 0}</b><span>${t('profile.streak')}</span></div>
     </div>
 
     ${badges.length ? `<div class="pf-badges">
@@ -110,10 +110,13 @@ function headerMarkup(u) {
   </div>`;
 }
 
+/** Two labels stacked: "Following" normally, "Unfollow" on hover. */
 const followLabel = s =>
-  s === 'following' ? '<span class="lbl-following">Abonné</span><span class="lbl-unfollow">Se désabonner</span>'
-  : s === 'requested' ? 'Demande envoyée'
-  : t('action.follow');
+  s === 'following'
+    ? `<span class="lbl-following">${esc(t('profile.followingBtn'))}</span>` +
+      `<span class="lbl-unfollow">${esc(t('profile.unfollowBtn'))}</span>`
+  : s === 'requested' ? esc(t('profile.requestedBtn'))
+  : esc(t('profile.followBtn'));
 
 /** Website / GitHub / LinkedIn, shown only when they exist. */
 function profileLinks(u) {
@@ -168,7 +171,7 @@ async function renderTabBody(u) {
     host.innerHTML = '';
     host.append(emptyState({
       icon: I.inbox, title: t('error.loading'),
-      text: err?.message || 'Réessayez dans un instant.',
+      text: errorText(err),
       action: { label: t('action.retry'), onClick: () => renderTabBody(u) }
     }));
     return;
@@ -183,7 +186,7 @@ async function renderTabBody(u) {
           return `<button class="pf-tile" data-zoom="${esc(src)}"><img src="${esc(src)}" alt="" loading="lazy"></button>`;
         }).join('')}</div>`
       : '';
-    if (!media.length) host.append(emptyState({ icon: I.image, title: 'Aucun média', text: 'Les photos partagées apparaîtront ici.' }));
+    if (!media.length) host.append(emptyState({ icon: I.image, title: t('empty.noMedia'), text: t('empty.sharedPhotos') }));
     return;
   }
 
@@ -193,8 +196,8 @@ async function renderTabBody(u) {
       icon: activeTab === 'likes' ? I.fire : I.edit,
       title: activeTab === 'likes' ? 'Rien pour l\'instant' : t('profile.noPosts'),
       text: activeTab === 'likes'
-        ? 'Les publications aimées apparaîtront ici.'
-        : (u.isMe ? 'Votre première publication apparaîtra ici.' : `${u.full_name} n'a rien publié.`)
+        ? t('empty.likedPosts')
+        : (u.isMe ? t('empty.yourFirstPost') : `${u.full_name} n'a rien publié.`)
     }));
     return;
   }
@@ -259,44 +262,75 @@ function wireActions(u) {
       const state = follow.dataset.state;
       const next = state === 'following' ? 'none'
                  : u.private ? 'requested' : 'following';
+      const beforeCount = u.followers || 0;
+
       optimistic(
         () => {
           follow.dataset.state = next;
           follow.className = 'btn ' + (next === 'following' ? 'btn-outline btn-follow' : next === 'requested' ? 'btn-outline' : 'btn-primary');
           follow.innerHTML = followLabel(next);
           u.followState = next;
-          const f = $('#stFollowers');
-          if (f) f.textContent = compact((u.followers || 0) + (next === 'following' ? 1 : 0));
-          if (next === 'requested') toast('Demande envoyée', 'ok');
+          // move the number at once so the click feels immediate
+          u.followers = beforeCount + (next === 'following' ? 1 : state === 'following' ? -1 : 0);
+          setStat('#stFollowers', u.followers);
+          if (next === 'requested') toast(t('profile.requestSent'), 'ok');
           renderTabBody(u);
         },
-        () => { follow.dataset.state = state; follow.innerHTML = followLabel(state); u.followState = state; },
-        () => api.follow(u.id, next)
+        () => {
+          follow.dataset.state = state;
+          follow.className = 'btn ' + (state === 'following' ? 'btn-outline btn-follow' : 'btn-primary');
+          follow.innerHTML = followLabel(state);
+          u.followState = state;
+          u.followers = beforeCount;
+          setStat('#stFollowers', beforeCount);
+        },
+        async () => {
+          await api.follow(u.id, next);
+          // Then ask the database what the number really is. The old
+          // code only ever guessed +1 and never corrected itself, so
+          // a failed or duplicated follow left a wrong count on
+          // screen until the page was reloaded.
+          await syncCounts(u);
+        }
       );
     });
   }
 
-  on($('#pfMessage'), 'click', () => go('messages', u.id));
+  // Open the conversation, creating it if it does not exist yet.
+  // Navigating alone was not enough: with no prior messages the
+  // student landed on an empty pane instead of a new conversation.
+  on($('#pfMessage'), 'click', async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const { openConversationWith } = await import('./messages_sm.js');
+      await openConversationWith(u.id, { full_name: u.full_name, username: u.username,
+                                         avatar_url: u.avatar_url, faculty: u.faculty });
+    } catch (err) {
+      console.error('[koliya] ouverture de la conversation', err);
+      go('messages', u.id);          // still get them there
+    } finally { btn.disabled = false; }
+  });
   on($('#pfEdit'), 'click', () => openEditProfile(u));
   on($('#pfSettings'), 'click', () => go('settings'));
 
   on($('#pfMore'), 'click', e => contextMenu(e, [
     { title: esc(u.full_name) },
-    { label: 'Copier le lien', icon: I.link,
-      onClick: async () => toast(await copyText(`${location.origin}/#/profile/${u.username}`) ? 'Lien copié' : 'Échec', 'ok') },
-    { label: 'Couper les notifications', icon: I.mute, onClick: () => toast('Notifications coupées', 'ok') },
+    { label: t('menu.copyLink'), icon: I.link,
+      onClick: async () => toast(await copyText(`${location.origin}/#/profile/${u.username}`) ? t('toast.linkCopied') : 'Échec', 'ok') },
+    { label: 'Couper les notifications', icon: I.mute, onClick: () => toast(t('toast.notifMuted'), 'ok') },
     { sep: true },
     { label: t('action.block'), icon: I.block, danger: true, onClick: async () => {
         if (!await confirmDialog({ title: `Bloquer ${u.full_name} ?`,
-          message: 'Cette personne ne pourra plus vous contacter ni voir vos publications.',
+          message: t('confirm.blockBodyFull'),
           confirmLabel: t('action.block'), danger: true })) return;
-        try { await api.block(u.id); toast('Utilisateur bloqué', 'ok'); go('feed'); }
-        catch { toast('Blocage échoué', 'err'); }
+        try { await api.block(u.id); toast(t('toast.userBlocked'), 'ok'); go('feed'); }
+        catch { toast(t('toast.blockFailed'), 'err'); }
       } },
     { label: t('action.report'), icon: I.flag, danger: true, onClick: async () => {
-        try { await api.report('user', u.id, 'Signalé depuis le profil');
-              toast('Signalement envoyé aux administrateurs', 'ok'); }
-        catch { toast('Signalement échoué', 'err'); }
+        try { await api.report('user', u.id, t('report.fromProfile'));
+              toast(t('toast.reportSentAdmin'), 'ok'); }
+        catch { toast(t('toast.reportFailed'), 'err'); }
       } }
   ]));
 
@@ -384,7 +418,7 @@ function wireActions(u) {
 async function openPeopleList(kind, u) {
   const list = el('div', { class: 'col g3' });
   list.innerHTML = skeletonList(3, 'conv');
-  modal({ title: kind === 'followers' ? 'Abonnés' : 'Abonnements', body: list });
+  modal({ title: kind === 'followers' ? t('profile.followers') : t('profile.following'), body: list });
 
   let rows = [];
   try {
@@ -523,7 +557,7 @@ function openEditProfile(u) {
       field(t('profile.name'), nameInput),
       field("Nom d'utilisateur", userInput, 'Lettres, chiffres, point et tiret bas. Il apparaît dans votre lien de profil.'),
       field(t('profile.faculty'), facSelect),
-      field(t('profile.pronouns'), pronounInput, 'Facultatif, affiché à côté de votre nom.'),
+      field(t('profile.pronouns'), pronounInput, t('profile.pronounsHint')),
 
       el('div', { class: 'pe-sec' }, t('profile.about')),
       el('div', { class: 'pe-field' },
@@ -574,11 +608,11 @@ function openEditProfile(u) {
       const st = await api.nameChangeStatus?.() || { will_warn: false };
       if (st.will_warn) {
         const okToGo = await confirmDialog({
-          title: 'Changer votre nom à nouveau ?',
+          title: t('profile.nameAgain'),
           message: `Vous avez déjà changé de nom il y a moins de 15 jours. ` +
                    `Vos camarades risquent de ne plus vous reconnaître. ` +
                    `Le compteur se réinitialise dans ${st.days_left} jour${st.days_left > 1 ? 's' : ''}.`,
-          confirmLabel: 'Changer quand même',
+          confirmLabel: t('profile.changeAnyway'),
           cancelLabel: 'Garder mon nom'
         });
         if (!okToGo) { nameInput.value = u.full_name || ''; paintMedia(); return; }
@@ -591,7 +625,7 @@ function openEditProfile(u) {
     }
 
     save.disabled = true;
-    save.textContent = (avatarFile || bannerFile) ? 'Envoi des images…' : 'Enregistrement…';
+    save.textContent = (avatarFile || bannerFile) ? t('profile.uploading') : t('profile.saving');
 
     try {
       const updated = await api.updateProfile({
@@ -622,15 +656,14 @@ function openEditProfile(u) {
       // "rien n'a été modifié" for every failure — including cases
       // where the user HAD changed something — which is why the
       // button looked like it was lying.
+      // One special case worth naming, then the shared formatter.
+      // Everything else used to fall through to `Échec: ${raw}`,
+      // which put a library's English error inside a French UI.
       const raw = err?.message || '';
-      const msg =
-        /duplicate|unique|23505/i.test(raw) ? "Ce nom d'utilisateur est déjà pris."
-      : /trop lourd|413/i.test(raw)         ? raw
-      : err?.status === 401                 ? t('error.session')
-      : err?.status === 403                 ? raw
-      : raw                                 ? `Échec : ${raw}`
-      : 'Échec inconnu — regardez la console.';
-      console.error('[koliya] échec de la sauvegarde du profil', err);
+      const msg = /duplicate|unique|23505/i.test(raw)
+        ? t('profile.usernameTaken')
+        : errorText(err);
+      console.error('[koliya] profile save failed', err);
       toast(msg, { kind: 'err', duration: 7000 });
     }
   }
@@ -641,6 +674,33 @@ function openEditProfile(u) {
 /* ------------------------------------------------------------
    RENDER
    ------------------------------------------------------------ */
+
+/** Write a stat without re-rendering the whole header. */
+function setStat(sel, value) {
+  const node = $(sel);
+  if (node) node.textContent = compact(value || 0);
+}
+
+/**
+ * Re-read followers / following / posts from the database.
+ * Called after any action that can change them, so the numbers on
+ * screen are the numbers in Postgres — not an optimistic guess that
+ * nothing ever verified.
+ */
+export async function syncCounts(u) {
+  if (!u?.id || !api?.getProfile) return;
+  try {
+    const fresh = await api.getProfile(u.username);
+    if (!fresh) return;
+    u.followers = fresh.followers;
+    u.following = fresh.following;
+    u.posts = fresh.posts;
+    u.followState = fresh.followState;
+    setStat('#stFollowers', fresh.followers);
+    setStat('#stFollowing', fresh.following);
+    setStat('#stPosts', fresh.posts);
+  } catch { /* leave the optimistic value rather than blanking it */ }
+}
 
 /** Top-10 students carry their standing on the profile. */
 async function paintRank(u) {
@@ -699,10 +759,8 @@ export function initProfile(mountFn) {
       const root = $('#pfRoot');
       root.innerHTML = '';
       root.append(emptyState({
-        icon: I.user, title: 'Profil indisponible',
-        text: err?.message === 'not-connected'
-          ? 'Non connecté à la base de données.'
-          : (err?.message || 'Réessayez dans un instant.'),
+        icon: I.user, title: t('profile.unavailable'),
+        text: err?.message === 'not-connected' ? t('profile.notConnected') : errorText(err),
         action: { label: t('action.retry'), onClick: () => location.reload() }
       }));
       return;
@@ -711,9 +769,9 @@ export function initProfile(mountFn) {
       const root = $('#pfRoot');
       root.innerHTML = '';
       root.append(emptyState({
-        icon: I.user, title: 'Profil introuvable',
-        text: `Aucun étudiant nommé @${esc(username || '')}.`,
-        action: { label: 'Retour au fil', onClick: () => go('feed') }
+        icon: I.user, title: t('profile.notFound'),
+        text: t('profile.noStudent', { name: username || '' }),
+        action: { label: t('profile.backToFeed'), onClick: () => go('feed') }
       }));
       return;
     }

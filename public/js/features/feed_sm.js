@@ -17,7 +17,7 @@ import {
   uid, safeUrl, cssEscape, onVisible, rafThrottle, debounce, env, copyText
 } from '../core/utils_sm.js';
 import { me, on as onEvent, emit, frequency } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { act } from '../core/game_sm.js';
 import { I, icon, reactionIcon } from '../core/icons_sm.js';
@@ -132,7 +132,7 @@ function postCard(p) {
                  : `<span class="post-handle">@${esc(u.username)}</span>`}
           <span class="post-handle">·</span>
           <span class="post-time">${timeAgo(p.created_at)}</span>
-          ${p.pinned ? `<span class="pill" style="height:20px">${icon('pin',{size:11})} Épinglé</span>` : ''}
+          ${p.pinned ? `<span class="pill" style="height:20px">${icon('pin',{size:11})} ${esc(t('feed.pinned'))}</span>` : ''}
         </div>
         ${!anon && u.faculty ? `<div class="t-xs t-dim2">${esc(u.faculty)}</div>` : ''}
       </div>
@@ -232,7 +232,7 @@ async function votePoll(p, index, node) {
   } catch {
     p.poll = before;
     node.querySelector('.poll').outerHTML = pollMarkup(p);
-    toast('Vote non enregistré', 'err');
+    toast(t('toast.voteFailed'), 'err');
   }
 }
 
@@ -240,20 +240,20 @@ function postMenu(e, p) {
   const mine = p.user_id === me.id;
   contextMenu(e, [
     { title: t('feed.post') },
-    { label: 'Copier le lien', icon: I.link, kbd: 'C',
-      onClick: async () => toast(await copyText(`${location.origin}/#/post/${p.id}`) ? 'Lien copié' : 'Échec', 'ok') },
-    { label: p.saves?.includes(me.id) ? 'Retirer des enregistrés' : t('action.save'), icon: I.bookmark,
+    { label: t('menu.copyLink'), icon: I.link, kbd: 'C',
+      onClick: async () => toast(await copyText(`${location.origin}/#/post/${p.id}`) ? t('toast.linkCopied') : 'Échec', 'ok') },
+    { label: p.saves?.includes(me.id) ? t('feed.unsaved2') : t('action.save'), icon: I.bookmark,
       onClick: () => toggleSave(p, $(`.post[data-id="${cssEscape(p.id)}"]`)) },
     { sep: true },
-    !mine ? { label: 'Masquer cette publication', icon: I.eyeOff, onClick: () => hidePost(p) } : null,
+    !mine ? { label: t('menu.hidePost'), icon: I.eyeOff, onClick: () => hidePost(p) } : null,
     !mine ? { label: `Masquer @${person(p.user_id).username}`, icon: I.mute,
-              onClick: () => toast('Compte masqué', 'ok') } : null,
-    mine ? { label: p.pinned ? 'Désépingler' : 'Épingler', icon: I.pin,
+              onClick: () => toast(t('toast.accountHidden'), 'ok') } : null,
+    mine ? { label: p.pinned ? t('menu.unpin') : t('menu.pin'), icon: I.pin,
              onClick: () => { p.pinned = !p.pinned; render(); } } : null,
     { sep: true },
     mine
       ? { label: t('action.delete'), icon: I.trash, danger: true, onClick: () => deletePost(p) }
-      : { label: t('action.report'), icon: I.flag, danger: true, onClick: () => toast('Signalement envoyé', 'ok') }
+      : { label: t('action.report'), icon: I.flag, danger: true, onClick: () => toast(t('toast.reportSent'), 'ok') }
   ]);
 }
 
@@ -265,7 +265,7 @@ function hidePost(p) {
 
 async function deletePost(p) {
   if (!await confirmDialog({
-    title: 'Supprimer la publication ?', message: 'Cette action est définitive.',
+    title: t('confirm.deletePost'), message: t('confirm.permanent'),
     confirmLabel: t('action.delete'), danger: true
   })) return;
   const keep = posts;
@@ -277,7 +277,7 @@ async function deletePost(p) {
   } catch {
     posts = keep;
     render();
-    toast('Suppression échouée', 'err');
+    toast(t('toast.deleteFailed'), 'err');
   }
 }
 
@@ -331,7 +331,7 @@ async function openComments(p) {
     p.comments = p.comments.filter(c => String(c.id) !== String(id));
     draw(); render();
     try { await api?.deleteComment?.(id); }
-    catch { p.comments = keep; draw(); render(); toast('Suppression échouée', 'err'); }
+    catch { p.comments = keep; draw(); render(); toast(t('toast.deleteFailed'), 'err'); }
   });
 
   async function add() {
@@ -357,8 +357,8 @@ async function openComments(p) {
       p.comments = p.comments.filter(c => c.id !== temp.id);
       draw();
       toast(err?.status === 401
-        ? 'Session expirée — reconnectez-vous'
-        : 'Commentaire non enregistré', 'err');
+        ? t('error.session')
+        : t('toast.commentFailed'), 'err');
     } finally {
       busy = false;
       send.disabled = false;
@@ -376,10 +376,10 @@ async function openComments(p) {
    ------------------------------------------------------------ */
 
 const POST_KINDS = [
-  { id:'post',  label:t('feed.post'), desc:'Partagez avec votre faculté', icon:'edit',  grad:'var(--grad)' },
+  { id:'post',  label:t('feed.post'), desc:t('compose.shareFaculty'), icon:'edit',  grad:'var(--grad)' },
   { id:'photo', label:t('feed.photo'),       desc:'Une image vaut mille mots',   icon:'image', grad:'linear-gradient(135deg,#F59E0B,#EF4444)' },
   { id:'poll',  label:t('feed.poll'),     desc:'Demandez au campus',          icon:'poll',  grad:'linear-gradient(135deg,#06B6D4,#4F46E5)' },
-  { id:'anon',  label:t('feed.anonymous'),     desc:'Masquez votre identité',      icon:'lock',  grad:'linear-gradient(135deg,#64748B,#334155)' }
+  { id:'anon',  label:t('feed.anonymous'),     desc:t('compose.hideIdentity'),      icon:'lock',  grad:'linear-gradient(135deg,#64748B,#334155)' }
 ];
 
 export function openComposer(kind = 'post') {
@@ -468,7 +468,7 @@ export function openComposer(kind = 'post') {
     }
 
     publish.disabled = true;
-    publish.textContent = draft.file ? 'Envoi de l\'image…' : 'Publication…';
+    publish.textContent = draft.file ? t('profile.uploading') : t('feed.publishing');
 
     // The post is written to Neon FIRST and only then painted. An
     // optimistic card that quietly failed to save is exactly the bug
@@ -478,14 +478,12 @@ export function openComposer(kind = 'post') {
       posts.unshift(saved);
       render();
       m.close();
-      toast('Publié', 'ok');
+      toast(t('feed.published'), 'ok');
       act('post', saved.id);
     } catch (err) {
       publish.disabled = false;
-      publish.textContent = 'Publier';
-      toast(err?.status === 413 || /trop lourd/i.test(err?.message || '')
-        ? err.message
-        : 'Publication échouée — rien n\'a été enregistré', 'err');
+      publish.textContent = t('action.publish');
+      toast(errorText(err), 'err');
     }
   }
 }
@@ -513,7 +511,7 @@ function storiesBar() {
           : `<span class="av lg" style="background:${avatarColor(mine?.id)}">${esc(initials(mine?.full_name || ''))}</span>`}
         <span class="story-plus">${icon('plus', { size: 13 })}</span>
       </span>
-      <span class="story-name">Votre story</span>
+      <span class="story-name">${esc(t('feed.story.yours'))}</span>
     </button>
     ${mineGroup ? `<button class="story" data-story="${esc(mineGroup.items[0].id)}" data-user="${esc(mineGroup.user_id)}">
         ${ringFor(mineGroup.user, mineGroup.seen)}
@@ -563,11 +561,11 @@ function render() {
     list.innerHTML = '';
     list.append(emptyState({
       icon: I.inbox,
-      title: 'Rien à afficher',
+      title: t('empty.nothingHere'),
       text: tab === 'following'
-        ? 'Suivez des étudiants pour voir leurs publications ici.'
+        ? t('empty.followToSee')
         : t('feed.empty.text'),
-      action: { label: 'Créer une publication', onClick: () => openComposer() }
+      action: { label: t('compose.createPost'), onClick: () => openComposer() }
     }));
     return;
   }
@@ -674,7 +672,7 @@ async function sharePost(p) {
   if (navigator.share) {
     try { await navigator.share({ title: 'Koliya', text: p.text?.slice(0, 80), url }); return; } catch {}
   }
-  toast(await copyText(url) ? 'Lien copié' : 'Partage impossible', 'ok');
+  toast(await copyText(url) ? t('toast.linkCopied') : 'Partage impossible', 'ok');
 }
 
 /* ------------------------------------------------------------
@@ -717,10 +715,10 @@ async function repost(p) {
         posts.unshift(saved);
         render();
         m.close();
-        toast('Repartagé', 'ok');
+        toast(t('toast.reposted'), 'ok');
       } catch {
         btn.disabled = false;
-        toast('Repartage échoué', 'err');
+        toast(t('toast.repostFailed'), 'err');
       }
     }}, 'Repartager')
   );
@@ -774,10 +772,10 @@ async function reload() {
     const offline = err?.message === 'not-connected' || err?.status === 401;
     list.append(emptyState({
       icon: I.inbox,
-      title: offline ? 'Non connecté à la base' : t('error.loading'),
+      title: offline ? t('db.notConnectedShort') : t('error.loading'),
       text: offline
         ? 'Reconnectez-vous pour voir le fil de votre campus.'
-        : (err?.message || 'Réessayez dans un instant.'),
+        : errorText(err),
       action: { label: t('action.retry'), onClick: () => { list.innerHTML = skeletonList(3); reload(); } }
     }));
   }

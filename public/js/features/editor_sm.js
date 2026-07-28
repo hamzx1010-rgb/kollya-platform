@@ -34,14 +34,14 @@ export const FILTERS = [
   { id: 'cool',    label: 'Froid',    css: s => `hue-rotate(${170*s}deg) saturate(${1-.2*s}) brightness(${1+.05*s})` },
   { id: 'vintage', label: 'Vintage',  css: s => `sepia(${.38*s}) contrast(${1+.12*s}) saturate(${1+.18*s})` },
   { id: 'mono',    label: 'N&B',      css: s => `grayscale(${s}) contrast(${1+.10*s})` },
-  { id: 'vivid',   label: 'Éclatant', css: s => `saturate(${1+.7*s}) contrast(${1+.15*s})` },
-  { id: 'fade',    label: 'Délavé',   css: s => `saturate(${1-.4*s}) brightness(${1+.10*s}) contrast(${1-.12*s})` },
+  { id: 'vivid',   label: t('editor.vivid'), css: s => `saturate(${1+.7*s}) contrast(${1+.15*s})` },
+  { id: 'fade',    label: t('editor.faded'),   css: s => `saturate(${1-.4*s}) brightness(${1+.10*s}) contrast(${1-.12*s})` },
   { id: 'night',   label: 'Nuit',     css: s => `brightness(${1-.18*s}) contrast(${1+.22*s}) hue-rotate(${-14*s}deg) saturate(${1+.2*s})` }
 ];
 
 const RATIOS = [
   { id: 'free', label: 'Libre',  value: null },
-  { id: '1:1',  label: 'Carré',  value: 1 },
+  { id: '1:1',  label: t('editor.square'),  value: 1 },
   { id: '4:5',  label: 'Portrait', value: 4/5 },
   { id: '16:9', label: 'Large',  value: 16/9 },
   { id: '9:16', label: 'Story',  value: 9/16 }
@@ -192,7 +192,7 @@ function markup() {
     <div class="ed-tools">
       <div class="ed-toolbar">
         <button class="icon-btn" id="edUndo" data-tip="Annuler (Ctrl+Z)" disabled>${I.undo}</button>
-        <button class="icon-btn" id="edRedo" data-tip="Rétablir (Ctrl+⇧+Z)" disabled>${I.redo}</button>
+        <button class="icon-btn" id="edRedo" data-tip=t('editor.redo') disabled>${I.redo}</button>
         <span class="ed-sep"></span>
         <button class="icon-btn" id="edRotate" data-tip="Pivoter">${I.rotate}</button>
         <button class="icon-btn" id="edFlip" data-tip="Miroir">${I.flip}</button>
@@ -210,7 +210,7 @@ function markup() {
           <input type="range" id="edStrength" min="0" max="100" value="100">
         </div>
         <div class="ed-adjust">
-          ${[['brightness','Luminosité'],['contrast','Contraste'],['saturation','Saturation'],['warmth','Chaleur']]
+          ${[['brightness',t('editor.brightness')],['contrast','Contraste'],['saturation','Saturation'],['warmth','Chaleur']]
             .map(([k,l]) => `
             <div class="ed-slider">
               <label class="t-xs t-dim">${l} <b data-out="${k}">0</b></label>
@@ -373,13 +373,13 @@ function wire(onDone) {
   on($('#edBlurTool'), 'click', e => {
     blurMode = !blurMode;
     e.currentTarget.classList.toggle('on', blurMode);
-    toast(blurMode ? 'Dessinez sur la zone à flouter' : 'Flou désactivé', { duration: 1800 });
+    toast(blurMode ? t('editor.drawBlur') : t('editor.blurOff'), { duration: 1800 });
   });
   on($('#edClearDraw'), 'click', () => { commit(); ed.strokes = []; draw(); });
 
   on($('#edAddText'), 'click', () => {
     const v = $('#edTextInput').value.trim();
-    if (!v) { toast('Écrivez quelque chose'); return; }
+    if (!v) { toast(t('toast.writeSomething')); return; }
     commit();
     ed.texts.push({ x: .1, y: .45, value: v, color: textColor, size: Math.round($('#edCanvas').width / 14) });
     $('#edTextInput').value = '';

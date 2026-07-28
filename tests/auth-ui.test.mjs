@@ -80,7 +80,10 @@ ok('auth screen renders', !!D.querySelector('.auth-card'));
 ok('card field first', !!D.getElementById('inCard'));
 ok('password field', !!D.getElementById('inPass'));
 ok('no email on sign-in', !D.getElementById('inMail'));
-ok('card labelled carte étudiant', D.querySelector('label[for="inCard"]').textContent.includes('Carte'));
+// the label is translated now, so assert it EXISTS and is non-empty
+// rather than assert one language's wording
+ok('card field is labelled',
+   (D.querySelector('label[for="inCard"]')?.textContent || '').trim().length > 2);
 ok('forgot link', !!D.getElementById('forgotBtn'));
 ok('switch to signup', !!D.getElementById('toSignup'));
 ok('password toggle', !!D.querySelector('[data-eye="inPass"]'));

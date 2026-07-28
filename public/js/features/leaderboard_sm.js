@@ -19,6 +19,7 @@ import {
   $, $$, el, on, esc, compact, initials, avatarColor, debounce, env
 } from '../core/utils_sm.js';
 import { me, scoped } from '../core/store_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, emptyState, skeletonList, countUp } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
@@ -109,7 +110,7 @@ function render() {
       title: 'Classement vide',
       text: scope === 'faculty'
         ? 'Personne dans votre faculté pour l\'instant.'
-        : 'Publiez et participez pour apparaître ici.'
+        : t('empty.postToAppear')
     }));
     $('#lbMine')?.classList.add('hidden');
     return;
@@ -132,7 +133,7 @@ function render() {
       <span class="av sm" style="background:${avatarColor(mine.id)}">${esc(initials(mine.full_name))}</span>
       <span class="grow" style="min-width:0;text-align:start">
         <span class="t-sm t-bold">Votre position</span>
-        <span class="t-xs t-dim">${mine.rank === 1 ? 'En tête !' : `${mine.rank - 1} devant vous`}</span>
+        <span class="t-xs t-dim">${mine.rank === 1 ? t('hub.leading') : `${mine.rank - 1} devant vous`}</span>
       </span>
       <span class="t-sm t-mono t-bold">${value(mine)}</span>
       <button class="btn btn-ghost btn-sm" id="lbJump">Voir</button>`;

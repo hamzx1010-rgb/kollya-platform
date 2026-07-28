@@ -22,7 +22,7 @@ import {
   debounce, uid, truncate, safeUrl, cssEscape
 } from '../core/utils_sm.js';
 import { me, scoped, frequency } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { act, rankBadge } from '../core/game_sm.js';
 import { I, icon } from '../core/icons_sm.js';
@@ -47,7 +47,7 @@ function failed(host, err, retry) {
     title: t('error.loading'),
     text: err?.status === 401
       ? t('error.session')
-      : (err?.message || 'Réessayez dans un instant.'),
+      : errorText(err),
     action: { label: t('action.retry'), onClick: retry }
   }));
 }
@@ -99,7 +99,7 @@ async function renderChannels(q = '') {
     host.append(emptyState({
       icon: I.hash,
       title: q ? t('channels.noneSearch') : t('channels.none'),
-      text: q ? 'Essayez un autre mot-clé.' : 'Créez le premier canal de votre faculté.',
+      text: q ? t('empty.tryOtherWord') : t('empty.firstChannel'),
       action: q ? null : { label: t('channels.create'), onClick: openChannelComposer }
     }));
     return;
@@ -136,9 +136,9 @@ function openChannelComposer() {
           faculty: fac.value.trim() || null
         });
         m.close();
-        toast('Canal créé', 'ok');
+        toast(t('toast.channelCreated'), 'ok');
         renderChannels();
-      } catch { btn.disabled = false; toast('Création échouée', 'err'); }
+      } catch { btn.disabled = false; toast(t('toast.createFailed'), 'err'); }
     }}, t('action.create'))
   );
   setTimeout(() => name.focus(), 80);
@@ -201,7 +201,7 @@ function eventCard(e) {
           <span class="t-bold">${esc(e.title)}</span>
           <span class="pill" style="height:20px">${countdown(e.starts_at)}</span>
         </div>
-        <div class="t-sm t-dim">${esc(e.location || 'Lieu à préciser')}${
+        <div class="t-sm t-dim">${esc(e.location || t('compose.locationTbd'))}${
           d ? ' · ' + d.toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
         ${e.description ? `<p class="t-sm" style="margin-top:6px">${esc(truncate(e.description, 110))}</p>` : ''}
         <div class="row g2" style="margin-top:var(--s2)">
@@ -252,7 +252,7 @@ function openEventDetail(e) {
         <div><div class="t-sm">${d ? d.toLocaleDateString('fr', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Date à préciser'}</div>
         <div class="t-xs t-dim">${d ? d.toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' }) + ' · ' : ''}${countdown(e.starts_at)}</div></div></div>
       <div class="row g3"><span class="tg-ic">${icon('compass', { size: 16 })}</span>
-        <div class="t-sm">${esc(e.location || 'Lieu à préciser')}</div></div>
+        <div class="t-sm">${esc(e.location || t('compose.locationTbd'))}</div></div>
       <div class="row g3"><span class="tg-ic">${icon('user', { size: 16 })}</span>
         <div class="t-sm">Organisé par ${esc(owner.full_name)}</div></div>
       ${e.description ? `<p class="t-sm">${esc(e.description)}</p>` : ''}
@@ -264,23 +264,23 @@ function openEventDetail(e) {
 
   if (isMine) {
     foot.append(el('button', { class: 'btn btn-ghost danger', onclick: async () => {
-      if (!await confirmDialog({ title: "Supprimer l'événement ?", confirmLabel: 'Supprimer', danger: true })) return;
-      try { await api.deleteEvent(e.id); m.close(); toast('Événement supprimé', 'ok'); renderEvents(); }
-      catch { toast('Suppression échouée', 'err'); }
+      if (!await confirmDialog({ title: t('confirm.deleteEvent'), confirmLabel: 'Supprimer', danger: true })) return;
+      try { await api.deleteEvent(e.id); m.close(); toast(t('toast.eventDeleted'), 'ok'); renderEvents(); }
+      catch { toast(t('toast.deleteFailed'), 'err'); }
     }}, t('action.delete')));
   }
   foot.append(el('button', { class: 'btn btn-primary', onclick: () => m.close() }, t('action.close')));
 }
 
 function openEventComposer() {
-  const title = el('input', { class: 'input', placeholder: "Titre de l'événement", maxlength: '80' });
+  const title = el('input', { class: 'input', placeholder: t('events.titlePh'), maxlength: '80' });
   const place = el('input', { class: 'input', placeholder: 'Lieu (amphi, salle, adresse…)' });
   const when  = el('input', { class: 'input', type: 'datetime-local' });
   const desc  = el('textarea', { class: 'textarea', rows: '3', placeholder: 'Détails…', maxlength: '400' });
   const foot  = el('div', { class: 'row g2' });
 
   const m = modal({
-    title: 'Créer un événement',
+    title: t('compose.createEvent'),
     body: el('div', { class: 'col g3' },
       el('div', { class: 'field' }, el('label', { class: 'label' }, 'Titre'), title),
       el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.where')), place),
@@ -295,7 +295,7 @@ function openEventComposer() {
       const btn = e.currentTarget;
       if (!title.value.trim() || !when.value) { toast('Titre et date obligatoires', 'err'); return; }
       btn.disabled = true;
-      btn.textContent = 'Création…';
+      btn.textContent = t('toast.creating');
       try {
         const created = await api.createEvent({
           title: title.value.trim(),
@@ -305,12 +305,12 @@ function openEventComposer() {
         });
         act('event_create', created?.id);
         m.close();
-        toast('Événement créé', 'ok');
+        toast(t('toast.eventCreated'), 'ok');
         renderEvents();
       } catch {
         btn.disabled = false;
         btn.textContent = t('action.create');
-        toast("Création échouée — rien n'a été enregistré", 'err');
+        toast(t('toast.createFailed'), 'err');
       }
     }}, t('action.create'))
   );
@@ -366,7 +366,7 @@ function questionCard(q) {
         </div>` : ''}
       <div class="row g3" style="margin-top:var(--s2)">
         <button class="act" data-open-q>${I.comment}<span class="c">${(q.answers || []).length}</span></button>
-        <span class="t-xs t-dim">${(q.answers || []).length ? 'Voir les réponses' : 'Soyez le premier à répondre'}</span>
+        <span class="t-xs t-dim">${(q.answers || []).length ? t('empty.seeAnswers') : t('empty.beFirstAnswer')}</span>
       </div>
     </article>`;
 }
@@ -385,7 +385,7 @@ async function renderQA(query = '') {
   host.innerHTML = qaHero() + (list.length
     ? list.map(questionCard).join('')
     : `<div class="tg-empty tall">${icon('help', { size: 26 })}
-        <span>${query ? 'Aucune question pour cette recherche' : 'Aucune question — posez la vôtre'}</span></div>`);
+        <span>${query ? 'Aucune question pour cette recherche' : t('qa.noneAsk')}</span></div>`);
 
   on($('#heroAsk'), 'click', openAsk);
 }
@@ -413,7 +413,7 @@ function openQuestion(q) {
   };
   draw();
 
-  const input = el('input', { class: 'input', placeholder: 'Votre réponse…' });
+  const input = el('input', { class: 'input', placeholder: t('compose.yourAnswer') });
   const btn = el('button', { class: 'btn btn-primary', onclick: () => add() }, t('action.reply'));
 
   async function add() {
@@ -442,7 +442,7 @@ function openQuestion(q) {
     a.votes += was ? -1 : 1;
     draw();
     try { await api.voteAnswer(a.id, !was); }
-    catch { a.myVote = was; a.votes += was ? 1 : -1; draw(); toast('Vote non enregistré', 'err'); }
+    catch { a.myVote = was; a.votes += was ? 1 : -1; draw(); toast(t('toast.voteFailed'), 'err'); }
   });
 
   modal({
@@ -480,7 +480,7 @@ function openAsk() {
     el('button', { class: 'btn btn-primary', onclick: async e => {
       const btn = e.currentTarget;
       const text = ta.value.trim();
-      if (text.length < 5) { toast('Écrivez votre question', 'err'); return; }
+      if (text.length < 5) { toast(t('toast.writeQuestion'), 'err'); return; }
       btn.disabled = true;
       try {
         await api.ask({ text, anonymous: anon.classList.contains('on') });
@@ -596,8 +596,8 @@ async function renderSaved() {
     host.innerHTML = '';
     host.append(emptyState({
       icon: I.bookmark,
-      title: "Rien d'enregistré",
-      text: 'Les publications que vous enregistrez apparaîtront ici.',
+      title: t('saved.nothing'),
+      text: t('empty.savedPosts'),
       action: { label: 'Parcourir le fil', onClick: () => go('feed') }
     }));
     return;
@@ -627,9 +627,9 @@ async function renderSaved() {
 const SCREENS = {
   channels: { title: t('channels.title'),      placeholder: 'Rechercher un canal…',      render: renderChannels,
               action: { label: t('action.create'), icon: 'plus', fn: openChannelComposer } },
-  events:   { title: t('events.title'),  placeholder: 'Rechercher un événement…',  render: renderEvents },
+  events:   { title: t('events.title'),  placeholder: t('compose.searchEvent'),  render: renderEvents },
   qa:       { title: t('qa.title'),   placeholder: 'Rechercher une question…',  render: renderQA },
-  explore:  { title: t('explore.title'),    placeholder: 'Rechercher étudiants, sujets…', render: renderExplore },
+  explore:  { title: t('explore.title'),    placeholder: t('compose.searchPeople'), render: renderExplore },
   saved:    { title: t('saved.title'), placeholder: null,                        render: renderSaved }
 };
 
@@ -682,7 +682,7 @@ async function handleListClick(screen, e) {
       c.members = Math.max(0, (c.members || 0) + (was ? -1 : 1));
       card.replaceWith(el('div', { html: channelCard(c) }).firstElementChild);
       try { await api.joinChannel(c.id, !was); toast(was ? `Vous avez quitté ${c.name}` : `Bienvenue dans ${c.name}`, 'ok'); }
-      catch { c.joined = was; renderChannels(); toast('Action échouée', 'err'); }
+      catch { c.joined = was; renderChannels(); toast(t('toast.actionFailed'), 'err'); }
       return;
     }
     toast(`Le canal « ${c.name} » s'ouvrira avec la messagerie de groupe`);
@@ -701,12 +701,12 @@ async function handleListClick(screen, e) {
       try {
         await api.attend(ev.id, !was);
         if (!was) act('event_join', ev.id);
-        toast(was ? 'Inscription annulée' : 'Vous participez', 'ok');
+        toast(was ? t('toast.attendCancelled') : 'Vous participez', 'ok');
       }
       catch {
         ev.going = was ? [...ev.going, me.id] : ev.going.filter(x => x !== me.id);
         renderEvents();
-        toast('Action échouée', 'err');
+        toast(t('toast.actionFailed'), 'err');
       }
       return;
     }

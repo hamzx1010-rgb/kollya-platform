@@ -34,6 +34,7 @@
  */
 
 import { CONFIG } from './config_sm.js';
+import { t } from './i18n_sm.js';
 import { session, me, emit, clearAll, KEYS } from './store_sm.js';
 
 const base = () => CONFIG.AUTH_URL.replace(/\/$/, '');
@@ -83,7 +84,7 @@ async function call(path, { method = 'POST', body, silent = false } = {}) {
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (e) {
-    throw new AuthError('network', 'Connexion impossible. Vérifiez votre réseau.');
+    throw new AuthError('network', t('auth.err.network'));
   }
 
   let data = null;
@@ -105,24 +106,24 @@ export class AuthError extends Error {
 function friendly(data, status) {
   const code = data?.code || '';
   const map = {
-    INVALID_EMAIL_OR_PASSWORD: 'Carte étudiant ou mot de passe incorrect.',
-    USER_ALREADY_EXISTS:       'Un compte existe déjà avec cette carte étudiant.',
-    INVALID_EMAIL:             'Numéro de carte étudiant invalide.',
-    PASSWORD_TOO_SHORT:        'Le mot de passe doit faire au moins 8 caractères.',
+    INVALID_EMAIL_OR_PASSWORD: t('auth.err.badCreds'),
+    USER_ALREADY_EXISTS:       t('auth.err.exists'),
+    INVALID_EMAIL:             t('auth.err.badCard'),
+    PASSWORD_TOO_SHORT:        t('auth.err.shortPass'),
     WEAK_PASSWORD:             'Mot de passe trop faible.',
     VALIDATION_ERROR:          'Veuillez remplir tous les champs correctement.',
-    MISSING_ORIGIN:            'Domaine non autorisé. Ajoutez-le dans Neon → Auth → Trusted domains.',
-    MISSING_OR_NULL_ORIGIN:    'Domaine non autorisé. Ajoutez-le dans Neon → Auth → Trusted domains.',
-    INVALID_CALLBACKURL:       'Domaine non autorisé. Ajoutez-le dans Neon → Auth → Trusted domains.',
-    INVALID_ORIGIN:            'Domaine non autorisé. Ajoutez-le dans Neon → Auth → Trusted domains.',
-    USER_NOT_FOUND:            'Aucun compte avec cette carte étudiant.',
+    MISSING_ORIGIN:            t('auth.err.domain'),
+    MISSING_OR_NULL_ORIGIN:    t('auth.err.domain'),
+    INVALID_CALLBACKURL:       t('auth.err.domain'),
+    INVALID_ORIGIN:            t('auth.err.domain'),
+    USER_NOT_FOUND:            t('auth.err.noAccount'),
     EMAIL_AND_PASSWORD_IS_NOT_ENABLED:
       'Connexion par email désactivée. Activez-la dans Neon → Auth → Sign-in methods.',
-    EMAIL_NOT_VERIFIED:        'Vérifiez votre email avant de vous connecter.'
+    EMAIL_NOT_VERIFIED:        t('auth.err.verify')
   };
   if (map[code]) return map[code];
-  if (status === 401) return 'Session expirée. Reconnectez-vous.';
-  if (status === 429) return 'Trop de tentatives. Réessayez dans un instant.';
+  if (status === 401) return t('auth.err.expired');
+  if (status === 429) return t('auth.err.tooMany');
   return data?.message || 'Une erreur est survenue.';
 }
 
@@ -162,9 +163,9 @@ export async function signUp({ studentCard, username, name, email, password, fac
   const card = normalizeCard(studentCard);
 
   if (!isValidCard(card))
-    throw new AuthError('INVALID_CARD', 'Numéro de carte étudiant invalide.');
+    throw new AuthError('INVALID_CARD', t('auth.err.badCard'));
   if (!username || username.trim().length < 3)
-    throw new AuthError('INVALID_USERNAME', "Nom d'utilisateur trop court (3 caractères minimum).");
+    throw new AuthError('INVALID_USERNAME', t('auth.err.shortUser'));
   if (!/^[a-zA-Z0-9._]+$/.test(username.trim()))
     throw new AuthError('INVALID_USERNAME', "Le nom d'utilisateur ne peut contenir que lettres, chiffres, point et tiret bas.");
   if (!name || name.trim().length < 2)
@@ -172,7 +173,7 @@ export async function signUp({ studentCard, username, name, email, password, fac
   if (!isValidEmail(email))
     throw new AuthError('INVALID_EMAIL', 'Adresse email invalide.');
   if (!password || password.length < 8)
-    throw new AuthError('PASSWORD_TOO_SHORT', 'Le mot de passe doit faire au moins 8 caractères.');
+    throw new AuthError('PASSWORD_TOO_SHORT', t('auth.err.shortPass'));
 
   // The card is the credential; the real email lives on the profile.
   const data = await call('/sign-up/email', {
@@ -194,7 +195,7 @@ export async function signUp({ studentCard, username, name, email, password, fac
 export async function signIn({ studentCard, password }) {
   const card = normalizeCard(studentCard);
 
-  if (!card)     throw new AuthError('VALIDATION_ERROR', 'Saisissez votre numéro de carte étudiant.');
+  if (!card)     throw new AuthError('VALIDATION_ERROR', t('auth.err.enterCard'));
   if (!password) throw new AuthError('VALIDATION_ERROR', 'Saisissez votre mot de passe.');
 
   // No callbackURL: sign-in returns JSON rather than redirecting, and an
@@ -233,7 +234,7 @@ export async function isAuthenticated() {
 export async function requestPasswordReset(studentCard) {
   const card = normalizeCard(studentCard);
   if (!isValidCard(card))
-    throw new AuthError('INVALID_CARD', 'Numéro de carte étudiant invalide.');
+    throw new AuthError('INVALID_CARD', t('auth.err.badCard'));
   // Better Auth mails the address it has on file, which is the internal
   // one. Recovery therefore goes through an admin until a mail relay is
   // configured — see db/03_admin.sql.
@@ -271,8 +272,7 @@ async function ensureProfile({ card, username, name, contactEmail, faculty }) {
     // 23505 = unique violation: the card or username is taken
     if (/duplicate|unique|23505/i.test(e.message || '')) {
       await signOut();
-      throw new AuthError('DUPLICATE',
-        'Cette carte étudiant ou ce nom d\'utilisateur est déjà utilisé.');
+      throw new AuthError('DUPLICATE', t('auth.err.taken'));
     }
     console.warn('[koliya] création du profil échouée', e.message);
     return null;

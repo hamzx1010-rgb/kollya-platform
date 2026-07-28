@@ -157,7 +157,14 @@ ok('follow state is read from the database', ['none','requested','following'].in
 // unknown profile
 R.go('profile','nobody');
 await new Promise(r=>setTimeout(r,150));
-ok('unknown profile handled', D.getElementById('pfRoot').textContent.includes('introuvable'));
+// language-independent: an unknown profile shows an empty state and
+// no action buttons, whatever the interface language.
+const unknown = D.getElementById('pfRoot');
+ok('unknown profile handled',
+   /introuvable|not found|غير موجود/i.test(unknown.textContent) ||
+   !!unknown.querySelector('.empty'));
+ok('unknown profile offers no actions',
+   !unknown.querySelector('#pfFollow, #pfEdit, #pfMessage'));
 
 console.log(t.join('\n'));
 const p=t.filter(x=>x.startsWith('PASS')).length;

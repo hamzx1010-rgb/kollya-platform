@@ -14,6 +14,7 @@
  */
 
 import { $, $$, el, on, esc, debounce, safeUrl } from '../core/utils_sm.js';
+import { t } from '../core/i18n_sm.js';
 import { frequency, recent } from '../core/store_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast } from '../core/ui_sm.js';
@@ -28,8 +29,8 @@ let provider = null;
 export function useGifProvider(impl) { provider = impl; }
 
 const CATEGORIES = [
-  { id: 'recent',   label: 'Récents',  icon: 'clock' },
-  { id: 'reaction', label: 'Réactions' },
+  { id: 'recent',   label: t('gif.recent'),  icon: 'clock' },
+  { id: 'reaction', label: t('a11y.reactions') },
   { id: 'study',    label: 'Études' },
   { id: 'happy',    label: 'Joie' },
   { id: 'tired',    label: 'Fatigue' },
@@ -100,10 +101,10 @@ function shade(hex, amount) {
 
 const SAMPLE = {
   reaction: ['Bravo','Wow','Non','Oui','Hmm','LOL'],
-  study:    ['Réviser','Examen','Notes','Biblio','TD','Concentré'],
-  happy:    ['Yes!','Content','Danse','Fête','Rire','Top'],
-  tired:    ['Fatigué','Dodo','Café','Lundi','Aide','Zzz'],
-  thanks:   ['Merci','Gentil','Cœur','Bisous','Top','Génial']
+  study:    [t('gif.study'),'Examen','Notes','Biblio','TD',t('gif.focused')],
+  happy:    ['Yes!','Content','Danse',t('gif.party'),'Rire','Top'],
+  tired:    [t('gif.tired'),'Dodo',t('gif.coffee'),'Lundi','Aide','Zzz'],
+  thanks:   ['Merci','Gentil','Cœur','Bisous','Top',t('gif.great')]
 };
 
 async function fetchGifs(category, query) {
@@ -217,7 +218,7 @@ export function openGifPicker(anchor, onPick) {
 
     if (!items.length) {
       grid.innerHTML = `<div class="tg-empty" style="grid-column:1/-1">
-          ${icon('gif', { size: 24 })}<span>${activeCat === 'recent' ? 'Aucun GIF récent' : 'Aucun résultat'}</span>
+          ${icon('gif', { size: 24 })}<span>${activeCat === 'recent' ? t('empty.noRecentGif') : t('empty.noResults')}</span>
         </div>`;
       return;
     }
@@ -239,9 +240,20 @@ export function closeGifPicker() {
 function place(node, anchor) {
   const a = anchor.getBoundingClientRect();
   const r = node.getBoundingClientRect();
-  const pad = 8;
-  const top = a.top - r.height - pad > pad ? a.top - r.height - pad : a.bottom + pad;
-  node.style.position = 'fixed';
+
+  // Clamp on BOTH axes and flip when there is no room below.
+  // Only the horizontal edge was handled before, so opening the
+  // picker from the composer — which sits at the bottom of the
+  // screen — cut the panel off at the viewport edge.
+  const spaceBelow = innerHeight - a.bottom;
+  const spaceAbove = a.top;
+  const openUp = spaceBelow < r.height + pad && spaceAbove > spaceBelow;
+
+  const top = openUp
+    ? Math.max(pad, a.top - r.height - 8)
+    : Math.min(a.bottom + 8, innerHeight - r.height - pad);
+
   node.style.top = Math.max(pad, top) + 'px';
   node.style.left = Math.min(Math.max(pad, a.left), innerWidth - r.width - pad) + 'px';
+  node.dataset.flip = openUp ? 'up' : 'down';
 }

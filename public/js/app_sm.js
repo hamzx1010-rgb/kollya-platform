@@ -28,7 +28,7 @@ import { renderAuth, renderPending } from './features/auth_ui_sm.js';
 import { initAuth, signOut } from './core/auth_sm.js';
 import { canUseDatabase, missingConfig } from './core/config_sm.js';
 import { connectApi } from './core/api_sm.js';
-import { initI18n, applyI18n } from './core/i18n_sm.js';
+import { initI18n, applyI18n, t } from './core/i18n_sm.js';
 import { initGame, wireGame } from './core/game_sm.js';
 import { initNotify } from './core/notify_sm.js';
 import { cachePeople } from './core/people_sm.js';
@@ -110,12 +110,8 @@ function showAuthScreen() {
   bootDone();
   show('auth');
   if (bootProblem) {
-    toast(
-      /timeout/i.test(bootProblem)
-        ? 'Serveur lent à répondre. Vous pouvez vous connecter.'
-        : 'Connexion au serveur difficile.',
-      { kind: 'err', duration: 5000 }
-    );
+    toast(/timeout/i.test(bootProblem) ? t('boot.slowServer') : t('boot.hardFail'),
+          { kind: 'err', duration: 5000 });
     bootProblem = null;
   }
   renderAuth(async () => {
@@ -153,8 +149,7 @@ async function enterApp() {
     cachePeople(me.get());
   } catch (err) {
     console.error('[koliya] connexion API échouée', err);
-    toast('Impossible de joindre la base de données. Les écrans resteront vides.',
-          { kind: 'err', duration: 8000 });
+    toast(t('boot.noDatabase'), { kind: 'err', duration: 8000 });
   }
 
   // The game engine listens for 'game:action' events, so it must be
@@ -200,7 +195,7 @@ function registerPlaceholders() {
 
 function wireGlobalKeys() {
   onEvent('key:search', () => {
-    toast('La recherche arrive avec le module Explorer', { duration: 2200 });
+    go('explore');
   });
 
   // the feed module owns compose; this is the fallback from other routes
@@ -208,7 +203,7 @@ function wireGlobalKeys() {
 
   onEvent('route:error', ({ route: r, error }) => {
     console.error('[koliya] view crashed', r, error);
-    toast('Cette vue a rencontré une erreur', 'err');
+    toast(t('error.generic'), 'err');
   });
 }
 
@@ -309,8 +304,7 @@ async function boot() {
   initSettings(mount);
 
   if (!hasStorage) {
-    toast('Stockage indisponible — votre session ne survivra pas au rafraîchissement',
-          { kind: 'err', duration: 6000 });
+    toast(t('store.noStorage'), { kind: 'err', duration: 6000 });
   }
 
   const state = await resolveSession();

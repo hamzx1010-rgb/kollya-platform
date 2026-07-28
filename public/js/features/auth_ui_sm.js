@@ -53,9 +53,9 @@ const field = ({ id, label, type = 'text', placeholder = '', hint = '', autocomp
 function signinMarkup() {
   return `
     <form class="auth-form" id="authForm" novalidate>
-      ${field({ id:'inCard', label:'Carte étudiant', placeholder:'CS-042',
-                hint:'Le numéro imprimé sur votre carte', autocomplete:'username', maxlength:24 })}
-      ${field({ id:'inPass', label:'Mot de passe', type:'password',
+      ${field({ id:'inCard', label:t('auth.card'), placeholder:'CS-042',
+                hint:t('auth.cardHint'), autocomplete:'username', maxlength:24 })}
+      ${field({ id:'inPass', label:t('auth.password'), type:'password',
                 placeholder:'••••••••', autocomplete:'current-password' })}
       <button type="button" class="auth-link" id="forgotBtn">Mot de passe oublié ?</button>
       <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">Se connecter</button>
@@ -67,9 +67,9 @@ function signinMarkup() {
 function signupMarkup() {
   return `
     <form class="auth-form" id="authForm" novalidate>
-      ${field({ id:'inCard', label:'Carte étudiant *', placeholder:'CS-042',
-                hint:'Servira à vous connecter', autocomplete:'username', maxlength:24 })}
-      ${field({ id:'inName', label:'Nom complet *', placeholder:'Sara Benali', autocomplete:'name' })}
+      ${field({ id:'inCard', label:t('auth.cardReq'), placeholder:'CS-042',
+                hint:t('auth.usernameHint'), autocomplete:'username', maxlength:24 })}
+      ${field({ id:'inName', label:t('auth.fullNameReq'), placeholder:'Sara Benali', autocomplete:'name' })}
       ${field({ id:'inUser', label:"Nom d'utilisateur *", placeholder:'sara.b',
                 hint:'Lettres, chiffres, point et tiret bas', autocomplete:'nickname', maxlength:24 })}
       ${field({ id:'inMail', label:'Email *', type:'email', placeholder:'sara@gmail.com',
@@ -81,8 +81,8 @@ function signupMarkup() {
           ${FACULTIES.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}
         </select>
       </div>
-      ${field({ id:'inPass', label:'Mot de passe *', type:'password',
-                placeholder:'8 caractères minimum', autocomplete:'new-password' })}
+      ${field({ id:'inPass', label:t('auth.passwordReq'), type:'password',
+                placeholder:t('auth.min8'), autocomplete:'new-password' })}
       <div class="pw-meter" id="pwMeter"><i></i><i></i><i></i><i></i></div>
       <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">${t('auth.createMine')}</button>
       <p class="t-xs t-dim2" style="text-align:center">
@@ -111,14 +111,14 @@ const RULES = {
   inCard: v => !v ? 'Champ obligatoire'
                 : !isValidCard(v) ? 'Format invalide (ex. CS-042)' : '',
   inName: v => !v ? 'Champ obligatoire'
-                : v.trim().length < 2 ? 'Nom trop court' : '',
+                : v.trim().length < 2 ? t('auth.nameShort') : '',
   inUser: v => !v ? 'Champ obligatoire'
-                : v.trim().length < 3 ? '3 caractères minimum'
+                : v.trim().length < 3 ? t('auth.min3')
                 : !/^[a-zA-Z0-9._]+$/.test(v.trim()) ? 'Lettres, chiffres, . et _ uniquement' : '',
   inMail: v => !v ? 'Champ obligatoire'
                 : !isValidEmail(v) ? 'Adresse email invalide' : '',
   inPass: v => !v ? 'Champ obligatoire'
-                : v.length < 8 ? '8 caractères minimum' : ''
+                : v.length < 8 ? t('auth.min8') : ''
 };
 
 function validate(id) {
@@ -207,7 +207,7 @@ function wire(onSuccess) {
       const showing = input.type === 'text';
       input.type = showing ? 'password' : 'text';
       btn.innerHTML = icon(showing ? 'eyeOff' : 'globe', { size: 17 });
-      btn.setAttribute('aria-label', showing ? 'Afficher le mot de passe' : 'Masquer le mot de passe');
+      btn.setAttribute('aria-label', showing ? 'Afficher le mot de passe' : t('a11y.hidePassword'));
     });
   }
 

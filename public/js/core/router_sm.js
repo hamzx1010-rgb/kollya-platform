@@ -213,9 +213,9 @@ export const SHORTCUTS = [
   { keys: 'G puis P',      label: 'Profil' },
   { keys: 'G puis N',      label: 'Notifications' },
   { keys: 'N',             label: 'Nouvelle publication' },
-  { keys: 'J / K',         label: 'Publication suivante / précédente' },
+  { keys: 'J / K',         label: t('a11y.nextPrevPost') },
   { keys: 'L',             label: 'Aimer la publication sélectionnée' },
-  { keys: 'Échap',         label: 'Fermer' },
+  { keys: t('a11y.escape'),         label: 'Fermer' },
   { keys: 'Alt+←',         label: 'Retour' }
 ];
 

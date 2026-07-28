@@ -37,7 +37,11 @@ const D=window.document;
 ok('boot screen hidden', D.getElementById('boot').classList.contains('hidden'));
 ok('auth gate shown when logged out', !D.getElementById('auth').classList.contains('hidden'));
 ok('app hidden when logged out', D.getElementById('app').classList.contains('hidden'));
-ok('login asks for carte étudiant', D.getElementById('auth').textContent.includes('Carte étudiant'));
+// The auth screen is translated now; assert the FIELD exists rather
+// than one language's label.
+ok('login asks for the student card',
+   !!D.getElementById('inCard') ||
+   /Carte étudiant|Student card|بطاقة الطالب/.test(D.getElementById('auth').textContent));
 ok('icons hydrated', D.querySelectorAll('[data-icon] svg').length>=10);
 ok('no data-icon left empty', [...D.querySelectorAll('[data-icon]')].every(n=>n.innerHTML.trim()));
 

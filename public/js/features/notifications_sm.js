@@ -74,7 +74,7 @@ function group(list) {
 const KIND = {
   like:    { icon:'fire',     tint:'like',   verb:g => `${names(g)} ${t('notif.likedYours')}` },
   comment: { icon:'comment',  tint:'brand',  verb:g => `${names(g)} ${t('notif.commented')}` },
-  follow:  { icon:'users',    tint:'ok',     verb:g => `${names(g)} ${t('notif.follows')}` },
+  follow:  { icon:'users',    tint:'ok',     verb:g => `${names(g)} ${t('notif.followsYou')}` },
   mention: { icon:'hash',     tint:'brand',  verb:g => `${names(g)} ${t('notif.mentioned')}` },
   request: { icon:'user',     tint:'warn',   verb:g => `${names(g)} ${t('notif.requests')}` },
   badge:   { icon:'trophy',   tint:'warn',   verb:() => t('notif.newBadge') },
@@ -145,7 +145,7 @@ function render() {
     host.append(emptyState({
       icon: I.bell,
       title: t('notif.none'),
-      text: 'Les réactions, mentions et demandes apparaîtront ici.'
+      text: t('empty.notifHere')
     }));
     updateBadge();
     return;
@@ -201,8 +201,8 @@ export function initNotifications(mountFn) {
     on($('#notifAllRead'), 'click', async () => {
       items = items.map(n => ({ ...n, read: true }));
       render();
-      try { await api.markAllRead(); toast('Tout marqué comme lu', 'ok'); }
-      catch { toast('Action échouée', 'err'); }
+      try { await api.markAllRead(); toast(t('toast.allRead'), 'ok'); }
+      catch { toast(t('toast.actionFailed'), 'err'); }
     });
 
     for (const b of $$('.sub-tab[data-f]')) {
@@ -225,7 +225,7 @@ export function initNotifications(mountFn) {
         node.remove();
         updateBadge();
         try { await api.dismiss(ids); }
-        catch { items = keep; render(); toast('Suppression échouée', 'err'); }
+        catch { items = keep; render(); toast(t('toast.deleteFailed'), 'err'); }
         return;
       }
 
@@ -237,8 +237,8 @@ export function initNotifications(mountFn) {
         try {
           await api.respondToRequest(actor, !!accept);
           await api.dismiss(ids);
-          toast(accept ? 'Demande acceptée' : 'Demande refusée', accept ? 'ok' : undefined);
-        } catch { render(); toast('Action échouée', 'err'); }
+          toast(accept ? t('toast.requestAccepted') : t('toast.requestDeclined'), accept ? 'ok' : undefined);
+        } catch { render(); toast(t('toast.actionFailed'), 'err'); }
         return;
       }
 

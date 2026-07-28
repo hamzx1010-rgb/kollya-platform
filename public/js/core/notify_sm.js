@@ -26,6 +26,7 @@
 import { me, scoped, on as onEvent, emit } from './store_sm.js';
 import { db } from './db_sm.js';
 import { toast } from './ui_sm.js';
+import { t } from './i18n_sm.js';
 import { icon } from './icons_sm.js';
 import { safeUrl } from './utils_sm.js';
 
@@ -64,14 +65,13 @@ const refused = () => store.get('refused', false) || permission() === 'denied';
  */
 export async function askPermission({ force = false } = {}) {
   if (!supported()) {
-    toast('Votre navigateur ne gère pas les notifications', { kind: 'err' });
+    toast(t('notif.unsupported2'), { kind: 'err' });
     return 'unsupported';
   }
   if (permission() === 'granted') return 'granted';
   if (permission() === 'denied') {
     if (force) {
-      toast('Notifications bloquées. Autorisez-les dans les réglages du navigateur ' +
-            '(cadenas dans la barre d\'adresse).', { kind: 'err', duration: 8000 });
+      toast(t('notif.blockedLong'), { kind: 'err', duration: 8000 });
     }
     return 'denied';
   }
@@ -83,8 +83,8 @@ export async function askPermission({ force = false } = {}) {
   if (result === 'granted') {
     store.remove('refused');
     notify({
-      title: 'Notifications activées',
-      body: 'Vous serez prévenu des nouveaux messages et abonnés.',
+      title: t('notif.enabled'),
+      body: t('notif.enabledBody'),
       tag: 'koliya-welcome'
     });
     startWatching();
@@ -110,9 +110,9 @@ export function offerNotifications() {
     if (permission() !== 'default') return;
     store.set('offered', true);
 
-    toast('Être prévenu des nouveaux messages ?', {
+    toast(t('notif.enable'), {
       duration: 20000,
-      action: { label: 'Activer', fn: () => askPermission({ force: true }) }
+      action: { label: t('notif.enableBtn'), fn: () => askPermission({ force: true }) }
     });
   }, ASK_DELAY);
 }
@@ -155,27 +155,26 @@ export function notify({ title, body = '', tag = 'koliya', icon: img = null, url
 /** The test button you asked for. Reports honestly what happened. */
 export async function testNotification() {
   if (!supported()) {
-    toast('Votre navigateur ne gère pas les notifications', { kind: 'err' });
+    toast(t('notif.unsupported2'), { kind: 'err' });
     return false;
   }
   if (permission() === 'denied') {
-    toast('Notifications bloquées par le navigateur. Cliquez sur le cadenas ' +
-          'dans la barre d\'adresse pour les réautoriser.', { kind: 'err', duration: 9000 });
+    toast(t('notif.blockedLong'), { kind: 'err', duration: 9000 });
     return false;
   }
   if (permission() === 'default') {
     const r = await askPermission({ force: true });
-    if (r !== 'granted') { toast('Permission refusée', { kind: 'err' }); return false; }
+    if (r !== 'granted') { toast(t('notif.permDenied'), { kind: 'err' }); return false; }
   }
 
   const n = notify({
-    title: 'Koliya — test',
-    body: 'Si vous voyez ceci, les notifications fonctionnent.',
+    title: t('notif.testTitle'),
+    body: t('notif.testBody'),
     tag: 'koliya-test'
   });
 
-  if (n) toast('Notification envoyée', { kind: 'ok' });
-  else toast('Échec de l\'envoi — regardez la console', { kind: 'err' });
+  if (n) toast(t('notif.sent'), { kind: 'ok' });
+  else toast(t('error.generic'), { kind: 'err' });
   return !!n;
 }
 
@@ -184,12 +183,12 @@ export async function testNotification() {
    ------------------------------------------------------------ */
 
 const KIND_TEXT = {
-  follow:  a => [`${a} vous suit`, 'Nouvel abonné'],
-  request: a => [`${a} demande à vous suivre`, 'Demande d\'abonnement'],
-  message: a => [`${a}`, 'Nouveau message'],
-  like:    a => [`${a} a aimé votre publication`, ''],
-  comment: (a, t) => [`${a} a commenté`, t || ''],
-  mention: (a, t) => [`${a} vous a mentionné`, t || '']
+  follow:  a => [`${a} ${t('notif.followsYou')}`, t('notif.newFollower')],
+  request: a => [`${a} ${t('notif.requests')}`, t('notif.followRequest')],
+  message: a => [`${a}`, t('dm.new')],
+  like:    a => [`${a} ${t('notif.likedYours')}`, ''],
+  comment: (a, txt) => [`${a} ${t('notif.commented')}`, txt || ''],
+  mention: (a, txt) => [`${a} ${t('notif.mentioned')}`, txt || '']
 };
 
 const ROUTE = {
@@ -273,7 +272,7 @@ export function initNotify() {
     if (!document.hidden && location.hash.startsWith(`#/messages/${from}`)) return;
     notify({
       title: name || 'Nouveau message',
-      body: text || 'Pièce jointe',
+      body: text || t('notif.attachment'),
       tag: `koliya-dm-${from}`,
       icon: avatar,
       url: `#/messages/${from}`

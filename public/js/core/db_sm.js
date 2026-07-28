@@ -17,6 +17,7 @@
  */
 
 import { CONFIG } from './config_sm.js';
+import { t } from './i18n_sm.js';
 import { getToken } from './auth_sm.js';
 import { MEDIA_BUDGET } from './media_sm.js';
 
@@ -36,7 +37,7 @@ export class DbError extends Error {
 
 async function request(path, { method = 'GET', body, prefer, retry = true } = {}) {
   const token = await getToken();
-  if (!token) throw new DbError('Non connecté', 401);
+  if (!token) throw new DbError(t('auth.err.notSignedIn'), 401);
 
   const headers = { Authorization: `Bearer ${token}` };
   if (body) headers['Content-Type'] = 'application/json';
@@ -201,7 +202,7 @@ export const db = {
 
   remove(table, filter = {}) {
     if (!Object.keys(filter).length) {
-      throw new DbError('Suppression sans filtre refusée', 400);
+      throw new DbError(t('auth.err.noFilter'), 400);
     }
     return request(`/${table}${qs(filter)}`, { method: 'DELETE', prefer: 'return=representation' });
   },

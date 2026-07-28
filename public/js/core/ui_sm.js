@@ -13,6 +13,7 @@
  */
 
 import { $, el, on, esc, escAttr, env, safeUrl } from './utils_sm.js';
+import { t } from './i18n_sm.js';
 import { on as onEvent, frequency } from './store_sm.js';
 import { I, icon, REACTIONS as RX_SET, REACTION_KEYS, reactionIcon, reactionLabel } from './icons_sm.js';
 
@@ -123,7 +124,7 @@ export function modal({ title = '', body = '', footer = null, wide = false,
     if (title) head.append(el('div', { class: 'modal-title' }, title));
     if (closable) {
       head.append(el('button', {
-        class: 'icon-btn modal-close', 'aria-label': 'Fermer', 'data-tip': 'Échap',
+        class: 'icon-btn modal-close', 'aria-label': 'Fermer', 'data-tip': t('a11y.escape'),
         onclick: () => close(),
         html: I.close
       }));
@@ -354,9 +355,12 @@ export function reactionPicker(anchor, { current = null, onPick } = {}) {
   // sit above the anchor, or below when there is no room
   const a = anchor.getBoundingClientRect();
   const p = picker.getBoundingClientRect();
+  // Above the anchor when there is room, below otherwise — and
+  // clamped so it can never hang off the top or bottom edge.
   const above = a.top - p.height - 8 > 8;
+  const rawTop = above ? a.top - p.height - 8 : a.bottom + 8;
   picker.style.position = 'fixed';
-  picker.style.top  = (above ? a.top - p.height - 8 : a.bottom + 8) + 'px';
+  picker.style.top  = Math.max(8, Math.min(rawTop, innerHeight - p.height - 8)) + 'px';
   picker.style.left = Math.min(Math.max(8, a.left), innerWidth - p.width - 8) + 'px';
 
   const offClick = on(document, 'pointerdown', e => { if (!picker.contains(e.target)) closeMenu(); }, true);
@@ -395,7 +399,7 @@ export function lightbox(images, startIndex = 0) {
 
   const arrow = (dir, rotate) => el('button', {
     class: 'icon-btn blur-menu',
-    'aria-label': dir < 0 ? 'Précédent' : 'Suivant',
+    'aria-label': dir < 0 ? t('a11y.prev') : 'Suivant',
     style: {
       position: 'fixed', top: '50%', transform: 'translateY(-50%)',
       [dir < 0 ? 'left' : 'right']: 'var(--s5)', width: '44px', height: '44px'
@@ -497,7 +501,7 @@ export function countUp(node, to, ms = 700) {
 }
 
 /** Optimistic action: paint now, revert quietly if the server says no. */
-export async function optimistic(applyFn, revertFn, requestFn, errorMessage = 'Action échouée') {
+export async function optimistic(applyFn, revertFn, requestFn, errorMessage = t('toast.actionFailed')) {
   applyFn();
   try {
     return await requestFn();

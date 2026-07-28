@@ -301,9 +301,9 @@ function cycleTheme() {
   const next = order[(order.indexOf(prefs.theme) + 1) % order.length];
   prefs.theme = next;
   toast(
-    next === 'system' ? 'Thème : système'
-    : next === 'dark' ? 'Thème : sombre'
-    : 'Thème : clair',
+    next === 'system' ? t('theme.system')
+    : next === 'dark' ? t('theme.dark')
+    : t('theme.light'),
     { duration: 1600 }
   );
 }
@@ -344,7 +344,7 @@ export function initShell() {
   let offlineToast = null;
   onEvent('state:online', online => {
     if (!online) {
-      offlineToast = toast('Hors ligne — les modifications seront envoyées à la reconnexion',
+      offlineToast = toast(t('toast.offlineQueue'),
                            { kind: 'err', duration: 999999 });
     } else {
       offlineToast?.();
