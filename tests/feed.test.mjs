@@ -47,7 +47,12 @@ ok('like/comment/save present', !!D.querySelector('[data-act="like"]') && !!D.qu
 ok('tools hidden until active', D.querySelector('.post-tools').classList.contains('hover-reveal'));
 
 // anonymous post hides identity
-const anon=[...cards].find(c=>c.textContent.includes('Anonyme'));
+// Was `.includes('Anonyme')` — a hardcoded French literal, which broke
+// the moment that pill started going through t() and rendered
+// 'Anonymous' under the default English locale. Match the DATA
+// (the anonymous post carries no author link), not one language's word.
+const anonLabel = (await import('../public/js/core/i18n_sm.js')).t('feed.anonymous');
+const anon=[...cards].find(c=>c.textContent.includes(anonLabel));
 ok('anonymous post exists', !!anon);
 ok('anonymous hides username', !anon.textContent.includes('@'));
 

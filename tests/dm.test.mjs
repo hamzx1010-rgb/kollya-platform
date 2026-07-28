@@ -224,7 +224,12 @@ ok('patchText exists', /function patchText/.test(src));
 /* ============================================================
    12. THE PAGE MUST OPEN ON A CONVERSATION
    ============================================================ */
-ok('a conversation opens without being clicked', /const wanted = arg/.test(src));
+// Wide panels still auto-open the most relevant thread; narrow ones
+// deliberately do not. Assert both halves of that rule exist.
+ok('a conversation auto-opens on a wide panel', /const wanted =/.test(src));
+ok('narrow panels show the list instead', /showPickAConversation/.test(src));
+ok('the decision is based on the PANEL width, not the window',
+   /panelWide/.test(src) && /clientWidth/.test(src));
 ok('it remembers the last chat', /state\.activeChat/.test(src));
 ok('it falls back to the newest conversation', /convs\[0\]\?\.peer\?\.id/.test(src));
 ok('an empty inbox says so in the thread pane', /function showNoConversations/.test(src));
@@ -235,12 +240,24 @@ R.go('feed');
 await tick(80);
 R.go('messages');
 await tick(300);
-ok('landing on /messages shows a real conversation, not a blank panel',
-   D.querySelectorAll('#threadBody .bubble-row').length > 0);
-ok('the composer is visible on arrival',
-   !D.getElementById('composerWrap').classList.contains('hidden'));
-ok('the thread header names someone',
-   (D.getElementById('threadHead').textContent || '').trim().length > 0);
+// Instagram behaviour: on a WIDE panel the newest conversation opens
+// beside the list; on a narrow one the list is the whole screen and
+// opening a thread would hide what you just asked for.
+// jsdom reports clientWidth 0, so this exercises the narrow path.
+const wide = (D.getElementById('dm')?.clientWidth || 0) > 720;
+if (wide) {
+  ok('wide panel opens the newest conversation',
+     D.querySelectorAll('#threadBody .bubble-row').length > 0);
+  ok('the composer is visible on arrival',
+     !D.getElementById('composerWrap').classList.contains('hidden'));
+} else {
+  ok('narrow panel shows the conversation LIST first',
+     D.querySelectorAll('.conv').length > 0);
+  ok('narrow panel does not force a thread open',
+     D.querySelectorAll('#threadBody .bubble-row').length === 0);
+}
+ok('the conversation list is populated either way',
+   D.querySelectorAll('.conv').length > 0);
 
 /* ============================================================
    13. NO FOLD — the panel is always open

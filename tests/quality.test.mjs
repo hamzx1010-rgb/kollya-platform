@@ -176,8 +176,13 @@ ok('the quest meter has real height', /\.quest \.bar \{[^}]*height:\s*6px/s.test
 ok('the quest meter is a labelled progressbar',
    /role="progressbar"/.test(read('public/js/features/hub_sm.js')));
 
-const feedW = +(baseCss.match(/--feed-w:\s*(\d+)px/) || [0,0])[1];
-ok(`posts have room to breathe (${feedW}px)`, feedW >= 700);
+// --feed-w is fluid now: clamp(min, preferred, max). Assert the
+// MAX gives posts room, and that the value scales at all — a fixed
+// width is what made split-screen look shrunken.
+const feedDecl = (baseCss.match(/--feed-w:\s*([^;]+);/) || ['',''])[1];
+const feedMax = +((feedDecl.match(/,\s*(\d+)px\s*\)/) || [0,0])[1]);
+ok(`posts have room to breathe (max ${feedMax}px)`, feedMax >= 700);
+ok('the feed column is fluid, not fixed', /clamp\(/.test(feedDecl));
 
 /* ============================================================
    GIFs must be real animated GIFs

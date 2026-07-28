@@ -52,9 +52,17 @@ const D = window.document;
 /* ============================================================
    A · MESSAGES
    ============================================================ */
-ok('A1  opens on a real conversation', D.querySelectorAll('#threadBody .bubble-row').length > 0);
-ok('A1  composer is visible on arrival', !D.getElementById('composerWrap').classList.contains('hidden'));
+// Instagram behaviour: a wide panel opens the newest thread beside
+// the list; a narrow one shows the list alone. jsdom cannot measure
+// width, so it takes the narrow path — assert whichever applies.
+const dmWide = (D.getElementById('dm')?.clientWidth ?? 0) > 720;
+ok('A1  the conversation list is populated', D.querySelectorAll('.conv').length > 0);
 ok('A1  no blank thread pane', (D.getElementById('threadBody').textContent || '').trim().length > 0);
+if (dmWide) {
+  ok('A1  wide panel opens a conversation', D.querySelectorAll('#threadBody .bubble-row').length > 0);
+} else {
+  ok('A1  narrow panel keeps the list in front', D.querySelectorAll('#threadBody .bubble-row').length === 0);
+}
 
 // A2 — the height chain, read from CSS since jsdom does no layout
 const layout = fs.readFileSync(new URL('../public/css/layout_sm.css', import.meta.url), 'utf8')
@@ -71,8 +79,17 @@ ok('A3  full views hide page overflow', /overflow:\s*hidden/.test(rule('.view.fu
 // A4 — floating elements clamp on BOTH axes
 const gifSrc = fs.readFileSync(new URL('../public/js/features/gif_sm.js', import.meta.url), 'utf8');
 const uiSrc  = fs.readFileSync(new URL('../public/js/core/ui_sm.js', import.meta.url), 'utf8');
-ok('A4  gif picker clamps horizontally', /innerWidth\s*-\s*r\.width/.test(gifSrc));
-ok('A4  gif picker clamps vertically',   /innerHeight\s*-\s*r\.height/.test(gifSrc));
+// These used to grep for `innerWidth - r.width`, i.e. the old
+// top-anchored maths. Chrome showed why that was wrong: place() runs
+// while the grid is still skeletons, so r.height is the SMALL height,
+// and once the tiles load the panel grew past the bottom of the window
+// (measured bottom 1113 in an 860px viewport). It is now anchored by
+// `bottom` with an explicit maxHeight, so the assertions follow that
+// contract instead of the pixel arithmetic that caused the bug.
+ok('A4  gif picker clamps horizontally', /innerWidth\s*-\s*w\s*-\s*pad/.test(gifSrc));
+ok('A4  gif picker is anchored by bottom, not top',
+   /node\.style\.bottom\s*=/.test(gifSrc) && /node\.style\.top\s*=\s*'auto'/.test(gifSrc));
+ok('A4  gif picker bounds its own height', /node\.style\.maxHeight\s*=/.test(gifSrc));
 ok('A4  gif picker flips up when low',   /openUp/.test(gifSrc));
 ok('A4  reaction picker clamps vertically', /innerHeight\s*-\s*p\.height/.test(uiSrc));
 ok('A4  context menu flips on both axes', /flipX/.test(uiSrc) && /flipY/.test(uiSrc));
