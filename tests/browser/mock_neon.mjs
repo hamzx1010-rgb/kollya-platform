@@ -100,10 +100,17 @@ export function seed() {
     message_reactions: [{ message_id: 'm3', user_id: 'u1', emoji: 'love' }],
     dm_requests: [{ owner_id: 'u1', peer_id: 'u6', state: 'pending', created_at: iso(30) }],
     chat_folders: [],
+    // Deliberately NOT 1/2/3: the old seed gave u1 exactly 1 post,
+    // 2 followers and 3 following, which reads like a placeholder
+    // counting upward and hides a broken counter. 7 followers and
+    // 4 following can only come from real data.
     follows: [
       { follower_id: 'u1', followee_id: 'u2' }, { follower_id: 'u1', followee_id: 'u3' },
-      { follower_id: 'u1', followee_id: 'u4' }, { follower_id: 'u2', followee_id: 'u1' },
-      { follower_id: 'u5', followee_id: 'u1' }
+      { follower_id: 'u1', followee_id: 'u4' }, { follower_id: 'u1', followee_id: 'u7' },
+      { follower_id: 'u2', followee_id: 'u1' }, { follower_id: 'u5', followee_id: 'u1' },
+      { follower_id: 'u7', followee_id: 'u1' }, { follower_id: 'u8', followee_id: 'u1' },
+      { follower_id: 'u9', followee_id: 'u1' }, { follower_id: 'u10', followee_id: 'u1' },
+      { follower_id: 'u11', followee_id: 'u1' }
     ],
     blocks: [],
     stories: [
@@ -347,14 +354,28 @@ export function startMockNeon({ port = 0, signedIn = true, state = seed(), log =
           case 'pending_alerts': return S(200, []);
           /* -- 06_game_sm.sql -- */
           case 'my_quests': return S(200, state.quests.filter(q => q.user_id === meId)
-            .map(q => ({ quest_id: q.quest_id, progress: q.progress, done: q.done })));
+            .map(q => ({ quest_id: q.quest_id, progress: q.progress, target: q.target, done: q.done })));
           case 'track_quest': {
-            const key = a.p_quest || a.p_quest_id || a.quest_id;
-            let q = state.quests.find(x => x.user_id === meId && x.quest_id === key && x.day === new Date().toISOString().slice(0, 10));
-            if (!q) { q = { user_id: meId, quest_id: key, progress: 0, goal: a.p_goal || 1, done: false, day: new Date().toISOString().slice(0, 10) }; state.quests.push(q); }
-            q.progress += a.p_step ?? a.p_amount ?? 1;
-            q.done = q.progress >= (a.p_goal || q.goal || 1);
-            return S(200, [{ quest_id: q.quest_id, progress: q.progress, done: q.done }]);
+            // Mirror 06_game_sm.sql exactly, including
+            // `SET progress = LEAST(q.target, q.progress + p_amount)`.
+            // Without the clamp this mock reported "Open Koliya 3/1",
+            // which looked like an app bug but was the fixture drifting
+            // from the schema it is supposed to model. The real column
+            // names are quest_id / target / done_at.
+            const today = new Date().toISOString().slice(0, 10);
+            const key = a.p_quest_id || a.p_quest || a.quest_id;
+            const target = a.p_target || 1;
+            let q = state.quests.find(x => x.user_id === meId && x.quest_id === key && x.day === today);
+            if (!q) {
+              q = { user_id: meId, quest_id: key, progress: 0, target, done: false, day: today };
+              state.quests.push(q);
+            }
+            const before = q.progress;
+            q.progress = Math.min(q.target, q.progress + (a.p_amount ?? 1));
+            const justDone = !q.done && q.progress >= q.target;
+            q.done = q.progress >= q.target;
+            return S(200, [{ quest_id: q.quest_id, progress: q.progress, target: q.target,
+                             just_done: justDone, day_complete: false }]);
           }
           case 'award_xp': {
             const prof = state.profiles.find(p => p.id === meId);

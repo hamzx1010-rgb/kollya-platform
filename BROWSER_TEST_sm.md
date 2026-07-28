@@ -264,3 +264,91 @@ tests/browser/run.sh   96/96   (live 74 + sound 22)
   desktop Chrome; untested.
 - Migrations `05–09` are **still unrun** — profile editing stays broken
   until you run them.
+
+---
+
+# Session 3 — dead buttons, missing counts, persistence
+
+New suite: `tests/browser/persist.test.mjs` (34 assertions). Every one
+performs a real action through the UI, **reloads the page**, and checks
+the value came back from the database. An optimistic update that never
+reached Postgres passes a normal test and fails this one.
+
+## What was actually broken
+
+**1. Profile post buttons were decoration.** `profile_sm.js` renders its
+own post card, and its three buttons had **no `data-act` and no click
+listener at all** — like/comment/share on your own profile did nothing.
+The feed's were fine. Fixed by exporting `runPostAction()` from
+`feed_sm.js` and delegating, so the two cannot drift again. The profile
+also gained the repost and save buttons it never had.
+
+**2. Repost never saved.** `createPost()` builds an explicit column
+whitelist and **never copied `repost_id`** — every repost silently wrote
+an *empty* post with no text and no link to the original. The column has
+existed in `01_schema.sql` since day one.
+
+**3. Nothing ever counted reposts.** `decoratePosts()` fetched likes,
+saves, comments and poll votes but not reposts, and the button rendered
+a hardcoded `<span class="c"></span>` — a counter that could never move.
+
+**4. A repost rendered as a blank card.** Nothing displayed the quoted
+original. The `.repost-quote` CSS had existed unused the whole time.
+Now both feed and profile show it, and originals outside the current
+page are fetched. The rule also lacked `display:block` on an `<a>`, so
+the border fragmented across line boxes — visible in the screenshot.
+
+**5. Hub XP always showed 0.** `heroMarkup()` hardcoded `0` and relied
+on a `countUp()` that only ran in the route handler. Any later repaint
+(`game:xp`, `game:streak`, a like landing) replaced the hero with those
+zeros and nothing refilled them. Traced by tapping `textContent`:
+`#hubXp` animated 14…221…340 and was then reset to 0.
+
+## What was NOT broken — and how I nearly got it wrong
+
+- **Profile counts.** They read `1 posts, 2 followers, 3 following`,
+  which looks exactly like a placeholder counting upward. It was real
+  data: u1 genuinely had 1/2/3. The fixture now gives **7 followers and
+  4 following** so a fake counter cannot pass by accident.
+- **`Open Koliya 3/1`.** Looked like a broken clamp. The real SQL does
+  `SET progress = LEAST(q.target, …)`; **my mock** was missing the
+  clamp. The fixture had drifted from the schema it models.
+- **Avatar / banner / bio saving.** They worked. My first test uploaded
+  to the wrong `input[type=file]` (there are two; the editor's is the
+  one inside `.modal`) and then checked the wrong element for the
+  banner (`#pfCoverImg`, not `.pf-cover`).
+
+Three of the five "bugs" I chased were mine, not the app's.
+
+## Proof
+
+`shots/P1…P5` — taken before and **after a real `page.reload()`**:
+
+| shot | shows |
+|---|---|
+| `P2-feed-after-reload` | like ❤️ 3 filled, 3 comments, repost 1, quoted original |
+| `P4-profile-after-reload` | uploaded avatar + banner, edited bio, 7 followers / 4 following |
+| `P5-hub-after-reload` | real XP total and quest progress |
+
+Database contents after the run: `avatar_url` 2287 bytes, `banner_url`
+2039 bytes, bio saved, 4 likes, 3 comments, 1 repost, quest `1/1 done`.
+
+## Totals
+
+```
+tests/run.sh          848/848
+tests/browser/run.sh  130/130   (live 74 + persist 34 + sound 22)
+```
+
+## Still not verified
+
+- **Your real error is almost certainly the unrun migration.** Profile
+  editing succeeded here because the mock does not enforce RLS. On your
+  Neon the `profiles_update_self` policy still rejects non-`student`
+  roles — that is the "you don't have permission". `api_sm.js` already
+  detects the 0-row UPDATE and logs which file to run. **Run `05 → 06 →
+  07 → 08 → 09`, then Data API → Refresh schema cache.** I cannot do
+  this or test it from here.
+- Images are stored as `data:` URLs in Postgres. A 2 KB test PNG proves
+  the path; a 3 MB phone photo shrinks client-side first, which I have
+  not measured on a real device.
