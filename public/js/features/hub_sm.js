@@ -16,6 +16,7 @@ import { me, read, write, scoped, on as onEvent } from '../core/store_sm.js';
 import { t } from '../core/i18n_sm.js';
 import { questLabel, XP as GAME_XP } from '../core/game_sm.js';
 import { I, icon } from '../core/icons_sm.js';
+import sfx from '../core/sound_sm.js';
 import { toast, modal, countUp, skeletonList, emptyState, contextMenu } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
 import {
@@ -147,6 +148,11 @@ function drainAchievements() {
   document.body.append(card);
   requestAnimationFrame(() => card.classList.add('in'));
 
+  // The sound rides WITH the card, not with the database write, so it
+  // always lines up with what the eye sees. sound_sm decides whether
+  // it is allowed to make noise at all.
+  if (next.remaining) sfx.questDone(); else sfx.dayComplete();
+
   countUp(card.querySelector('.ach-xp-n'), next.xp, 700);
 
   const life = next.remaining ? 3600 : 4600;
@@ -161,6 +167,7 @@ function drainAchievements() {
    ------------------------------------------------------------ */
 
 function celebrate({ streak, grew, xp }) {
+  sfx.levelUp();
   const host = el('div', { class: 'confetti' });
   const colors = ['#2563EB','#F59E0B','#EC4899','#16A34A','#7C3AED'];
   for (let i = 0; i < 28; i++) {
@@ -178,16 +185,17 @@ function celebrate({ streak, grew, xp }) {
     title: t('hub.dayComplete'),
     body: `<div class="col center g4" style="text-align:center;padding:var(--s4) 0">
         <div class="streak-flame big">${icon('fire', { size: 46 })}</div>
-        <div style="font-size:var(--fs-2xl);font-weight:700">${streak} jour${streak > 1 ? 's' : ''}</div>
+        <div style="font-size:var(--fs-2xl);font-weight:700">${t('hub.streakCount', { n: streak })}</div>
         <p class="t-dim">+${xp} XP.${grew ? ' ' + t('streak.continues') : ''}
-           Revenez demain — une journée manquée la remet à zéro.</p>
+           ${esc(t('hub.comeBackTomorrow'))}</p>
       </div>`
   });
 }
 
 function unlockBadge(badge) {
+  sfx.badge();
   modal({
-    title: 'Nouveau badge',
+    title: t('hub.newBadge'),
     body: `<div class="col center g4" style="text-align:center;padding:var(--s4) 0">
         <div class="badge-unlock">${icon(badge.icon, { size: 40 })}</div>
         <div style="font-size:var(--fs-xl);font-weight:700">${esc(badge.name)}</div>
@@ -323,40 +331,39 @@ function renderBoard() {
   rows.sort((a, b) => (b.xp || 0) - (a.xp || 0));
 
   if (!rows.length) {
-    host.innerHTML = `<div class="tg-empty">${icon('trophy', { size: 22 })}<span>Personne pour l'instant</span></div>`;
+    host.innerHTML = `<div class="tg-empty">${icon('trophy', { size: 22 })}<span>${esc(t('lb.empty'))}</span></div>`;
     return;
   }
 
-  const podium = rows.slice(0, 3);
-  const rest = rows.slice(3);
+  // Same table as the full leaderboard page: gold/silver/bronze chips
+  // on ranks 1-3, plain numbers after. The hub used to draw its own
+  // Olympic podium here, so the two screens disagreed about what a
+  // ranking looks like.
+  const MEDAL = { 1: 'gold', 2: 'silver', 3: 'bronze' };
 
-  host.innerHTML = `
-    <div class="podium">
-      ${[1, 0, 2].map(i => {
-        const r = podium[i];
-        if (!r) return '<div></div>';
-        const place = i + 1;
-        return `<div class="podium-slot p${place}${r.isMe ? ' me' : ''}">
-            <div class="av lg"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
-              r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</div>
-            <div class="podium-rank">${place}</div>
-            <div class="t-sm t-bold truncate">${esc(r.full_name.split(' ')[0])}</div>
-            <div class="t-xs t-dim t-mono">${compact(r.xp)} XP</div>
-            <div class="podium-bar"></div>
-          </div>`;
-      }).join('')}
-    </div>
-    ${rest.map((r, i) => `
-      <div class="board-row${r.isMe ? ' me' : ''}">
-        <span class="board-rank t-mono">${i + 4}</span>
+  // dense ranking, so equal XP shares a place
+  let place = 0, prev = null;
+  rows.forEach((r, i) => {
+    if (r.xp !== prev) { place = i + 1; prev = r.xp; }
+    r.rank = place;
+  });
+
+  host.innerHTML = `<div class="lb-table">
+    ${rows.slice(0, 20).map(r => {
+      const medal = MEDAL[r.rank] || '';
+      return `<div class="lb-row${r.isMe ? ' me' : ''}">
+        <span class="lb-rank${medal ? ' medal ' + medal : ''}">${r.rank}</span>
         <span class="av sm"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
           r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</span>
         <div class="grow" style="min-width:0">
-          <div class="t-sm t-bold truncate">${esc(r.full_name)}</div>
-          <div class="t-xs t-dim">${esc(r.faculty)}</div>
+          <div class="t-sm t-bold truncate">${esc(r.full_name)}${
+            r.isMe ? ` <span class="pill" style="height:18px">${esc(t('lb.you'))}</span>` : ''}</div>
+          <div class="t-xs t-dim">${esc(r.faculty || '')}</div>
         </div>
-        <span class="t-sm t-mono t-bold">${compact(r.xp)}</span>
-      </div>`).join('')}`;
+        <span class="t-sm t-mono t-bold lb-val">${compact(r.xp)}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 /**
@@ -372,15 +379,15 @@ async function showMyRank() {
   if (!rank) {
     host.innerHTML = `<div class="rank-strip out">
         ${icon('trophy', { size: 15 })}
-        <span>Hors du top 50 — publiez et répondez pour y entrer.</span>
+        <span>${esc(t('hub.outOfTop'))}</span>
       </div>`;
     return;
   }
   const badge = rankBadge(rank);
   host.innerHTML = `<div class="rank-strip${badge ? ' in' : ''}">
       ${icon('trophy', { size: 15 })}
-      <span><b>${rank}${rank === 1 ? 'ᵉʳ' : 'ᵉ'}</b> ${boardScope === 'faculty' ? t('hub.ofFaculty') : 'du campus'}</span>
-      ${badge ? `<span class="rank-reward">${icon('spark', { size: 12 })} Mis en avant dans « Étudiants à découvrir »</span>` : ''}
+      <span><b>${rank}</b> ${boardScope === 'faculty' ? t('hub.ofFaculty') : t('hub.ofCampus')}</span>
+      ${badge ? `<span class="rank-reward">${icon('spark', { size: 12 })} ${esc(t('hub.featured'))}</span>` : ''}
     </div>`;
 }
 

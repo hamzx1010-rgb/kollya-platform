@@ -1421,42 +1421,18 @@
 }
 .badge-unlock.locked { background: var(--surface-2); color: var(--text-3); box-shadow: none; }
 
-/* leaderboard */
-.podium {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: var(--s2); align-items: end;
-  margin-bottom: var(--s4);
-}
-.podium-slot {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: var(--s3) var(--s2) 0;
-  text-align: center;
-}
-.podium-rank {
-  display: grid; place-items: center;
-  width: 22px; height: 22px; margin-top: -14px;
-  border-radius: var(--r-full);
-  background: var(--surface); border: 2px solid var(--bg);
-  font-size: 11px; font-weight: 800;
-}
-.podium-slot.p1 .podium-rank { background: #F59E0B; color: #fff; }
-.podium-slot.p2 .podium-rank { background: #9CA3AF; color: #fff; }
-.podium-slot.p3 .podium-rank { background: #B45309; color: #fff; }
-.podium-bar { width: 100%; border-radius: var(--r-sm) var(--r-sm) 0 0; background: var(--surface-2); margin-top: var(--s2); }
-.podium-slot.p1 .podium-bar { height: 46px; background: linear-gradient(180deg,#FCD34D,#F59E0B); }
-.podium-slot.p2 .podium-bar { height: 32px; }
-.podium-slot.p3 .podium-bar { height: 24px; }
-.podium-slot.me .t-bold { color: var(--brand); }
-
-.board-row {
-  display: flex; align-items: center; gap: var(--s3);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-sm);
-  transition: background var(--t-fast) var(--ease);
-}
-.board-row:hover { background: var(--hover); }
-.board-row.me { background: color-mix(in srgb, var(--brand) 10%, transparent); }
-.board-rank { width: 22px; text-align: center; color: var(--text-3); font-size: var(--fs-sm); }
+/* leaderboard — the hub reuses .lb-table / .lb-row / .lb-rank from the
+   leaderboard section below, so the two screens cannot drift apart.
+   The .podium / .board-row rules that used to live here are gone with
+   the Olympic layout they styled. The hub's copy is inside a card, so
+   it only needs to drop the page-sized bottom padding. */
+/* NOT `.hub-card` — no such element wraps this; the hub's board is a
+   bare #boardList inside a <section>. A wrong ancestor selector here
+   would have silently matched nothing and left the page-sized 96px
+   bottom padding inside a card. */
+#boardList .lb-table { padding: 0 0 var(--s1); }
+#boardList .lb-row { padding-inline: var(--s2); }
+#boardList .lb-row:last-child { border-bottom: none; }
 
 /* confetti */
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: var(--z-max); overflow: hidden; }
@@ -1822,58 +1798,72 @@ button.pf-stat:hover span { text-decoration: underline; }
 }
 .lb-filters { display: flex; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
 
-/* podium — 1st in the middle on the tallest step */
-.lb-podium {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: var(--s2); align-items: end;
-  padding: var(--s6) var(--s4) 0;
-}
-.lb-slot {
-  position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 0 var(--s1);
-  text-align: center;
-  transition: transform var(--t) var(--ease);
-}
-.lb-slot:hover { transform: translateY(-3px); }
-.lb-slot .av { border: 3px solid var(--bg); }
-.lb-crown { color: #F59E0B; margin-bottom: 2px; animation: kl-pulse 2.4s var(--ease) infinite; }
-.lb-medal {
-  display: grid; place-items: center;
-  width: 24px; height: 24px; margin-top: -14px;
-  border-radius: var(--r-full);
-  border: 2px solid var(--bg);
-  font-size: 11px; font-weight: 800; color: #fff;
-  background: var(--text-3);
-}
-.lb-slot.p1 .lb-medal { background: linear-gradient(135deg,#FCD34D,#F59E0B); }
-.lb-slot.p2 .lb-medal { background: linear-gradient(135deg,#E5E7EB,#9CA3AF); }
-.lb-slot.p3 .lb-medal { background: linear-gradient(135deg,#FCA55B,#B45309); }
-.lb-step {
-  width: 100%; margin-top: var(--s2);
-  border-radius: var(--r) var(--r) 0 0;
-  background: var(--surface-2);
-  border: 1px solid var(--border); border-bottom: none;
-}
-.lb-slot.p1 .lb-step { height: 56px; background: linear-gradient(180deg, color-mix(in srgb,#F59E0B 26%,transparent), transparent); }
-.lb-slot.p2 .lb-step { height: 38px; }
-.lb-slot.p3 .lb-step { height: 26px; }
-.lb-slot.me .t-bold { color: var(--brand); }
-.lb-slot.me .av { border-color: var(--brand); }
+/* ONE TABLE — gold / silver / bronze rank chips, nothing else.
+   The podium that used to live here put 1st in the middle on a 56px
+   step: pretty, but the top three could not be compared as data and
+   the reading order fought the ranking order. */
+.lb-table { padding: var(--s2) 0 96px; }
 
-/* the ordinary rows */
-.lb-rows { padding: var(--s2) 0 96px; }
+.lb-cols {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 1;
+  background: var(--bg);
+}
+/* the header's avatar column has no header text, but the rows do —
+   reserve it so the columns line up */
+.lb-cols::before { content: ''; width: 32px; flex-shrink: 0; order: 0; }
+.lb-cols .lb-rank { order: -1; }
+
 .lb-row {
   display: flex; align-items: center; gap: var(--s3);
   width: 100%; padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--border);
   transition: background var(--t-fast) var(--ease);
 }
+.lb-row:last-child { border-bottom: none; }
 .lb-row:hover { background: var(--hover); }
 .lb-row.me { background: color-mix(in srgb, var(--brand) 9%, transparent); }
-.lb-rank { width: 26px; text-align: center; color: var(--text-3); font-size: var(--fs-sm); }
+
+.lb-rank {
+  width: 30px; flex-shrink: 0; text-align: center;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
 .lb-row.me .lb-rank { color: var(--brand); font-weight: 700; }
+
+/* Only the top three are coloured. Ranks 4-20 stay plain numbers. */
+.lb-rank.medal {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: var(--r-full);
+  color: #3A2A05;
+  font-weight: 800;
+  font-size: var(--fs-sm);
+  box-shadow: inset 0 -1px 2px rgba(0,0,0,.18);
+}
+/* The first attempt started these gradients too light: measured
+   against the white page, the silver chip was 1.11:1 and the gold
+   1.25:1 — the medal was invisible in the screenshot, which defeats
+   the whole point of colouring the top three. Darker mid-tones give
+   each chip a visible edge while keeping the metal reading. */
+.lb-rank.gold   { background: linear-gradient(135deg,#F5C542,#D98613); color: #3A2A05; }
+.lb-rank.silver { background: linear-gradient(135deg,#D3D8DE,#98A0AA); color: #23272E; }
+.lb-rank.bronze { background: linear-gradient(135deg,#A45F2C,#823A07); color: #fff; }
+/* the medal colour already carries the meaning, so `me` must not
+   repaint it — it only brightens the surrounding row */
+.lb-row.me .lb-rank.medal { color: inherit; }
+
+.lb-val { flex-shrink: 0; min-width: 62px; text-align: end; }
 .lb-flame { display: flex; color: var(--streak); }
-.lb-row.flash, .lb-slot.flash { animation: kl-flash 1.2s var(--ease); }
+.lb-row.flash { animation: kl-flash 1.2s var(--ease); }
 
 /* your position, pinned so you can always find yourself */
 .lb-mine {
@@ -1887,7 +1877,7 @@ button.pf-stat:hover span { text-decoration: underline; }
 
 @media (max-width: 560px) {
   .lb-filters { flex-direction: column; }
-  .lb-podium { padding: var(--s5) var(--s2) 0; }
+  .lb-row, .lb-cols { padding-inline: var(--s3); }
 }
 
 

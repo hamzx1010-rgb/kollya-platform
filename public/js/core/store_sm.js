@@ -118,6 +118,7 @@ export const KEYS = {
   THEME:       'pref:theme',     // 'system' | 'light' | 'dark'
   LOCALE:      'pref:locale',    // 'fr' | 'ar' | 'en'
   GUIDE_DONE:  'pref:guideDone',
+  SOUND:       'pref:sound',     // celebration sounds on/off
   LAST_ROUTE:  'nav:lastRoute',
   DRAFTS:      'draft',          // draft:<chatId>
   CHAT_FOLDER: 'chat:folder',    // chat:folder:<chatId>
@@ -262,7 +263,13 @@ export const prefs = {
   },
 
   get guideDone() { return read(KEYS.GUIDE_DONE, false); },
-  set guideDone(v) { write(KEYS.GUIDE_DONE, !!v); }
+  set guideDone(v) { write(KEYS.GUIDE_DONE, !!v); },
+
+  /** Celebration sounds. On by default — a reward nobody hears is not
+      a reward. sound_sm.js still stays silent for a hidden tab and for
+      prefers-reduced-motion. */
+  get sound() { return read(KEYS.SOUND, true); },
+  set sound(v) { write(KEYS.SOUND, !!v); emit('sound', !!v); }
 };
 
 /** Resolve 'system' against the OS and paint it. */

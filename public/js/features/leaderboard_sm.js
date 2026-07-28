@@ -1,7 +1,7 @@
 /**
  * KOLIYA — features/leaderboard_sm.js
  * ============================================================
- * Full-page ranking: podium, filters, your own position.
+ * Full-page ranking: one table, filters, your own position.
  *
  * Two things this gets right that a naive list does not:
  *
@@ -62,40 +62,38 @@ async function load() {
 
 const value = r => metric === 'xp' ? `${compact(r.xp)} XP` : `${r.streak} j`;
 
-function podium(top) {
-  // visual order puts 1st in the middle, on the tallest step
-  return `<div class="lb-podium">
-    ${[1, 0, 2].map(i => {
-      const r = top[i];
-      if (!r) return '<div></div>';
-      const place = i + 1;
-      const lv = levelFromXp(r.xp || 0);
-      return `<button class="lb-slot p${place}${r.isMe ? ' me' : ''}" data-user="${esc(r.username || '')}">
-          ${place === 1 ? `<span class="lb-crown">${icon('trophy', { size: 18 })}</span>` : ''}
-          <span class="av lg"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
-            r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</span>
-          <span class="lb-medal">${place}</span>
-          <span class="t-sm t-bold truncate">${esc((r.full_name || '').split(' ')[0])}</span>
-          <span class="t-xs t-dim t-mono">${value(r)}</span>
-          <span class="t-xs t-dim2">Niv. ${lv.level}</span>
-          <span class="lb-step"></span>
-        </button>`;
-    }).join('')}
-  </div>`;
-}
+/**
+ * ONE TABLE, NOT A PODIUM.
+ *
+ * The old version drew an Olympic podium: 1st in the middle on a
+ * 56px step, 2nd and 3rd on shorter steps either side. It looked
+ * like a medal ceremony and it made the top three unreadable as
+ * DATA — you could not compare their XP at a glance because they
+ * were not on the same line, and the reading order (2,1,3) fought
+ * the ranking order.
+ *
+ * Now every student is a row in the same table. The only difference
+ * for the top three is the COLOUR of the rank chip: gold, silver,
+ * bronze. Ranks 4-20 get a plain number. That keeps the reward
+ * visible without turning the page into a trophy cabinet.
+ */
+const MEDAL = { 1: 'gold', 2: 'silver', 3: 'bronze' };
 
 function row(r) {
   const lv = levelFromXp(r.xp || 0);
-  return `<button class="lb-row${r.isMe ? ' me' : ''}" data-user="${esc(r.username || '')}" data-rank="${r.rank}">
-      <span class="lb-rank t-mono">${r.rank}</span>
+  const medal = MEDAL[r.rank] || '';
+  return `<button class="lb-row${r.isMe ? ' me' : ''}${medal ? ' ' + medal : ''}"
+        data-user="${esc(r.username || '')}" data-rank="${r.rank}">
+      <span class="lb-rank${medal ? ' medal ' + medal : ''}">${r.rank}</span>
       <span class="av sm"${r.avatar_url ? '' : ` style="background:${avatarColor(r.id)}"`}>${
         r.avatar_url ? `<img src="${esc(r.avatar_url)}" alt="">` : esc(initials(r.full_name))}</span>
       <span class="grow" style="min-width:0;text-align:start">
-        <span class="t-sm t-bold truncate" style="display:block">${esc(r.full_name)}${r.isMe ? ' <span class="pill" style="height:18px">vous</span>' : ''}</span>
-        <span class="t-xs t-dim">${esc(r.faculty || '')} · Niv. ${lv.level}</span>
+        <span class="t-sm t-bold truncate" style="display:block">${esc(r.full_name)}${
+          r.isMe ? ` <span class="pill" style="height:18px">${esc(t('lb.you'))}</span>` : ''}</span>
+        <span class="t-xs t-dim">${esc(r.faculty || '')} · ${esc(t('hub.levelN', { n: lv.level }))}</span>
       </span>
       ${metric === 'streak' ? `<span class="lb-flame">${icon('fire', { size: 14 })}</span>` : ''}
-      <span class="t-sm t-mono t-bold">${value(r)}</span>
+      <span class="t-sm t-mono t-bold lb-val">${value(r)}</span>
     </button>`;
 }
 
@@ -107,21 +105,27 @@ function render() {
     host.innerHTML = '';
     host.append(emptyState({
       icon: I.trophy,
-      title: 'Classement vide',
+      title: t('lb.empty'),
       text: scope === 'faculty'
-        ? 'Personne dans votre faculté pour l\'instant.'
+        ? t('lb.emptyFaculty')
         : t('empty.postToAppear')
     }));
     $('#lbMine')?.classList.add('hidden');
     return;
   }
 
-  const top  = rows.slice(0, 3);
-  const rest = rows.slice(3);
+  // Top 20 and stop. Beyond that the list stops being a ranking and
+  // becomes a phone book; your own position is pinned below anyway.
+  const shown = rows.slice(0, 20);
 
-  host.innerHTML = podium(top) + (rest.length
-    ? `<div class="lb-rows">${rest.map(row).join('')}</div>`
-    : '');
+  host.innerHTML = `<div class="lb-table">
+      <div class="lb-cols">
+        <span class="lb-rank">#</span>
+        <span class="grow" style="text-align:start">${esc(t('lb.student'))}</span>
+        <span class="lb-val">${esc(metric === 'xp' ? 'XP' : t('lb.streakCol'))}</span>
+      </div>
+      ${shown.map(row).join('')}
+    </div>`;
 
   // Pin your own row when you are outside the visible top.
   const mine = rows.find(r => r.isMe);
@@ -138,7 +142,7 @@ function render() {
       <span class="t-sm t-mono t-bold">${value(mine)}</span>
       <button class="btn btn-ghost btn-sm" id="lbJump">${esc(t('action.view'))}</button>`;
     on($('#lbJump'), 'click', () => {
-      const node = $$('.lb-row.me, .lb-slot.me')[0];
+      const node = $$('.lb-row.me')[0];
       node?.scrollIntoView({ block: 'center', behavior: env.reducedMotion ? 'auto' : 'smooth' });
       node?.classList.add('flash');
       setTimeout(() => node?.classList.remove('flash'), 1200);
@@ -168,18 +172,18 @@ export function initLeaderboard(mountFn) {
         <div class="lb-title">
           <span class="lb-title-ic">${icon('trophy', { size: 20 })}</span>
           <div>
-            <div class="t-bold" style="font-size:var(--fs-lg)">Classement</div>
-            <div class="t-xs t-dim">Mis à jour en continu</div>
+            <div class="t-bold" style="font-size:var(--fs-lg)">${esc(t('lb.title'))}</div>
+            <div class="t-xs t-dim">${esc(t('lb.subtitle'))}</div>
           </div>
         </div>
         <div class="lb-filters">
           <div class="row g1">
-            <button class="pill lb-scope${scope === 'faculty' ? ' on' : ''}" data-scope="faculty">Ma faculté</button>
-            <button class="pill lb-scope${scope === 'all' ? ' on' : ''}" data-scope="all">Tout le campus</button>
+            <button class="pill lb-scope${scope === 'faculty' ? ' on' : ''}" data-scope="faculty">${esc(t('hub.myFaculty'))}</button>
+            <button class="pill lb-scope${scope === 'all' ? ' on' : ''}" data-scope="all">${esc(t('hub.allCampus'))}</button>
           </div>
           <div class="row g1">
             <button class="pill lb-metric${metric === 'xp' ? ' on' : ''}" data-metric="xp">XP</button>
-            <button class="pill lb-metric${metric === 'streak' ? ' on' : ''}" data-metric="streak">Séries</button>
+            <button class="pill lb-metric${metric === 'streak' ? ' on' : ''}" data-metric="streak">${esc(t('lb.streakCol'))}</button>
           </div>
         </div>
       </div>

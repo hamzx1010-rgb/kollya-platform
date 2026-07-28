@@ -16,6 +16,7 @@ import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, confirmDialog } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
 import { t, lang, setLang, LANGS } from '../core/i18n_sm.js';
+import sfx from '../core/sound_sm.js';
 import {
   supported as notifSupported, permission as notifPermission,
   askPermission, testNotification
@@ -108,6 +109,25 @@ function render(host) {
           ? `<p class="set-warn">${icon('close', { size: 14 })} ${esc(t('notif.blocked'))}</p>` : ''}
       </section>
 
+      <!-- SOUND -->
+      <section class="set-sec">
+        <div class="set-head">
+          <span class="set-ic">${icon('trophy', { size: 17 })}</span>
+          <div class="grow">
+            <div class="set-title">${esc(t('settings.sound'))}</div>
+            <div class="set-hint">${esc(t('settings.soundHint'))}</div>
+          </div>
+          <button class="switch${prefs.sound ? ' on' : ''}" id="soundToggle"
+                  role="switch" aria-checked="${prefs.sound}"
+                  aria-label="${esc(t('settings.sound'))}"></button>
+        </div>
+        <div class="set-actions">
+          <button class="btn btn-outline" id="soundTest">
+            ${icon('play', { size: 15 })} ${esc(t('settings.soundTest'))}
+          </button>
+        </div>
+      </section>
+
       <!-- ACCOUNT -->
       <section class="set-sec">
         <div class="set-head">
@@ -155,6 +175,26 @@ function wire(host) {
   on($('#notifEnable'), 'click', async () => {
     await askPermission({ force: true });
     render(host);
+  });
+
+  // SOUND — toggling repaints nothing, so update the switch in place
+  // rather than re-rendering the whole screen under the cursor.
+  on($('#soundToggle'), 'click', e => {
+    const btn = e.currentTarget;
+    const next = !prefs.sound;
+    prefs.sound = next;
+    btn.classList.toggle('on', next);
+    btn.setAttribute('aria-checked', String(next));
+    // Turning it ON should prove it works; turning it off must be silent.
+    if (next) sfx.preview();
+  });
+
+  on($('#soundTest'), 'click', () => {
+    if (!sfx.canPlay()) {
+      toast(prefs.sound ? t('settings.soundBlocked') : t('settings.soundOff'), 'err');
+      return;
+    }
+    sfx.preview();
   });
 
   // THE TEST BUTTON — says what actually happened, including failure

@@ -27,6 +27,7 @@ import { db } from './db_sm.js';
 import { me, emit, on as onEvent, scoped } from './store_sm.js';
 import { toast } from './ui_sm.js';
 import { t } from './i18n_sm.js';
+import sfx from './sound_sm.js';
 
 /* ------------------------------------------------------------
    THE NUMBERS
@@ -191,8 +192,10 @@ async function resolveStreak(completedToday) {
         toast(t('streak.lost', { n: row.lost }),
               { kind: 'err', duration: 9000 }));
     } else if (row.froze) {
-      announceOnce(`froze:${todayKey()}`, () =>
-        toast(t('streak.frozen'), { kind: 'ok', duration: 8000 }));
+      announceOnce(`froze:${todayKey()}`, () => {
+        sfx.streakSaved();
+        toast(t('streak.frozen'), { kind: 'ok', duration: 8000 });
+      });
     }
 
     if (row.streak !== before) emit('game:streak', getStreak());
