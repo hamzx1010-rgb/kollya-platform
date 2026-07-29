@@ -49,8 +49,8 @@ ok('pct within range', lv.pct>=0 && lv.pct<=100);
 ok('into < need', lv.into<lv.need);
 
 // ---------- badges are derived ----------
-ok('12 badges defined', H.BADGES.length===12);
-ok('all badges have need()', H.BADGES.every(x=>typeof x.need==='function'));
+ok('12 badges defined', H.badges().length===12);
+ok('all badges have need()', H.badges().every(x=>typeof x.need==='function'));
 ok('no badges at zero', H.earnedBadges({posts:0,comments:0,likes:0,answers:0,followers:0,events:0,saved:0,nightPosts:0,streak:0,level:1}).length===0);
 const rich={posts:20,comments:30,likes:60,answers:12,followers:60,events:5,saved:25,nightPosts:1,streak:31,level:12};
 ok('all badges earnable', H.earnedBadges(rich).length===12);

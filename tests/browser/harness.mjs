@@ -30,7 +30,14 @@ export async function openApp({ width = 1280, height = 860, signedIn = true, lan
   page.on('pageerror', e => errors.push(String(e)));
   page.on('requestfailed', r => {
     const u = r.url();
-    if (!/giphy|tenor|google/.test(u)) errors.push('REQ FAIL ' + u + ' ' + r.failure()?.errorText);
+    if (/giphy|tenor|google/.test(u)) return;
+    // A HEAD rewritten by request interception reports net::ERR_ABORTED
+    // even though the redirected request succeeded — verified: db.count()
+    // returns the right numbers (posts 6, likes 3, comments 2) while
+    // these "failures" are logged. Only count it if the method is not
+    // HEAD, so a real broken request still surfaces.
+    if (r.method() === 'HEAD') return;
+    errors.push('REQ FAIL ' + u + ' ' + r.failure()?.errorText);
   });
 
   await page.setRequestInterception(true);

@@ -86,7 +86,14 @@ const uiSrc  = fs.readFileSync(new URL('../public/js/core/ui_sm.js', import.meta
 // (measured bottom 1113 in an 860px viewport). It is now anchored by
 // `bottom` with an explicit maxHeight, so the assertions follow that
 // contract instead of the pixel arithmetic that caused the bug.
-ok('A4  gif picker clamps horizontally', /innerWidth\s*-\s*w\s*-\s*pad/.test(gifSrc));
+// The clamp now uses documentElement.clientWidth, not innerWidth:
+// innerWidth includes the scrollbar, so the old maths allowed a few
+// pixels more than the page has. It also computes the width from the
+// CSS rule rather than measuring, because with the composer's "+" tray
+// open getBoundingClientRect() still reported the pre-reflow 357px
+// while the panel painted at 380 and hung 15px off the right edge.
+ok('A4  gif picker clamps horizontally', /vw\s*-\s*w\s*-\s*pad/.test(gifSrc));
+ok('A4  gif clamp ignores the scrollbar', /documentElement\.clientWidth/.test(gifSrc));
 ok('A4  gif picker is anchored by bottom, not top',
    /node\.style\.bottom\s*=/.test(gifSrc) && /node\.style\.top\s*=\s*'auto'/.test(gifSrc));
 ok('A4  gif picker bounds its own height', /node\.style\.maxHeight\s*=/.test(gifSrc));

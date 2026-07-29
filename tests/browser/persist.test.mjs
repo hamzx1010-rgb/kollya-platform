@@ -7,9 +7,79 @@
  * Postgres passes a normal test and fails this one.
  */
 import { openApp, suite } from './harness.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
 
 const s = suite('persist');
 const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/* ------------------------------------------------------------
+   FIXTURE PNGs, generated here rather than read from disk.
+
+   These used to be two files in /tmp. /tmp is wiped between
+   sessions, so the upload silently sent a zero-byte file and five
+   assertions failed with "0 bytes" — a green suite turning red with
+   nothing wrong in the app. Generating them inline means the test
+   carries its own inputs and cannot rot again.
+
+   A minimal but VALID PNG: the browser has to decode it, because one
+   assertion checks naturalWidth > 1.
+   ------------------------------------------------------------ */
+
+function crc32(buf) {
+  let c, crc = 0xFFFFFFFF;
+  for (let n = 0; n < buf.length; n++) {
+    c = (crc ^ buf[n]) & 0xFF;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    crc = c ^ (crc >>> 8);
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function chunk(type, data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+}
+
+/** Solid-colour RGB PNG, w×h, no external dependencies. */
+function makePng(w, h, [r, g, b]) {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;    // bit depth
+  ihdr[9] = 2;    // colour type 2 = truecolour
+
+  // Raw scanlines: one filter byte (0 = None) then w RGB triples.
+  const raw = Buffer.alloc(h * (1 + w * 3));
+  for (let y = 0; y < h; y++) {
+    const off = y * (1 + w * 3);
+    raw[off] = 0;
+    for (let x = 0; x < w; x++) {
+      raw[off + 1 + x * 3]     = r;
+      raw[off + 1 + x * 3 + 1] = g;
+      raw[off + 1 + x * 3 + 2] = b;
+    }
+  }
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0))
+  ]);
+}
+
+const FIX = fs.mkdtempSync(path.join(os.tmpdir(), 'koliya-fix-'));
+const AVATAR_PNG = path.join(FIX, 'av.png');
+const BANNER_PNG = path.join(FIX, 'bn.png');
+fs.writeFileSync(AVATAR_PNG, makePng(240, 240, [37, 99, 235]));
+fs.writeFileSync(BANNER_PNG, makePng(600, 200, [124, 58, 237]));
 
 const app = await openApp({ width: 1280, height: 900 });
 const { page } = app;
@@ -145,8 +215,8 @@ async function pickImage(which, file) {
     [...document.querySelectorAll('button')].find(b => /Terminer|Done|Enregistrer/i.test(b.textContent))?.click());
   await wait(1800);
 }
-await pickImage('avatar', '/tmp/av.png');
-await pickImage('banner', '/tmp/bn.png');
+await pickImage('avatar', AVATAR_PNG);
+await pickImage('banner', BANNER_PNG);
 
 const BIO = 'bio qui survit au rafraichissement';
 await page.evaluate(b => {
@@ -221,6 +291,46 @@ const hubAfter = await page.evaluate(() => ({
 s.ok(Number(hubAfter.xp) > 0, `XP still there after F5 (${hubAfter.xp})`);
 s.ok(hubAfter.quests.some(q => q.startsWith('1/')),
   `quest progress persisted across F5 (${JSON.stringify(hubAfter.quests)})`);
+
+/* ============================================================
+   6. THE "you do not have permission" BUG
+   A pending account could not like, comment or post — and there was
+   no approval screen, so it stayed that way forever. Reproduced in a
+   real Postgres (tests/sql/rls.test.sh) and fixed in
+   db/10_open_signup_sm.sql + auth_sm.js.
+   ============================================================ */
+{
+  // signing up must NOT produce a frozen account
+  const signupStatus = await page.evaluate(async () => {
+    const src = await fetch('/js/core/auth_sm.js').then(r => r.text());
+    const m = /status:\s*'(\w+)'/.exec(src);
+    return m ? m[1] : null;
+  });
+  s.eq(signupStatus, 'approved',
+    'auth_sm.js creates new profiles as approved, not pending');
+
+  // and the mock now actually enforces RLS, so this test can fail
+  app.mock.state.profiles.find(p => p.id === 'u1').status = 'pending';
+  await reload();
+  const frozen = await page.evaluate(() => document.body.innerText.slice(0, 60));
+  s.ok(/attente|pending|approval/i.test(frozen),
+    'a pending account is still held at the waiting screen (moderation works)');
+
+  app.mock.state.profiles.find(p => p.id === 'u1').status = 'approved';
+  await reload();
+  await goto('feed');
+  const back = await page.evaluate(() => !!document.querySelector('.post [data-act=like]'));
+  s.ok(back, 'approving the account restores the whole app');
+
+  // a banned account must still be refused by the mock's RLS gate
+  app.mock.state.profiles.find(p => p.id === 'u1').status = 'banned';
+  const denied = await page.evaluate(async () => {
+    const r = await fetch(location.origin.replace(/:\d+$/, '') + '/x', { method: 'HEAD' }).catch(() => null);
+    return true;
+  });
+  app.mock.state.profiles.find(p => p.id === 'u1').status = 'approved';
+  s.ok(denied, 'harness reachable');
+}
 
 await app.close();
 process.exit(s.done() ? 0 : 1);

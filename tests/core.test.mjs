@@ -71,7 +71,9 @@ ok('parse route', R.parseHash('#/messages/u1?t=1').name==='messages');
 ok('parse arg', R.parseHash('#/messages/u1').arg==='u1');
 ok('unknown falls back', R.parseHash('#/zzz').name==='feed');
 ok('build roundtrip', R.parseHash(R.buildHash('profile','a')).arg==='a');
-ok('shortcuts listed', R.SHORTCUTS.length>=8);
+// SHORTCUTS is now shortcuts(): a frozen const froze its labels to
+// whichever language loaded first.
+ok('shortcuts listed', R.shortcuts().length>=8);
 
 // ---------- ui + shell ----------
 const UI=await import(b+'core/ui_sm.js');

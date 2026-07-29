@@ -402,6 +402,23 @@ export function startMockNeon({ port = 0, signedIn = true, state = seed(), log =
         if (req.method === 'HEAD') { res.writeHead(200, { ...hdr, ...cors(req) }); return res.end(); }
         return S(200, rows, hdr);
       }
+      // --- RLS, the part this mock used to skip entirely ---------
+      // Postgres refuses a write from an account whose profile is
+      // 'pending', 'rejected' or 'banned'. Without this the fixture
+      // cheerfully "proved" that liking worked while the real Neon
+      // answered "new row violates row-level security policy".
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const meRow = state.profiles.find(p => p.id === (session?.user?.id));
+        const st = meRow?.status ?? 'approved';
+        const GATED = ['post_likes', 'post_saves', 'comments', 'posts',
+                       'messages', 'follows', 'stories', 'qa', 'qa_answers'];
+        if (GATED.includes(table) && ['pending', 'rejected', 'banned'].includes(st)) {
+          log.push({ kind: 'rls-deny', table, status: st });
+          return S(403, { code: '42501',
+            message: `new row violates row-level security policy for table "${table}"` });
+        }
+      }
+
       if (req.method === 'POST') {
         const rows = (Array.isArray(json) ? json : [json]).map(r => ({ id: id(), created_at: new Date().toISOString(), ...r }));
         const merge = /merge-duplicates/.test(req.headers.prefer || '');
