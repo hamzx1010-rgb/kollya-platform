@@ -172,12 +172,12 @@ function eventsHero() {
   return `
   <section class="events-hero">
     <div class="hero-body">
-      <div class="hero-eyebrow">${icon('calendar', { size: 14 })} Campus</div>
-      <h2 class="hero-title">${t('events.title')}</h2>
+      <div class="hero-eyebrow">${icon('calendar', { size: 14 })} ${esc(t('nav.campus'))}</div>
+      <h2 class="hero-title">${esc(t('events.title'))}</h2>
       <p class="hero-sub">${esc(t('events.sub'))}</p>
       <div class="hero-stats">
-        <div class="hero-stat"><b>${upcoming}</b><span>à venir</span></div>
-        <div class="hero-stat"><b>${mine}</b><span>vos inscriptions</span></div>
+        <div class="hero-stat"><b>${upcoming}</b><span>${esc(t('events.upcoming'))}</span></div>
+        <div class="hero-stat"><b>${mine}</b><span>${esc(t('events.yours'))}</span></div>
       </div>
     </div>
     <button class="hero-cta" id="heroCreateEvent">
@@ -328,12 +328,12 @@ function qaHero() {
   return `
   <section class="qa-hero">
     <div class="hero-body">
-      <div class="hero-eyebrow">${icon('help', { size: 14 })} Entraide</div>
+      <div class="hero-eyebrow">${icon('help', { size: 14 })} ${esc(t('qa.eyebrow'))}</div>
       <h2 class="hero-title">${t('qa.andAnswers')}</h2>
       <p class="hero-sub">${esc(t('qa.sub'))}</p>
       <div class="hero-stats">
-        <div class="hero-stat"><b>${questions.length}</b><span>questions</span></div>
-        <div class="hero-stat"><b>${open}</b><span>sans réponse</span></div>
+        <div class="hero-stat"><b>${questions.length}</b><span>${esc(t('qa.count'))}</span></div>
+        <div class="hero-stat"><b>${open}</b><span>${esc(t('qa.unanswered'))}</span></div>
       </div>
     </div>
     <button class="hero-cta" id="heroAsk">
@@ -522,7 +522,7 @@ async function renderExplore(q = '') {
             <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div></div>
             <div class="row g1">
               ${u.is_private === false || u.i_follow !== false
-                ? `<button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message">${icon('message', { size: 15 })}</button>` : ''}
+                ? `<button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message" aria-label="Message">${icon('message', { size: 15 })}</button>` : ''}
               <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">${esc(t('action.view'))}</a>
             </div>
           </div>`).join('') : ''}
@@ -570,7 +570,7 @@ async function renderExplore(q = '') {
                 <div class="t-sm t-dim">${esc(u.faculty || '')} · ${compact(u.xp || 0)} XP</div>
               </div>
               <div class="row g1">
-                <button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message">${icon('message', { size: 15 })}</button>
+                <button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message" aria-label="Message">${icon('message', { size: 15 })}</button>
                 <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">${esc(t('action.view'))}</a>
               </div>
             </div>`;
@@ -633,6 +633,41 @@ const screenCfg = () => ({
   saved:    { title: t('saved.title'), placeholder: null,                        render: renderSaved }
 });
 
+/* ------------------------------------------------------------
+   THE TAB STRIP
+
+   Events, Q&A, Channels and Saved are `.nav-item:not(.primary)`, and
+   the bottom-bar media query hides those, so on a phone there was no
+   route to them at all — the pages existed and worked, but nothing
+   linked to them. Eight bottom tabs would be 41px each at 360px,
+   under the 48dp touch target, so instead these five discovery
+   screens share one tab strip.
+
+   A FUNCTION, not a constant: a frozen array captures whatever
+   language loaded first and a later switch never reaches the labels.
+   That exact bug was fixed in thirteen other places already.
+   ------------------------------------------------------------ */
+const CAMPUS_TABS = ['explore', 'events', 'qa', 'channels', 'saved'];
+
+const campusTabs = () => ([
+  { id: 'explore',  label: t('nav.explore'),  icon: 'users' },
+  { id: 'events',   label: t('nav.events'),   icon: 'calendar' },
+  { id: 'qa',       label: t('nav.qa'),       icon: 'help' },
+  { id: 'channels', label: t('nav.channels'), icon: 'hash' },
+  { id: 'saved',    label: t('nav.saved'),    icon: 'bookmark' }
+]);
+
+function tabStrip(active) {
+  return `<div class="sub-tabs campus-tabs blur-bar" role="tablist">
+    ${campusTabs().map(x => `
+      <button class="sub-tab${x.id === active ? ' on' : ''}"
+              role="tab" aria-selected="${x.id === active}"
+              data-campus-tab="${x.id}">
+        ${icon(x.icon, { size: 15 })}<span>${esc(x.label)}</span>
+      </button>`).join('')}
+  </div>`;
+}
+
 function mountScreen(name, mountFn) {
   const cfg = screenCfg()[name];   // re-read every mount, or a language switch never reaches these labels
   const host = mountFn();
@@ -642,6 +677,7 @@ function mountScreen(name, mountFn) {
   // Screens with a hero carry their create button inside it, so the
   // toolbar above stays a search field and nothing else.
   host.innerHTML = `
+    ${tabStrip(name)}
     ${cfg.placeholder ? `<div class="campus-bar">
       <div class="grow" style="position:relative">
         <span class="input-icon">${icon('search', { size: 15 })}</span>
@@ -651,6 +687,24 @@ function mountScreen(name, mountFn) {
         ${icon(cfg.action.icon, { size: 15 })} ${cfg.action.label}</button>` : ''}
     </div>` : ''}
     <div id="campusList"></div>`;
+
+  // go(), not location.hash: it runs the guards and keeps a real
+  // history entry, so the Android back button steps through the tabs
+  // instead of leaving the app.
+  for (const btn of $$('[data-campus-tab]')) {
+    on(btn, 'click', () => {
+      const id = btn.dataset.campusTab;
+      if (id !== name) go(id);
+    });
+  }
+
+  // Keep the active tab in view. At 360px the five tabs are wider than
+  // the screen, and landing on Saved with the strip scrolled to the
+  // left looks like the tab did nothing.
+  requestAnimationFrame(() => {
+    $('.campus-tabs .sub-tab.on')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  });
 
   if (cfg.action) on($('#campusAction'), 'click', cfg.action.fn);
 
@@ -724,7 +778,18 @@ async function handleListClick(screen, e) {
 
 export function initCampus(mountFn) {
   for (const name of Object.keys(screenCfg())) {
-    route(name, () => mountScreen(name, mountFn));
+    route(name, arg => {
+      // `#/explore/events` — the phone's Campus tab points here so that
+      // one bottom-bar entry can open the section the student most
+      // likely wants. Redirect rather than render Explore-with-events,
+      // so the URL ends up canonical (#/events) and a refresh, a
+      // bookmark or a notification deep-link all agree.
+      if (name === 'explore' && arg && CAMPUS_TABS.includes(arg) && arg !== 'explore') {
+        go(arg, null, { replace: true });
+        return;
+      }
+      mountScreen(name, mountFn);
+    });
   }
 }
 

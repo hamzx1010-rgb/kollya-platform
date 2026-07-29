@@ -82,6 +82,13 @@
 .nav-item .lbl { transition: opacity var(--t-fast) var(--ease); }
 .nav-item .count, .nav-item .dot { margin-inline-start: auto; flex-shrink: 0; }
 
+/* Rows that belong to exactly one form factor. Declared here, BEFORE
+   the bottom-bar media query, so the media query can override them
+   without a specificity fight (the same source-order trap that hid
+   #btnMore on phones). */
+.nav-item.nav-phone { display: none; }
+.nav-item.nav-desk  { display: flex; }
+
 /* labels fade out when collapsed, back in on peek */
 
 .rail-foot {
@@ -189,6 +196,36 @@
 .sub-tab:hover { background: var(--hover); color: var(--text); }
 .sub-tab.on { color: var(--brand); background: var(--brand-50); }
 [data-theme="dark"] .sub-tab.on { background: color-mix(in srgb, var(--brand) 16%, transparent); }
+
+/* CAMPUS TAB STRIP — Explore · Events · Q&A · Channels · Saved.
+
+   The feed's three tabs divide the width with flex:1. Five tabs with
+   icons cannot: at 360px they measured 46px each with the labels
+   clipped mid-word. This strip scrolls sideways instead, so every
+   label stays whole and readable, which is the whole point of adding
+   these pages back. */
+.campus-tabs {
+  gap: var(--s2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+.campus-tabs::-webkit-scrollbar { display: none; }
+
+.campus-tabs .sub-tab {
+  /* Not flex:1 — that is what squeezed five labels into 46px. Size to
+     the text and let the strip scroll. */
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 var(--s3);
+  white-space: nowrap;
+  scroll-snap-align: center;
+}
+.campus-tabs .sub-tab svg { width: 15px; height: 15px; flex-shrink: 0; }
+.campus-tabs .sub-tab:not(.on) svg { opacity: .72; }
 
 /* ---------- 4. RIGHT RAIL ----------------------------------- */
 /* On a laptop this space was simply wasted before. */
@@ -620,6 +657,13 @@
   .nav-item:not(.primary) { display: none; }   /* only 5 core items fit */
   .nav-item.primary { display: flex; position: relative; }
 
+  /* Profile and Campus appear; Hub does not — its progress strip sits
+     at the top of the home feed instead, and Campus is the only way
+     into Events / Q&A / Channels / Saved on a phone. Six items = 55px
+     each at 360px, above the 48dp touch minimum. Seven would be 47px. */
+  .nav-item.primary.nav-phone { display: flex; }
+  .nav-item.nav-desk { display: none; }
+
   /* In the sidebar the count sits at the END of the row, pushed there
      by margin-inline-start:auto. In the bottom bar the row is a COLUMN
      (icon over label), so that same auto margin pushed the badge below
@@ -708,6 +752,56 @@
 /* thread back arrow only matters on narrow screens */
 .thread-back { display: none; }
 @media (max-width: 900px) { .thread-back { display: inline-flex; } }
+
+/* ============================================================
+   PHONE: MESSAGES IS ITS OWN PAGE
+   The DM screen used to sit inside the normal scrolling view, so the
+   feed stayed visible behind and around it and the thread never
+   reached the bottom of the screen. On a phone it is now a full
+   page: it covers everything except the tab bar, and nothing of the
+   previous screen shows through.
+   ============================================================ */
+@media (max-width: 900px) {
+  .view.full { padding: 0; }
+  .view.full .view-inner { padding: 0; max-width: none; }
+
+  .dm {
+    position: fixed;
+    inset: 0 0 58px 0;               /* 58px = the bottom tab bar */
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: var(--z-sticky);
+    background: var(--bg);           /* opaque: nothing shows through */
+    height: auto;
+    border-radius: 0;
+  }
+  /* One column. The list is a drawer over the thread, not a sidebar
+     beside it — two 50% columns on a 412px screen is unusable. */
+  .dm, .dm.info-open { grid-template-columns: 1fr; }
+
+  /* Reuse the EXISTING data-open="thread" drawer rather than inventing
+     a second mechanism — messages_sm.js already sets and clears that
+     attribute in five places, and a competing class would fight it.
+     Full width, though: a 320px drawer on a 412px screen left a strip
+     of thread showing down the side. */
+  .dm-list {
+    position: absolute; inset: 0;
+    width: 100%;
+    z-index: 2;
+    background: var(--bg);
+    box-shadow: none;
+    transition: transform var(--t) var(--ease);
+  }
+  .dm[data-open="thread"] .dm-list { transform: translateX(-100%); }
+  [dir="rtl"] .dm[data-open="thread"] .dm-list { transform: translateX(100%); }
+
+  .thread { position: absolute; inset: 0; z-index: 1; }
+
+  .dm.info-open .info-panel {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    z-index: 3;
+  }
+}
 
 /* drop zone label */
 .drop-zone { flex-direction: column; gap: var(--s2); }
@@ -980,7 +1074,17 @@
    ============================================================ */
 .gif-panel {
   position: fixed; z-index: var(--z-menu);
-  width: min(420px, calc(100vw - var(--s8)));
+  /* The width has to leave room for the 8px gutter the JS clamp keeps
+     on BOTH sides, or the clamp is asked to fit a panel wider than the
+     space available and gives up at the right edge.
+     Two earlier attempts got this wrong:
+       calc(100vw - 32px)  -> 100vw ignores the scrollbar, JS measured
+                              357 while CSS produced 380
+       calc(100% - 16px)   -> for position:fixed, 100% IS the viewport,
+                              so this was 396 and still 15px too wide
+     16px of gutter on each side = 32px total, matching pad*2 in
+     place(). Verified at 412px: panel 380, left 8, right 388. */
+  width: min(420px, calc(100dvw - 32px));
   max-height: 460px;
   display: flex; flex-direction: column;
   border: 1px solid var(--border);
@@ -1290,6 +1394,92 @@
   margin-top: var(--s3); padding: var(--s1) 0;
 }
 .commenters:hover .t-dim { color: var(--brand); }
+
+/* ============================================================
+   HUB PROGRESS STRIP — one line at the top of the home feed
+   ============================================================
+   Hub gave up its bottom-bar slot to Campus, so progress comes to the
+   feed instead. A strip, not a card: the feed is for posts, and a
+   second hero above the first post would push the actual content
+   below the fold on a 360px phone.
+
+   Tinted, not gradient-filled. The stories bar sits directly above it
+   and two saturated blocks stacked read as a header, not as content. */
+.hub-strip {
+  display: flex; align-items: center; gap: var(--s3);
+  margin: 0 var(--s4) var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--brand) 7%, var(--surface)), var(--surface));
+  color: var(--text);
+  font-size: var(--fs-sm);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.hub-strip:hover {
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--border));
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--brand) 12%, var(--surface)), var(--surface));
+}
+
+/* --brand-on-tint, not --brand: measured 4.06:1 for --brand on this
+   tint, under AA for text this size. Same fix as the active nav row. */
+.hs-lvl {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--brand-on-tint);
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-bar {
+  flex: 1 1 auto;
+  min-width: 40px;          /* or it collapses to nothing at 320px */
+  height: 6px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
+}
+.hs-fill {
+  display: block; height: 100%;
+  border-radius: var(--r-full);
+  background: var(--grad);
+  transition: width var(--t) var(--ease);
+}
+
+.hs-xp {
+  flex-shrink: 0;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  /* "340/520" next to Arabic text gets dragged to the wrong end by the
+     bidi algorithm without this. */
+  unicode-bidi: isolate;
+}
+
+.hs-streak, .hs-quests {
+  display: inline-flex; align-items: center; gap: 3px;
+  flex-shrink: 0;
+  font-size: var(--fs-xs); font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+}
+.hs-streak { color: #C2410C; }              /* 5.1:1 on the tint */
+.hs-quests { color: var(--text-2); }
+.hs-quests.all { color: var(--ok, #15803D); }
+.hs-streak svg, .hs-quests svg { flex-shrink: 0; }
+
+.hs-go { flex-shrink: 0; color: var(--text-3); display: inline-flex; }
+/* The chevron points at the hub. In Arabic "forward" is the other way. */
+[dir="rtl"] .hs-go { transform: rotate(180deg); }
+
+/* At 360px the XP fraction is the first thing worth dropping: the bar
+   already shows the same information, and level + streak + quests are
+   the numbers a student glances at. */
+@media (max-width: 380px) {
+  .hs-xp { display: none; }
+  .hub-strip { gap: var(--s2); }
+}
 
 /* ============================================================
    HUB — streak, quests, badges, leaderboard
@@ -2002,7 +2192,16 @@ button.pf-stat:hover span { text-decoration: underline; }
     border-radius: 24px;
   }
   .hero-cta { width: 100%; flex-direction: row; justify-content: flex-start; gap: var(--s3); }
-  .hero-cta-txt br { display: none; }
+  /* The label is "Create an<br>event" so it stacks in the tall desktop
+     button. On one line the <br> has to go — but `display:none` deletes
+     the line break WITHOUT leaving a space, so Arabic rendered
+     "أنشئفعالية" as one word. Put the space back in every language. */
+  .hero-cta-txt br {
+    display: inline;
+    content: " ";
+    font-size: 0;
+  }
+  .hero-cta-txt br::after { content: " "; font-size: var(--fs-base); }
 }
 
 /* event cover inside its detail modal */
@@ -2386,6 +2585,18 @@ button.pf-stat:hover span { text-decoration: underline; }
 .set-hint { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.45; margin-top: 2px; }
 .set-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
+/* Explanatory line under a setting, and the background-sync status
+   readout. Full width rather than sitting beside the title, because
+   the OEM Autostart note is three lines long on a phone. */
+.set-note {
+  margin-top: var(--s3);
+  margin-bottom: var(--s2);
+  /* The status line ends in numbers and, on failure, a machine-readable
+     error code like HTTP_401. Without isolation the bidi algorithm
+     drags those to the wrong end of an Arabic sentence. */
+  unicode-bidi: isolate;
+}
+
 .set-warn {
   margin-top: var(--s3);
   padding: var(--s3);
@@ -2464,7 +2675,11 @@ button.pf-stat:hover span { text-decoration: underline; }
   .dm, .dm.info-open { grid-template-columns: 1fr; }
   .dm-list {
     position: absolute; inset-block: 0; inset-inline-start: 0;
-    width: min(320px, 86cqw);
+    /* 100%, not min(320px, 86cqw): this block comes AFTER the phone
+       @media rule and has the same specificity, so it won on source
+       order and left a 92px strip of the thread showing beside the
+       conversation list. Measured: list 320px in a 412px window. */
+    width: 100%;
     z-index: calc(var(--z-sticky) + 1);
     background: var(--surface);
     box-shadow: var(--shadow-lg);
@@ -2658,3 +2873,80 @@ button.pf-stat:hover span { text-decoration: underline; }
   .ach { transition: opacity .01ms; transform: translate(-50%, 0); }
   .ach-check { animation: none; stroke-dashoffset: 0; }
 }
+
+/* ============================================================
+   TOUCH GESTURES
+   Only ever active on a coarse pointer — gestures_sm.js refuses to
+   attach otherwise, so none of this affects the desktop build.
+   ============================================================ */
+
+/* A row being dragged must not also animate its own layout, or the
+   transform fights the transition and the bubble judders. */
+.bubble-row.gs-swiping { transition: none !important; will-change: transform; }
+
+/* The reply arrow revealed underneath as the bubble slides away. */
+.bubble-row { position: relative; }
+.bubble-row::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 10px;
+  top: 50%;
+  width: 30px; height: 30px;
+  margin-top: -15px;
+  border-radius: var(--r-full);
+  background: var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235B6169' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 17 4 12 9 7'/%3E%3Cpath d='M20 18v-2a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E") center/16px no-repeat;
+  opacity: 0;
+  transform: scale(.7);
+  transition: opacity .12s var(--ease), transform .12s var(--ease);
+  pointer-events: none;
+}
+.bubble-row.gs-swiping::before { opacity: .55; }
+.bubble-row.gs-ready::before {
+  opacity: 1;
+  transform: scale(1);
+  background-color: color-mix(in srgb, var(--brand) 18%, var(--surface-2));
+}
+
+/* On touch the hover toolbars can never appear, so the gesture is the
+   only way in. Keep them hidden rather than flashing them on tap. */
+@media (hover: none) {
+  .bubble-row .action-bar { display: none; }
+  .post-tools.hover-reveal { opacity: 1; }
+}
+
+/* The + only exists on narrow screens; on desktop every tool already
+   fits on the row. Declared BEFORE the @media block: same specificity
+   means source order decides, and when this sat after the media query
+   it hid the button on phones too. */
+#btnMore { display: none; }
+
+/* NARROW PHONES — the composer ran out of room.
+   Measured at 412px: four attachment buttons plus mic and send took
+   400px of a 400px row and left the textarea 112px, so even the
+   PLACEHOLDER wrapped to two lines and was clipped.
+   The first fix `display:none` on GIF/file/emoji was WRONG: it did not
+   move them anywhere, it DELETED them, so on a phone there was no way
+   to send a GIF at all. They now live behind a "+" toggle that slides
+   them open above the text field. */
+@media (max-width: 560px) {
+  .composer { gap: var(--s1); padding-inline: var(--s3); }
+  .composer-input { min-width: 0; flex: 1 1 auto; }
+  .composer .icon-btn { width: 38px; height: 38px; flex-shrink: 0; }
+
+  /* the extra tools are hidden only until the + is pressed */
+  #btnGif, #btnFile, #btnEmoji { display: none; }
+  #composer.tools-open #btnGif,
+  #composer.tools-open #btnFile,
+  #composer.tools-open #btnEmoji { display: inline-flex; }
+
+  /* with the tray open the field would be squeezed again, so it drops
+     to its own line instead of fighting for width */
+  #composer.tools-open { flex-wrap: wrap; }
+  #composer.tools-open .composer-input { flex: 1 0 100%; order: 9; }
+  #composer.tools-open #btnMic,
+  #composer.tools-open #btnSend { order: 10; }
+
+  #btnMore { display: inline-flex; }
+  #composer.tools-open #btnMore { color: var(--brand); }
+}
+

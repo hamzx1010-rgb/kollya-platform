@@ -25,6 +25,7 @@ import { act } from '../core/game_sm.js';
 import { I, icon, reactionIcon, REACTION_KEYS, reactionLabel } from '../core/icons_sm.js';
 import { toast, modal, confirmDialog } from '../core/ui_sm.js';
 import { openImageEditor } from './editor_sm.js';
+import { hasCamera, openCamera, haptic } from '../core/native_sm.js';
 
 const seenStore = scoped('story');
 const BASE_MS = 4200;
@@ -74,6 +75,23 @@ const durationFor = item =>
    ------------------------------------------------------------ */
 
 export async function openStoryComposer() {
+  // NATIVE CAMERA FIRST.
+  // A story is something you shoot, not something you hunt for in a
+  // gallery. In the APK the camera is offered first and the gallery
+  // second; on the web hasCamera() is false and this block is skipped
+  // entirely, so the website behaves exactly as before.
+  if (hasCamera()) {
+    const choice = await askCaptureSource();
+    if (choice === null) return null;
+    if (choice === 'camera') {
+      haptic('light');
+      const shot = await openCamera('story');
+      if (!shot?.dataUrl) return null;
+      const blob = await (await fetch(shot.dataUrl)).blob();
+      return finishStory(new File([blob], 'story.jpg', { type: 'image/jpeg' }));
+    }
+  }
+
   const pick = el('input', { type: 'file', accept: 'image/*', hidden: true });
   document.body.append(pick);
 
@@ -86,12 +104,29 @@ export async function openStoryComposer() {
   });
   pick.remove();
   if (!file) return null;
+  return finishStory(file);
+}
 
+/** Camera or gallery? Returns 'camera' | 'gallery' | null. */
+function askCaptureSource() {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = v => { if (settled) return; settled = true; m?.close?.(); resolve(v); };
+    const body = el('div', { class: 'col g3' },
+      el('button', { class: 'btn btn-primary btn-lg', onclick: () => done('camera') },
+         t('story.useCamera')),
+      el('button', { class: 'btn btn-outline btn-lg', onclick: () => done('gallery') },
+         t('story.useGallery')));
+    const m = modal({ title: t('story.add'), body, onClose: () => done(null) });
+  });
+}
+
+async function finishStory(file) {
   // 9:16 is suggested because that is what a story is
   const edited = await openImageEditor(file, 'story');
   if (!edited) return null;
 
-  const caption = el('input', { class: 'input', placeholder: 'Légende (facultatif)…', maxlength: '140' });
+  const caption = el('input', { class: 'input', placeholder: t('story.captionPh'), maxlength: '140' });
   const previewUrl = URL.createObjectURL(edited);
   const foot = el('div', { class: 'row g2' });
 
@@ -124,7 +159,7 @@ export async function openStoryComposer() {
         } catch (err) {
           btn.disabled = false;
           btn.textContent = 'Publier';
-          toast(err?.message || 'Story non publiée', 'err');
+          toast(err?.message || t('toast.storyFailed'), 'err');
         }
       }}, 'Publier')
     );
@@ -159,7 +194,7 @@ export async function openStories(startUserId) {
   const root = el('div', { class: 'sv', role: 'dialog', 'aria-modal': 'true', tabindex: '-1' });
   root.innerHTML = `
     <button class="sv-close icon-btn" aria-label="${t('action.close')}">${I.close}</button>
-    <button class="sv-nav prev" aria-label=t('a11y.prev')><span>${I.chevron}</span></button>
+    <button class="sv-nav prev" aria-label="${esc(t('a11y.prev'))}"><span>${I.chevron}</span></button>
     <button class="sv-nav next" aria-label="Suivant"><span>${I.chevron}</span></button>
     <div class="sv-stage">
       <div class="sv-bars" id="svBars"></div>
@@ -168,7 +203,7 @@ export async function openStories(startUserId) {
       <footer class="sv-foot">
         <div class="sv-reacts" id="svReacts"></div>
         <div class="sv-reply">
-          <input class="input" id="svReply" placeholder=t('story.replyPh') aria-label=t('story.replyAria')>
+          <input class="input" id="svReply" placeholder="${esc(t('story.replyPh'))}" aria-label="${esc(t('story.replyAria'))}">
           <button class="icon-btn btn-primary" id="svSend" aria-label="${esc(t('action.send'))}">${I.send}</button>
         </div>
       </footer>
@@ -180,7 +215,7 @@ export async function openStories(startUserId) {
   const bars = $('#svBars'), head = $('#svHead'), media = $('#svMedia');
 
   $('#svReacts').innerHTML = REACTION_KEYS.map(k =>
-    `<button class="sv-react" data-k="${k}" data-tip="${esc(reactionLabel(k))}">${reactionIcon(k, 24)}</button>`).join('');
+    `<button class="sv-react" data-k="${k}" data-tip="${esc(reactionLabel(k))}" aria-label="${esc(reactionLabel(k))}">${reactionIcon(k, 24)}</button>`).join('');
 
   function paint() {
     const g = groups[gi], item = g.items[ii];

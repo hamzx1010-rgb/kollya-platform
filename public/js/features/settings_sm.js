@@ -21,12 +21,82 @@ import {
   supported as notifSupported, permission as notifPermission,
   askPermission, testNotification
 } from '../core/notify_sm.js';
+import {
+  hasBackgroundSync, backgroundSyncEnabled, setBackgroundSync,
+  batteryExempt, requestBatteryExempt, syncStatus, syncNow
+} from '../core/native_sm.js';
 
 const THEMES = [
   { id: 'light',  key: 'settings.light',  icon: 'sun' },
   { id: 'dark',   key: 'settings.dark',   icon: 'moon' },
   { id: 'system', key: 'settings.system', icon: 'monitor' }
 ];
+
+/**
+ * BACKGROUND DELIVERY — APK only.
+ *
+ * Returns '' in a browser, so the website never shows a card about a
+ * service it does not have. A tab cannot poll while it is closed and
+ * pretending otherwise with a dead toggle would be worse than nothing.
+ *
+ * When it IS the APK the card is deliberately blunt about the two
+ * things that decide whether this actually works on the student's
+ * phone: the battery exemption, and (on Xiaomi/Oppo/Vivo) Autostart,
+ * which no app can grant itself from code.
+ */
+function backgroundCard() {
+  if (!hasBackgroundSync()) return '';
+
+  const on      = backgroundSyncEnabled();
+  const exempt  = batteryExempt();
+  const st      = syncStatus() || {};
+
+  // "Never" until the service has actually completed a poll. Showing a
+  // plausible-looking time before anything ran is how you end up
+  // trusting a feature that never worked.
+  const last = st.lastRun
+    ? new Date(st.lastRun).toLocaleTimeString(lang() === 'ar' ? 'ar-DZ' : 'fr-FR',
+        { hour: '2-digit', minute: '2-digit' })
+    : t('bg.never');
+
+  return `
+      <section class="set-sec" id="bgSec">
+        <div class="set-head">
+          <span class="set-ic">${icon('bell', { size: 17 })}</span>
+          <div class="grow">
+            <div class="set-title">${esc(t('bg.title'))}</div>
+            <div class="set-hint">${esc(t('bg.hint'))}</div>
+          </div>
+          <button class="switch${on ? ' on' : ''}" id="bgToggle"
+                  role="switch" aria-checked="${on}"
+                  aria-label="${esc(t('bg.title'))}"></button>
+        </div>
+
+        ${on && !exempt ? `
+          <p class="set-warn">
+            ${icon('close', { size: 14 })} ${esc(t('bg.batteryWarn'))}
+          </p>
+          <div class="set-actions">
+            <button class="btn btn-primary" id="bgBattery">
+              ${icon('check', { size: 15 })} ${esc(t('bg.allowBattery'))}
+            </button>
+          </div>` : ''}
+
+        ${on ? `
+          <p class="set-hint set-note">${esc(t('bg.oemNote'))}</p>
+          <div class="set-actions">
+            <button class="btn btn-outline" id="bgTest">
+              ${icon('send', { size: 15 })} ${esc(t('bg.test'))}
+            </button>
+          </div>
+          <p class="set-hint set-note" id="bgStatus">
+            ${esc(t('bg.lastRun'))}: ${esc(last)}
+            · ${esc(t('bg.checks'))}: ${Number(st.runs || 0)}
+            · ${esc(t('bg.sent'))}: ${Number(st.posted || 0)}
+            ${st.lastError ? ` · ${esc(t('bg.error'))}: ${esc(String(st.lastError))}` : ''}
+          </p>` : ''}
+      </section>`;
+}
 
 /** Colour and wording for whatever the browser currently allows. */
 function permissionState() {
@@ -109,6 +179,8 @@ function render(host) {
           ? `<p class="set-warn">${icon('close', { size: 14 })} ${esc(t('notif.blocked'))}</p>` : ''}
       </section>
 
+      ${backgroundCard()}
+
       <!-- SOUND -->
       <section class="set-sec">
         <div class="set-head">
@@ -175,6 +247,32 @@ function wire(host) {
   on($('#notifEnable'), 'click', async () => {
     await askPermission({ force: true });
     render(host);
+  });
+
+  // BACKGROUND DELIVERY
+  on($('#bgToggle'), 'click', () => {
+    const next = !backgroundSyncEnabled();
+    setBackgroundSync(next);
+    // Full re-render, unlike the sound switch: turning it on reveals the
+    // battery warning and the status line, which are not in the DOM yet.
+    render(host);
+  });
+
+  on($('#bgBattery'), 'click', () => {
+    requestBatteryExempt();
+    // The system dialog is a separate Activity, so the result only
+    // exists after we come back. Re-read then, not now.
+    const recheck = () => { render(host); window.removeEventListener('koliya:resume', recheck); };
+    window.addEventListener('koliya:resume', recheck);
+  });
+
+  on($('#bgTest'), 'click', async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    syncNow();
+    // The poll is a network round-trip on a Java thread; give it time
+    // to finish before reading the counters back.
+    setTimeout(() => { render(host); }, 2500);
   });
 
   // SOUND — toggling repaints nothing, so update the switch in place

@@ -71,7 +71,11 @@ function group(list) {
   return out.sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 
-const KIND = {
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const notifKind = () => ({
   like:    { icon:'fire',     tint:'like',   verb:g => `${names(g)} ${t('notif.likedYours')}` },
   comment: { icon:'comment',  tint:'brand',  verb:g => `${names(g)} ${t('notif.commented')}` },
   follow:  { icon:'users',    tint:'ok',     verb:g => `${names(g)} ${t('notif.followsYou')}` },
@@ -79,7 +83,7 @@ const KIND = {
   request: { icon:'user',     tint:'warn',   verb:g => `${names(g)} ${t('notif.requests')}` },
   badge:   { icon:'trophy',   tint:'warn',   verb:() => t('notif.newBadge') },
   event:   { icon:'calendar', tint:'brand',  verb:g => `${names(g)} ${t('notif.createdEvent')}` }
-};
+});
 
 function names(g) {
   if (!g.actors.length) return '';
@@ -94,7 +98,7 @@ function names(g) {
    ------------------------------------------------------------ */
 
 function row(g) {
-  const meta = KIND[g.kind] || KIND.like;
+  const meta = notifKind()[g.kind] || notifKind().like;
   const node = el('div', {
     class: 'notif' + (g.read ? '' : ' unread'),
     'data-ids': g.ids.join(','),
@@ -179,11 +183,15 @@ function updateBadge() {
    VIEW
    ------------------------------------------------------------ */
 
-const FILTERS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const notifFilters = () => ([
   { id:'all',      label:t('notif.all') },
   { id:'mentions', label:t('notif.mentions') },
   { id:'follows',  label:t('feed.following') }
-];
+]);
 
 export function initNotifications(mountFn) {
   route('notifications', async () => {
@@ -193,8 +201,8 @@ export function initNotifications(mountFn) {
 
     host.innerHTML = `
       <div class="sub-tabs blur-bar">
-        ${FILTERS.map(f => `<button class="sub-tab${f.id === filter ? ' on' : ''}" data-f="${f.id}">${f.label}</button>`).join('')}
-        <button class="sub-tab" id="notifAllRead" style="margin-inline-start:auto">${icon('check', { size: 14 })} Tout marquer lu</button>
+        ${notifFilters().map(f => `<button class="sub-tab${f.id === filter ? ' on' : ''}" data-f="${f.id}">${f.label}</button>`).join('')}
+        <button class="sub-tab" id="notifAllRead" style="margin-inline-start:auto">${icon('check', { size: 14 })} ${esc(t('notif.markAllRead'))}</button>
       </div>
       <div id="notifList">${skeletonList(5, 'conv')}</div>`;
 

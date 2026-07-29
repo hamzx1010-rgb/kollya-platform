@@ -29,6 +29,8 @@ import { toast } from './ui_sm.js';
 import { t } from './i18n_sm.js';
 import { icon } from './icons_sm.js';
 import { safeUrl } from './utils_sm.js';
+import { isNative, nativeNotify, nativeNotifyState, requestNativeNotify,
+         hasBackgroundSync, syncLastSeen, setSyncLastSeen } from './native_sm.js';
 
 const store = scoped('notify');
 
@@ -40,15 +42,69 @@ let pollTimer = 0;
 let asked = false;
 
 /* ------------------------------------------------------------
+   THE "LAST SEEN" MARKER — one value, two owners
+
+   From APK 1.2 a Java foreground service polls the same
+   pending_alerts() while the app is closed. If it kept its own
+   marker in SharedPreferences and this file kept another one in
+   localStorage, every message would be announced twice: once by the
+   service, and again by this page on the next open, replaying from
+   its own stale copy.
+
+   So when the bridge is present it OWNS the value and these two
+   helpers read and write through it. On the web they fall back to
+   localStorage and nothing changes.
+
+   Both are also written on the browser side even in the APK, as a
+   cheap backup: if a future build drops the bridge the page still
+   has a marker and degrades to "might repeat once" rather than
+   "replays every unread notification you ever had".
+   ------------------------------------------------------------ */
+
+function readLastSeen() {
+  if (hasBackgroundSync()) {
+    const shared = syncLastSeen();
+    if (shared) return shared;
+  }
+  return store.get('lastSeen', null);
+}
+
+function writeLastSeen(iso) {
+  if (!iso) return;
+  setSyncLastSeen(iso);          // no-op without the bridge
+  store.set('lastSeen', iso);
+}
+
+/* ------------------------------------------------------------
    CAPABILITY
    ------------------------------------------------------------ */
 
 export const supported = () =>
-  typeof window !== 'undefined' && 'Notification' in window;
+  // In the APK the browser Notification API may be missing entirely,
+  // but system notifications still work through the bridge. Reporting
+  // "unsupported" there silenced everything.
+  isNative() || (typeof window !== 'undefined' && 'Notification' in window);
 
-export const permission = () => (supported() ? Notification.permission : 'unsupported');
+export const permission = () => {
+  // THE NOTIFICATION BUG. Inside a WebView Notification.permission
+  // stays 'default' forever no matter what Android says, so
+  //   if (permission() !== 'default') { ... startWatching() }
+  // never ran and the alert poller never started — on a phone whose
+  // notifications were plainly enabled. Ask Android, not the browser.
+  const n = nativeNotifyState();
+  if (n) return n.granted ? 'granted' : (n.canAsk ? 'default' : 'denied');
+  return (typeof window !== 'undefined' && 'Notification' in window)
+    ? Notification.permission : 'unsupported';
+};
 
-export const canNotify = () => permission() === 'granted';
+export const canNotify = () => {
+  // Inside the APK the browser Notification API is irrelevant: what
+  // matters is the Android permission. Consulting the web API there
+  // would report 'default' forever and silence every alert.
+  const n = nativeNotifyState();
+  if (n) return n.granted;
+  return permission() === 'granted';
+};
 
 /** True once the student has told us no, in app or in the browser. */
 const refused = () => store.get('refused', false) || permission() === 'denied';
@@ -64,6 +120,14 @@ const refused = () => store.get('refused', false) || permission() === 'denied';
  * "Block" is not.
  */
 export async function askPermission({ force = false } = {}) {
+  // The APK must show the real Android dialog: calling
+  // Notification.requestPermission() inside a WebView resolves
+  // 'denied' without ever asking anyone.
+  if (isNative()) {
+    const st = nativeNotifyState();
+    if (st?.granted) return 'granted';
+    return (await requestNativeNotify()) ? 'granted' : 'denied';
+  }
   if (!supported()) {
     toast(t('notif.unsupported2'), { kind: 'err' });
     return 'unsupported';
@@ -125,8 +189,17 @@ export function offerNotifications() {
  * Show one notification. Silent no-op without permission, so callers
  * never need to check first.
  */
-export function notify({ title, body = '', tag = 'koliya', icon: img = null, url = null } = {}) {
+export function notify({ title, body = '', tag = 'koliya', icon: img = null,
+                         url = null, kind = 'reminder' } = {}) {
   if (!canNotify() || !title) return null;
+
+  // In the APK these are REAL system notifications: they survive the
+  // app closing and appear on the lock screen. The web Notification
+  // below only lives as long as the tab.
+  if (isNative()) {
+    nativeNotify({ kind, title, body, route: (url || '').replace(/^#/, '') });
+    return null;
+  }
 
   try {
     const n = new Notification(title, {
@@ -182,14 +255,18 @@ export async function testNotification() {
    WATCHING FOR SOMETHING TO ANNOUNCE
    ------------------------------------------------------------ */
 
-const KIND_TEXT = {
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const kindText = () => ({
   follow:  a => [`${a} ${t('notif.followsYou')}`, t('notif.newFollower')],
   request: a => [`${a} ${t('notif.requests')}`, t('notif.followRequest')],
   message: a => [`${a}`, t('dm.new')],
   like:    a => [`${a} ${t('notif.likedYours')}`, ''],
   comment: (a, txt) => [`${a} ${t('notif.commented')}`, txt || ''],
   mention: (a, txt) => [`${a} ${t('notif.mentioned')}`, txt || '']
-};
+});
 
 const ROUTE = {
   follow: '#/notifications', request: '#/notifications',
@@ -203,6 +280,16 @@ async function checkAlerts() {
   // Notifying about something already on screen is noise.
   if (!document.hidden && location.hash.startsWith('#/notifications')) return;
 
+  // Re-read the marker rather than trusting the in-memory copy.
+  //
+  // While the app was closed the Java service kept polling and moved
+  // the shared marker forward. Our variable still holds whatever it
+  // held when the page was last active, so polling with it would ask
+  // the database for rows the service already put in the shade and
+  // announce every one of them a second time.
+  const since = readLastSeen();
+  if (since && (!lastSeen || since > lastSeen)) lastSeen = since;
+
   let rows = [];
   try {
     rows = await db.rpc('pending_alerts', { p_since: lastSeen }) || [];
@@ -215,12 +302,12 @@ async function checkAlerts() {
   if (!rows.length) return;
 
   lastSeen = rows[0].created_at;
-  store.set('lastSeen', lastSeen);
+  writeLastSeen(lastSeen);
 
   // One notification for a single event; a summary for a burst.
   if (rows.length === 1) {
     const r = rows[0];
-    const fn = KIND_TEXT[r.kind];
+    const fn = kindText()[r.kind];
     const [title, body] = fn ? fn(r.actor_name, r.text) : [r.actor_name, r.text || ''];
     notify({ title, body, tag: `koliya-${r.kind}-${r.id}`,
              icon: r.actor_avatar, url: ROUTE[r.kind] || '#/notifications' });
@@ -241,7 +328,7 @@ let watching = false;
 export function startWatching() {
   if (watching || !canNotify()) return;
   watching = true;
-  lastSeen = store.get('lastSeen', null);
+  lastSeen = readLastSeen();
 
   // Slower than the chat poller: an alert a few seconds late is fine,
   // and this runs for the whole session.
@@ -271,7 +358,7 @@ export function initNotify() {
     // If you are looking at that very conversation, you already know.
     if (!document.hidden && location.hash.startsWith(`#/messages/${from}`)) return;
     notify({
-      title: name || 'Nouveau message',
+      title: name || t('notif.newMessage'),
       body: text || t('notif.attachment'),
       tag: `koliya-dm-${from}`,
       icon: avatar,

@@ -205,7 +205,11 @@ const GOTO = {
 };
 let gPending = false, gTimer = null;
 
-export const SHORTCUTS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+export const shortcuts = () => ([
   { keys: `${modKey()}+K`, label: 'Recherche rapide' },
   { keys: `${modKey()}+/`, label: 'Afficher les raccourcis' },
   { keys: 'G puis H',      label: 'Accueil' },
@@ -217,7 +221,7 @@ export const SHORTCUTS = [
   { keys: 'L',             label: 'Aimer la publication sélectionnée' },
   { keys: t('a11y.escape'),         label: 'Fermer' },
   { keys: 'Alt+←',         label: 'Retour' }
-];
+]);
 
 function onKey(e) {
   // Escape works even inside inputs

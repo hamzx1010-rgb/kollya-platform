@@ -36,10 +36,14 @@ export { xpForLevel, levelFromXp, trackQuest };
 export { XP } from '../core/game_sm.js';
 
 /* ------------------------------------------------------------
-   BADGES  — thresholds, not manual awards
+   badges()  — thresholds, not manual awards
    ------------------------------------------------------------ */
 
-export const BADGES = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+export const badges = () => ([
   { id:'first_post', icon:'edit',       name:t('badge.firstPost'), desc:t('badge.firstPostD'),      need:s => s.posts >= 1 },
   { id:'writer',     icon:'edit',       name:t('badge.writer'), desc:t('badge.writerD'),                    need:s => s.posts >= 10 },
   { id:'social',     icon:'message',    name:t('badge.social'), desc:t('badge.socialD'),             need:s => s.comments >= 25 },
@@ -52,7 +56,7 @@ export const BADGES = [
   { id:'scholar',    icon:'graduation', name:t('badge.scholar'), desc:t('badge.scholarD'),             need:s => s.level >= 10 },
   { id:'night_owl',  icon:'moon',       name:t('badge.night'), desc:t('badge.nightD'),               need:s => s.nightPosts >= 1 },
   { id:'archivist',  icon:'bookmark',   name:t('badge.archivist'), desc:t('badge.archivistD'),        need:s => s.saved >= 20 }
-];
+]);
 
 /* ------------------------------------------------------------
    STATS
@@ -92,7 +96,7 @@ export async function refreshStats() {
   return statsCache;
 }
 
-export const earnedBadges = s => BADGES.filter(b => b.need(s));
+export const earnedBadges = s => badges().filter(b => b.need(s));
 
 /* ------------------------------------------------------------
    ACHIEVEMENT CARD
@@ -280,19 +284,19 @@ function renderBadges(s) {
   if (!host) return;
   const earned = new Set(earnedBadges(s).map(b => b.id));
 
-  host.innerHTML = BADGES.map(b => `
+  host.innerHTML = badges().map(b => `
     <button class="badge${earned.has(b.id) ? ' earned' : ''}" data-badge="${b.id}"
-            data-tip="${esc(b.desc)}">
+            data-tip="${esc(b.desc)}" aria-label="${esc(b.desc)}">
       <span class="badge-ic">${icon(b.icon, { size: 22 })}</span>
       <span class="t-xs truncate">${esc(b.name)}</span>
     </button>`).join('');
 
   const c = $('#badgeCount');
-  if (c) c.textContent = `${earned.size}/${BADGES.length}`;
+  if (c) c.textContent = `${earned.size}/${badges().length}`;
 
   for (const btn of $$('.badge')) {
     on(btn, 'click', () => {
-      const b = BADGES.find(x => x.id === btn.dataset.badge);
+      const b = badges().find(x => x.id === btn.dataset.badge);
       const has = earned.has(b.id);
       modal({
         title: has ? 'Badge obtenu' : t('hub.badgeToUnlock'),
@@ -415,14 +419,79 @@ let gameWired = false;
 export function wireGameEvents() {
   if (gameWired) return;
   gameWired = true;
-  onEvent('game:quests', () => { if ($('#questList')) renderQuests(); });
-  onEvent('game:streak', () => { if ($('#badgeGrid')) renderHub(); });
-  onEvent('game:xp',     () => { if ($('#badgeGrid')) renderHub(); });
+  // Each of these also refreshes the compact strip on the home feed.
+  // Without it the strip would show whatever was true when the feed
+  // was drawn and never move — the same "quests are not dynamic"
+  // complaint, relocated. refreshProgressStrip() is a no-op when the
+  // strip is not mounted.
+  onEvent('game:quests', () => { if ($('#questList')) renderQuests(); refreshProgressStrip(); });
+  onEvent('game:streak', () => { if ($('#badgeGrid')) renderHub(); refreshProgressStrip(); });
+  onEvent('game:xp',     () => { if ($('#badgeGrid')) renderHub(); refreshProgressStrip(); });
   onEvent('game:day-complete', payload => celebrate(payload));
 
   // A quest finishing anywhere in the app is worth saying out loud,
   // even when the hub is closed — that is the feedback loop.
   onEvent('game:quest-done', payload => showAchievement(payload));
+}
+
+/* ------------------------------------------------------------
+   THE COMPACT PROGRESS STRIP  (home feed)
+
+   Hub lost its bottom-bar slot to Campus, because Events and Q&A had
+   no way in at all on a phone while Hub at least had one. So progress
+   comes to the student instead: one line at the top of the feed, which
+   is the screen they actually open.
+
+   Deliberately ONE LINE — level, bar, streak — and no quest list. A
+   second full hub above the feed would just be the hub twice; this is
+   a status line that says "you have progress, tap for the rest".
+
+   It reads stats() — the same source the hub itself uses — so the two
+   can never disagree. Exported rather than duplicated in feed_sm.js
+   for exactly that reason.
+   ------------------------------------------------------------ */
+
+export function progressStripMarkup() {
+  const s = stats();
+  const lv = levelFromXp(s.xp);
+  const quests = getQuests();
+  const done = quests.filter(q => q.done).length;
+
+  return `
+  <a class="hub-strip" href="#/hub" data-nav-strip
+     aria-label="${esc(t('hub.openHub'))}">
+    <span class="hs-lvl">${esc(t('hub.levelShort', { n: lv.level }))}</span>
+
+    <span class="hs-bar" role="progressbar"
+          aria-valuenow="${lv.into}" aria-valuemin="0" aria-valuemax="${lv.need}">
+      <span class="hs-fill" style="width:${lv.pct}%"></span>
+    </span>
+
+    <span class="hs-xp">${esc(t('hub.xpOf', { into: lv.into, need: lv.need }))}</span>
+
+    ${s.streak ? `<span class="hs-streak" title="${esc(t('hub.streakDays'))}">
+      ${icon('fire', { size: 14 })}${s.streak}</span>` : ''}
+
+    <span class="hs-quests${done === quests.length && quests.length ? ' all' : ''}">
+      ${icon(done === quests.length && quests.length ? 'check' : 'trophy', { size: 14 })}
+      ${done}/${quests.length || 3}
+    </span>
+
+    <span class="hs-go">${icon('chevron', { size: 15 })}</span>
+  </a>`;
+}
+
+/**
+ * Repaint the strip in place wherever it is mounted.
+ * Cheap and safe to call from any game event; does nothing when the
+ * feed is not on screen.
+ */
+export function refreshProgressStrip() {
+  const node = document.querySelector('.hub-strip');
+  if (!node) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = progressStripMarkup();
+  node.replaceWith(wrap.firstElementChild);
 }
 
 /** Repaint the hub from whatever the cache currently holds. */
@@ -468,7 +537,7 @@ export function initHub(mountFn) {
       <section class="hub-sec">
         <div class="hub-sec-head">
           <span>${t('hub.badges')}</span>
-          <span class="pill" id="badgeCount">0/${BADGES.length}</span>
+          <span class="pill" id="badgeCount">0/${badges().length}</span>
         </div>
         <div class="badge-grid" id="badgeGrid"></div>
       </section>

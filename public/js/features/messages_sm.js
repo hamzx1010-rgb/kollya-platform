@@ -33,6 +33,7 @@ import {
 import { route, go } from '../core/router_sm.js';
 import { t, errorText } from '../core/i18n_sm.js';
 import { openGifPicker, closeGifPicker } from './gif_sm.js';
+import { attachGestures } from '../core/gestures_sm.js';
 import { startRecording, cancelRecording, isRecording, wireVoicePlayers } from './voice_sm.js';
 import { openImageEditor } from './editor_sm.js';
 
@@ -57,6 +58,7 @@ let showingRequests = false;
 /* Injected by db_sm.js once the keys arrive. Until then the screen
    runs on sample data so the interaction can be built and reviewed. */
 let api = null;
+let detachThreadGestures = null;
 export function useApi(impl) { api = impl; }
 
 /* ------------------------------------------------------------
@@ -319,14 +321,18 @@ function showTyping(on) {
 }
 
 /* ------------------------------------------------------------
-   CHAT FOLDERS
+   CHAT chatFolders()
    The same set your original app had — all · pinned · unread ·
    study · muted · archived — with one difference: it lived in
    localStorage there, so clearing the browser wiped it and your
    phone disagreed with your laptop. Now it is a table.
    ------------------------------------------------------------ */
 
-const FOLDERS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const chatFolders = () => ([
   { id: 'all',      label: 'Tous',     icon: 'message'  },
   { id: 'requests', label: 'Requests', icon: 'inbox'    },
   { id: 'unread',   label: 'Non lus',  icon: 'inbox'    },
@@ -334,7 +340,7 @@ const FOLDERS = [
   { id: 'study',    label: 'Études',   icon: 'graduation' },
   { id: 'muted',    label: 'Muets',    icon: 'mute'     },
   { id: 'archived', label: t('dm.archivedFolder'), icon: 'bookmark' }
-];
+]);
 
 const folderOf = peerId => folders[String(peerId)] || 'all';
 
@@ -348,7 +354,7 @@ function inFolder(c) {
 
 function folderBar() {
   return `<div class="chat-folders" id="chatFolders">
-    ${FOLDERS.map(f => {
+    ${chatFolders().map(f => {
       const n = f.id === 'all'
         ? convs.filter(c => folderOf(c.peer.id) !== 'archived').length
         : f.id === 'requests'
@@ -358,7 +364,7 @@ function folderBar() {
           : convs.filter(c => folderOf(c.peer.id) === f.id).length;
       const label = f.id === 'requests' ? t('dm.requests') : t('dm.folder.' + f.id);
       return `<button class="chat-folder${f.id === folder ? ' on' : ''}${f.id === 'requests' && n ? ' has-requests' : ''}"
-                      data-folder="${f.id}" data-tip="${esc(label)}">
+                      data-folder="${f.id}" data-tip="${esc(label)}" aria-label="${esc(label)}">
           ${icon(f.icon, { size: 14 })}
           <span class="cf-label">${esc(label)}</span>
           ${n ? `<span class="cf-count">${n}</span>` : ''}
@@ -653,7 +659,7 @@ function paintConvList() {
   box.innerHTML = '';
 
   if (!visible.length) {
-    const f = FOLDERS.find(x => x.id === folder);
+    const f = chatFolders().find(x => x.id === folder);
     box.append(emptyState({
       icon: I.message,
       title: folder === 'all' ? t('dm.empty.title') : `Rien dans « ${f?.label || folder} »`,
@@ -725,7 +731,7 @@ function reactionChips(m) {
   if (!keys.length) return '';
   const mine = m.reactions?.[me.id];
   return `<div class="rx-chips">` + keys.map(k =>
-    `<button class="rx-chip${mine === k ? ' mine' : ''}" data-rx="${k}" data-tip="${esc(reactionLabel(k))}">
+    `<button class="rx-chip${mine === k ? ' mine' : ''}" data-rx="${k}" data-tip="${esc(reactionLabel(k))}" aria-label="${esc(reactionLabel(k))}">
        ${reactionIcon(k, 15)}${counts[k] > 1 ? ' ' + counts[k] : ''}
      </button>`).join('') + `</div>`;
 }
@@ -945,13 +951,17 @@ function repaintBubble(m) {
    keep reading while you browse what was shared.
    ------------------------------------------------------------ */
 
-const CHAT_THEMES = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const chatThemes = () => ([
   { id: 'default', label: t('dm.themeDefault'),  bg: 'var(--surface-2)',                      grad: 'var(--grad)' },
   { id: 'dz',      label: 'Algérie', bg: 'linear-gradient(160deg,#E8F5EE,#F7FBF8)', grad: 'linear-gradient(135deg,#006233,#00A651)' },
   { id: 'sunset',  label: 'Coucher', bg: 'linear-gradient(160deg,#FFF3E8,#FFF9F4)', grad: 'linear-gradient(135deg,#F97316,#EC4899)' },
   { id: 'ocean',   label: t('dm.themeOcean'),   bg: 'linear-gradient(160deg,#E9F4FF,#F6FAFF)', grad: 'linear-gradient(135deg,#0EA5E9,#6366F1)' },
   { id: 'night',   label: 'Nuit',    bg: 'linear-gradient(160deg,#12161C,#0C0F14)', grad: 'linear-gradient(135deg,#4F46E5,#7C3AED)' }
-];
+]);
 
 const chatPrefs = scoped('chat');
 const prefKey = id => `${id}`;
@@ -970,7 +980,7 @@ const sectionTitle = (label, extra = '') =>
   `<div class="tg-title">${esc(label)}${extra ? `<span class="tg-title-x">${extra}</span>` : ''}</div>`;
 
 function applyChatTheme(id) {
-  const th = CHAT_THEMES.find(t => t.id === id) || CHAT_THEMES[0];
+  const th = chatThemes().find(t => t.id === id) || chatThemes()[0];
   const body = $('#threadBody');
   if (!body) return;
   body.style.background = th.id === 'default' ? '' : th.bg;
@@ -1003,10 +1013,10 @@ function renderInfoPanel() {
         ${pref.nickname ? `<div class="t-xs t-dim2">${esc(peer.full_name)}</div>` : ''}
         <div class="t-sm t-dim">${peer.online ? t('dm.online') : t('dm.offline')}</div>
         <div class="tg-actions">
-          <button class="tg-action" id="aProfile" data-tip="Profil">${I.user}</button>
-          <button class="tg-action${pref.muted ? ' on' : ''}" id="aMute" data-tip="${pref.muted ? t('dm.unmuteShort') : t('dm.muteShort')}">${I.mute}</button>
-          <button class="tg-action" id="aSearch" data-tip="${esc(t('action.search'))}">${I.search}</button>
-          <button class="tg-action accent" id="aMessage" data-tip="Écrire">${I.message}</button>
+          <button class="tg-action" id="aProfile" data-tip="Profil" aria-label="Profil">${I.user}</button>
+          <button class="tg-action${pref.muted ? ' on' : ''}" id="aMute" data-tip="${pref.muted ? t('dm.unmuteShort') : t('dm.muteShort')}" aria-label="${pref.muted ? t('dm.unmuteShort') : t('dm.muteShort')}">${I.mute}</button>
+          <button class="tg-action" id="aSearch" data-tip="${esc(t('action.search'))}" aria-label="${esc(t('action.search'))}">${I.search}</button>
+          <button class="tg-action accent" id="aMessage" data-tip="Écrire" aria-label="Écrire">${I.message}</button>
         </div>
       </div>
 
@@ -1016,7 +1026,7 @@ function renderInfoPanel() {
         <div class="tg-row"><span class="tg-ic">${icon('user', { size: 16 })}</span>
           <div class="grow"><div class="t-sm handle">@${esc(peer.username || '')}</div>
           <div class="t-xs t-dim">Nom d'utilisateur</div></div>
-          <button class="icon-btn sm" id="copyUser" data-tip="${esc(t('action.copy'))}">${I.copy}</button>
+          <button class="icon-btn sm" id="copyUser" data-tip="${esc(t('action.copy'))}" aria-label="${esc(t('action.copy'))}">${I.copy}</button>
         </div>
         ${peer.faculty ? `<div class="tg-row"><span class="tg-ic">${icon('graduation', { size: 16 })}</span>
           <div class="grow"><div class="t-sm">${esc(peer.faculty)}</div>
@@ -1036,7 +1046,7 @@ function renderInfoPanel() {
       <section class="tg-sec">
         ${sectionTitle(t('dm.chatTheme'))}
         <div class="tg-themes">
-          ${CHAT_THEMES.map(t => `
+          ${chatThemes().map(t => `
             <button class="tg-theme${t.id === pref.theme ? ' on' : ''}" data-theme="${t.id}">
               <span class="tg-theme-chip" style="background:${t.bg}">
                 <span class="tg-theme-bub" style="background:${t.grad}"></span>
@@ -1413,7 +1423,7 @@ function contactRow(u) {
       <div class="grow" style="min-width:0">
         <div class="row g2" style="flex-wrap:wrap">
           <span class="t-sm t-bold truncate">${esc(u.full_name)}</span>
-          ${u.is_private ? `<span class="tg-ic" data-tip=t('profile.privateChip')>${icon('lock', { size: 12 })}</span>` : ''}
+          ${u.is_private ? `<span class="tg-ic" data-tip="${esc(t('profile.privateChip'))}">${icon('lock', { size: 12 })}</span>` : ''}
         </div>
         <div class="t-xs t-dim"><span class="handle">@${esc(u.username)}</span>${u.faculty ? ' · ' + esc(u.faculty) : ''}</div>
       </div>
@@ -1502,7 +1512,7 @@ function refreshHead() {
   const existing = head?.querySelector('.head-muted');
   if (pref.muted && !existing && head) {
     head.insertAdjacentHTML('beforeend',
-      `<span class="head-muted" data-tip=t('toast.notifMuted')>${icon('mute', { size: 15 })}</span>`);
+      `<span class="head-muted" data-tip="${esc(t('toast.notifMuted'))}">${icon('mute', { size: 15 })}</span>`);
   } else if (!pref.muted && existing) existing.remove();
 }
 
@@ -1836,6 +1846,16 @@ function wireComposer() {
     onCancel: () => {}
   }));
 
+  // The "+" tray. On a phone GIF/file/emoji do not fit on the row, so
+  // they are hidden until this is pressed — hidden, not removed: the
+  // first attempt used display:none with no way to bring them back,
+  // which is why sending a GIF was impossible in the APK.
+  on($('#btnMore'), 'click', e => {
+    const c = $('#composer');
+    const open = c.classList.toggle('tools-open');
+    e.currentTarget.setAttribute('aria-expanded', String(open));
+  });
+
   on($('#btnGif'), 'click', e => openGifPicker(e.currentTarget, gif => sendGif(gif)));
   on($('#btnPhoto'), 'click', () => $('#imgPick')?.click());
   on($('#btnFile'), 'click', () => $('#filePick')?.click());
@@ -1913,6 +1933,26 @@ function wireDropZone() {
 function wireThreadEvents() {
   const body = $('#threadBody');
   if (!body) return;
+
+  // TOUCH GESTURES.
+  // A mouse already has the hover toolbar and the right-click menu for
+  // these three actions; a finger has nothing. attachGestures() no-ops
+  // on a fine pointer, so the desktop behaviour is untouched.
+  detachThreadGestures?.();
+  detachThreadGestures = attachGestures(body, '.bubble-row', {
+    onHold: el => {
+      const m = msgs.find(x => String(x.id) === String(el.dataset.id));
+      if (m) openReactions(el.querySelector('.bubble') || el, m);
+    },
+    onSwipe: el => {
+      const m = msgs.find(x => String(x.id) === String(el.dataset.id));
+      if (m) startReply(m);
+    },
+    onDoubleTap: el => {
+      const m = msgs.find(x => String(x.id) === String(el.dataset.id));
+      if (m) applyReaction(m, m.reactions?.[me.id] === 'love' ? null : 'love');
+    }
+  });
 
   // Escape unwinds transient state first. The info panel is part of
   // the layout now rather than an overlay, so it is the last thing to
@@ -1996,7 +2036,7 @@ export async function openThread(peerId, { asRequest = false } = {}) {
         <div class="t-bold truncate">${esc(pref.nickname || peer.full_name)}</div>
         <div class="presence">${peer.online ? t('dm.online') : t('dm.offline')}</div>
       </div>
-      ${pref.muted ? `<span class="head-muted" data-tip=t('toast.notifMuted')>${icon('mute', { size: 15 })}</span>` : ''}`;
+      ${pref.muted ? `<span class="head-muted" data-tip="${esc(t('toast.notifMuted'))}">${icon('mute', { size: 15 })}</span>` : ''}`;
 
     // The whole header bar is the target, exactly like Telegram:
     // click anywhere on it to open the conversation info.
@@ -2125,7 +2165,7 @@ function markup() {
           <span class="input-icon">${icon('search', { size: 16 })}</span>
           <input class="input has-icon" id="convSearch" placeholder="${esc(t('dm.search'))}" aria-label="${esc(t('dm.searchConv'))}">
         </div>
-        <button class="icon-btn" id="btnNewConv" data-tip="${esc(t('dm.new'))}">${I.plus}</button>
+        <button class="icon-btn" id="btnNewConv" data-tip="${esc(t('dm.new'))}" aria-label="${esc(t('dm.new'))}">${I.plus}</button>
       </div>
       <div class="dm-list-scroll" id="convScroll"></div>
     </section>
@@ -2140,10 +2180,12 @@ function markup() {
         <div class="composer-context hidden" id="composerContext"></div>
         <div class="attach-strip hidden" id="attachStrip"></div>
         <div class="composer" id="composer" data-has-text="false">
-          <button class="icon-btn" id="btnPhoto" data-tip="Photo">${I.image}</button>
-          <button class="icon-btn" id="btnGif" data-tip="GIF">${I.gif}</button>
-          <button class="icon-btn" id="btnFile" data-tip="${esc(t('dm.file'))}">${I.paperclip}</button>
-          <button class="icon-btn" id="btnEmoji" data-tip="Emoji">${I.smile}</button>
+          <button class="icon-btn" id="btnPhoto" data-tip="${esc(t('feed.photo'))}" aria-label="${esc(t('feed.photo'))}">${I.image}</button>
+          <button class="icon-btn" id="btnMore" data-tip="${esc(t('dm.moreTools'))}"
+                  aria-label="${esc(t('dm.moreTools'))}" aria-expanded="false">${I.plus}</button>
+          <button class="icon-btn" id="btnGif" data-tip="GIF" aria-label="GIF">${I.gif}</button>
+          <button class="icon-btn" id="btnFile" data-tip="${esc(t('dm.file'))}" aria-label="${esc(t('dm.file'))}">${I.paperclip}</button>
+          <button class="icon-btn" id="btnEmoji" data-tip="Emoji" aria-label="Emoji">${I.smile}</button>
           <input type="file" id="filePick" hidden multiple>
           <input type="file" id="imgPick" hidden multiple accept="image/*">
           <textarea class="composer-input" id="composerInput" rows="1"

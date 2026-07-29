@@ -18,7 +18,7 @@
 
 import { $, $$, on, throttle, rafThrottle, env, initials, avatarColor, modKey } from './utils_sm.js';
 import { state, setState, on as onEvent, emit, prefs, applyTheme, me } from './store_sm.js';
-import { ROUTES, go, back, currentRoute, SHORTCUTS } from './router_sm.js';
+import { ROUTES, go, back, currentRoute, shortcuts } from './router_sm.js';
 import { modal, toast, closeMenu, contextMenu } from './ui_sm.js';
 import { t, lang, setLang, LANGS, applyI18n } from './i18n_sm.js';
 
@@ -184,7 +184,7 @@ onEvent('state:unread', u => {
    ------------------------------------------------------------ */
 
 export function showShortcuts() {
-  const rows = SHORTCUTS.map(s => `
+  const rows = shortcuts().map(s => `
     <div class="row between" style="padding:var(--s2) 0">
       <span class="t-sm">${s.label}</span>
       <span class="row g1">${

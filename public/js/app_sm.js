@@ -32,6 +32,7 @@ import { initI18n, applyI18n, t } from './core/i18n_sm.js';
 import { initGame, wireGame } from './core/game_sm.js';
 import { initNotify } from './core/notify_sm.js';
 import { cachePeople } from './core/people_sm.js';
+import { isNative, hasCamera, deviceInfo, scheduleDailyReminder } from './core/native_sm.js';
 
 /* ------------------------------------------------------------
    1. ICON HYDRATION
@@ -163,6 +164,17 @@ async function enterApp() {
 
   // Explains itself first, asks the browser second — see notify_sm.
   initNotify();
+
+  // Tell the CSS what this device can do, so the camera button only
+  // exists where a camera actually does.
+  if (isNative()) {
+    document.documentElement.dataset.native = '1';
+    if (hasCamera()) document.documentElement.dataset.camera = '1';
+    console.info('[koliya] natif', deviceInfo());
+    // A nudge at 19:00 — late enough to be a reminder, early enough to
+    // still act on it. Rescheduling is idempotent.
+    scheduleDailyReminder(19, 0, t('reminder.title'), t('reminder.body'));
+  }
 }
 
 /* ------------------------------------------------------------
@@ -198,8 +210,22 @@ function wireGlobalKeys() {
     go('explore');
   });
 
-  // the feed module owns compose; this is the fallback from other routes
-  onEvent('key:compose', () => { location.hash = '#/feed'; setTimeout(() => openComposer(), 120); });
+  // The feed module ALSO listens for 'key:compose'. Both handlers ran
+  // for one click on Create, so TWO composers were stacked in the same
+  // modal: you typed into the first textarea while the character
+  // counter and the Publish button belonged to the second, which
+  // stayed empty — so Publish never enabled and posting was impossible.
+  // Verified in Chrome: `document.querySelectorAll('textarea').length`
+  // was 2 with identical placeholders.
+  //
+  // Route here, and let feed_sm own the composer. If we are already on
+  // the feed its own listener has it; otherwise navigate and it will
+  // fire once the module mounts.
+  onEvent('key:compose', () => {
+    if (location.hash.startsWith('#/feed')) return;   // feed_sm handles it
+    location.hash = '#/feed';
+    setTimeout(() => emit('key:compose'), 160);
+  });
 
   onEvent('route:error', ({ route: r, error }) => {
     console.error('[koliya] view crashed', r, error);

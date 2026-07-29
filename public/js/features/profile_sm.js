@@ -23,7 +23,10 @@ import {
   skeletonList, emptyState, countUp, optimistic
 } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
-import { BADGES, earnedBadges, levelFromXp } from './hub_sm.js';
+// `badges` is NOT imported: line ~53 declares a local `const badges`
+// from earnedBadges(), which would shadow it anyway. Importing it
+// too is how the `const t = toast(...)` shadowing bug happened.
+import { earnedBadges, levelFromXp } from './hub_sm.js';
 import { openImageEditor } from './editor_sm.js';
 import { myRank, rankBadge, levelFromXp as gameLevel } from '../core/game_sm.js';
 
@@ -57,7 +60,7 @@ function headerMarkup(u) {
     <div class="pf-cover-img" id="pfCoverImg" style="${u.banner_url
       ? `background-image:url('${esc(safeUrl(u.banner_url))}');background-size:cover;background-position:center`
       : `background:${coverFor(u)}`}"></div>
-    ${u.isMe ? `<button class="icon-btn pf-cover-edit" id="pfCoverEdit" data-tip="Changer la couverture">${I.camera}</button>` : ''}
+    ${u.isMe ? `<button class="icon-btn pf-cover-edit" id="pfCoverEdit" data-tip="${esc(t('profile.changeCover'))}" aria-label="${esc(t('profile.changeCover'))}">${I.camera}</button>` : ''}
   </div>
 
   <div class="pf-head">
@@ -66,14 +69,14 @@ function headerMarkup(u) {
         <div class="av xl" id="pfAvatar" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>${
           u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}</div>
       </div>
-      ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="${esc(t('profile.changePhoto'))}">${I.camera}</button>` : ''}
+      ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="${esc(t('profile.changePhoto'))}" aria-label="${esc(t('profile.changePhoto'))}">${I.camera}</button>` : ''}
       <span class="pf-level">Niv. ${lv.level}</span>
     </div>
 
     <div class="pf-actions">
       ${u.isMe
         ? `<button class="btn btn-outline" id="pfEdit">${icon('edit',{size:16})} ${t('profile.edit')}</button>
-           <button class="icon-btn" id="pfSettings" data-tip="${esc(t('nav.settings'))}">${I.settings}</button>`
+           <button class="icon-btn" id="pfSettings" data-tip="${esc(t('nav.settings'))}" aria-label="${esc(t('nav.settings'))}">${I.settings}</button>`
         : `<button class="btn ${u.followState === 'following' ? 'btn-outline btn-follow' : 'btn-primary'}"
                    id="pfFollow" data-state="${u.followState || 'none'}">
              ${followLabel(u.followState)}
@@ -83,7 +86,7 @@ function headerMarkup(u) {
                         data-request="${u.willBeRequest ? '1' : ''}">
                   ${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}
                 </button>` : ''}
-           <button class="icon-btn" id="pfMore" data-tip="${esc(t('action.more'))}">${I.moreH}</button>`}
+           <button class="icon-btn" id="pfMore" data-tip="${esc(t('action.more'))}" aria-label="${esc(t('action.more'))}">${I.moreH}</button>`}
     </div>
   </div>
 
@@ -139,14 +142,18 @@ function coverFor(u) {
 }
 
 /* ------------------------------------------------------------
-   TABS
+   profileTabs()
    ------------------------------------------------------------ */
 
-const TABS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const profileTabs = () => ([
   { id:'posts', label:t('profile.tabPosts'), icon:'edit' },
   { id:'media', label:t('profile.tabMedia'), icon:'image' },
   { id:'likes', label:t('profile.tabLikes'), icon:'fire' }
-];
+]);
 
 async function renderTabBody(u) {
   const host = $('#pfBody');
@@ -767,7 +774,7 @@ function render(u) {
   host.innerHTML = `
     ${headerMarkup(u)}
     <div class="sub-tabs blur-bar pf-tabs">
-      ${TABS.map(t => `<button class="sub-tab pf-tab${t.id === activeTab ? ' on' : ''}" data-tab="${t.id}">
+      ${profileTabs().map(t => `<button class="sub-tab pf-tab${t.id === activeTab ? ' on' : ''}" data-tab="${t.id}">
         ${icon(t.icon, { size: 15 })} ${t.label}</button>`).join('')}
     </div>
     <div id="pfBody"></div>`;

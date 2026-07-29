@@ -307,6 +307,7 @@ export function openGifPicker(anchor, onPick) {
 
 export function closeGifPicker() {
   if (!panel) return;
+  panel._stopResize?.();
   panel._cleanup?.();
   panel.remove();
   panel = null;
@@ -343,8 +344,40 @@ function place(node, anchor) {
     node.style.maxHeight = Math.max(160, spaceBelow - 8 - pad) + 'px';
   }
 
-  const w = node.getBoundingClientRect().width;
-  node.style.left = Math.min(Math.max(pad, a.left), innerWidth - w - pad) + 'px';
+  // Clamp horizontally.
+  //
+  // getBoundingClientRect() here can still report the pre-layout width,
+  // so the clamp was computed against the wrong number and the panel
+  // rendered at left:47 in a 412px window — 15px of it off the right
+  // edge. Measure again on the next frame and re-clamp; the first pass
+  // keeps it from flashing in the wrong place.
+  const clamp = () => {
+    // document.documentElement.clientWidth, not innerWidth: innerWidth
+    // includes any scrollbar, so the clamp allowed a few pixels more
+    // than the page actually has and the panel hung off the edge.
+    const vw = document.documentElement.clientWidth || innerWidth;
+    // Do NOT trust the measured width here: with the "+" tray open the
+    // rect still reported 357 while the panel painted at 380, so the
+    // clamp allowed 23px too much and the panel hung off the right
+    // edge. The CSS width is min(420, 100dvw - 32), which we can
+    // compute exactly — and the gutter is the same 16px either side.
+    const w = Math.min(420, vw - 32);
+    const left = Math.max(pad, Math.min(a.left, vw - w - pad));
+    node.style.left = left + 'px';
+  };
+  clamp();
+  requestAnimationFrame(clamp);
+  // A ResizeObserver catches the case the two passes above miss: with
+  // the "+" tray open the composer reflows AFTER place() runs, the
+  // panel's own width changes, and a clamp computed against the old
+  // width leaves it 15px off the right edge. Measured at 412px:
+  // left 46.8 when the correct answer was 8.
+  try {
+    const ro = new ResizeObserver(clamp);
+    ro.observe(node);
+    const stop = () => ro.disconnect();
+    node._stopResize = stop;
+  } catch { /* no ResizeObserver: the two passes above still apply */ }
   node.dataset.flip = openUp ? 'up' : 'down';
 }
 

@@ -107,7 +107,11 @@ function setMsg(id, text, kind = 'err') {
   input?.classList.toggle('invalid', kind === 'err' && !!text);
 }
 
-const RULES = {
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const authRules = () => ({
   inCard: v => !v ? 'Champ obligatoire'
                 : !isValidCard(v) ? 'Format invalide (ex. CS-042)' : '',
   inName: v => !v ? 'Champ obligatoire'
@@ -119,12 +123,12 @@ const RULES = {
                 : !isValidEmail(v) ? 'Adresse email invalide' : '',
   inPass: v => !v ? 'Champ obligatoire'
                 : v.length < 8 ? t('auth.min8') : ''
-};
+});
 
 function validate(id) {
   const input = $(`#${id}`);
   if (!input) return true;
-  const rule = RULES[id];
+  const rule = authRules()[id];
   if (!rule) return true;
   const err = rule(input.value);
   setMsg(id, err);
@@ -175,7 +179,7 @@ function wire(onSuccess) {
   const form = $('#authForm');
 
   // validate when leaving a field, not while typing
-  for (const id of Object.keys(RULES)) {
+  for (const id of Object.keys(authRules())) {
     const input = $(`#${id}`);
     if (!input) continue;
     on(input, 'blur', () => validate(id));

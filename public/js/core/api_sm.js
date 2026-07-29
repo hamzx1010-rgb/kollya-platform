@@ -719,11 +719,14 @@ export const profileApi = {
     // vanished on refresh — the "profile editing is not saving" bug.
     // Say so instead.
     if (!updated) {
-      // A 200 with an empty array means RLS filtered the row out.
-      // The student gets a plain message; the fix belongs in the
-      // console where a developer will actually see it.
-      console.error('[koliya] profiles UPDATE matched 0 rows — run db/08_fixes_sm.sql: ' +
-                    'profiles_update_self rejects roles other than "student".');
+      // PostgREST answers 200 with an EMPTY array when RLS filtered the
+      // row out. Reproduced in a real Postgres: the cause is almost
+      // always status='pending' — every account signed up as pending
+      // and no approval screen existed, so the whole app was read-only.
+      // db/10_open_signup_sm.sql fixes it.
+      console.error('[koliya] profiles UPDATE matched 0 rows. Most likely your ' +
+                    'profile row is status="pending": run db/10_open_signup_sm.sql ' +
+                    'in the Neon SQL editor, then Data API → Refresh schema cache.');
       throw new DbError('__RLS_DENIED__', 403);
     }
 

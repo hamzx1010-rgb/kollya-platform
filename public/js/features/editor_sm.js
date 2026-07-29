@@ -25,10 +25,14 @@ import { read, write } from '../core/store_sm.js';
 const MAX_DIM = 1600;
 
 /* ------------------------------------------------------------
-   FILTERS  — CSS filter strings, applied to canvas context
+   edFilters()  — CSS filter strings, applied to canvas context
    ------------------------------------------------------------ */
 
-export const FILTERS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+export const edFilters = () => ([
   { id: 'none',    label: 'Original', css: () => 'none' },
   { id: 'warm',    label: 'Chaud',    css: s => `sepia(${.30*s}) saturate(${1+.35*s}) hue-rotate(${-10*s}deg) brightness(${1+.05*s})` },
   { id: 'cool',    label: 'Froid',    css: s => `hue-rotate(${170*s}deg) saturate(${1-.2*s}) brightness(${1+.05*s})` },
@@ -37,15 +41,19 @@ export const FILTERS = [
   { id: 'vivid',   label: t('editor.vivid'), css: s => `saturate(${1+.7*s}) contrast(${1+.15*s})` },
   { id: 'fade',    label: t('editor.faded'),   css: s => `saturate(${1-.4*s}) brightness(${1+.10*s}) contrast(${1-.12*s})` },
   { id: 'night',   label: 'Nuit',     css: s => `brightness(${1-.18*s}) contrast(${1+.22*s}) hue-rotate(${-14*s}deg) saturate(${1+.2*s})` }
-];
+]);
 
-const RATIOS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const edRatios = () => ([
   { id: 'free', label: 'Libre',  value: null },
   { id: '1:1',  label: t('editor.square'),  value: 1 },
   { id: '4:5',  label: 'Portrait', value: 4/5 },
   { id: '16:9', label: 'Large',  value: 16/9 },
   { id: '9:16', label: 'Story',  value: 9/16 }
-];
+]);
 
 /** Suggested crop per destination — the app already knows the answer. */
 const SUGGEST = { story: '9:16', post: '4:5', avatar: '1:1', dm: 'free' };
@@ -113,7 +121,7 @@ function refreshHistoryButtons() {
    ------------------------------------------------------------ */
 
 function filterString() {
-  const f = FILTERS.find(x => x.id === ed.filter) || FILTERS[0];
+  const f = edFilters().find(x => x.id === ed.filter) || edFilters()[0];
   const base = f.css(ed.strength);
   const a = ed.adjust;
   const extra = [
@@ -191,16 +199,16 @@ function markup() {
 
     <div class="ed-tools">
       <div class="ed-toolbar">
-        <button class="icon-btn" id="edUndo" data-tip="Annuler (Ctrl+Z)" disabled>${I.undo}</button>
-        <button class="icon-btn" id="edRedo" data-tip=t('editor.redo') disabled>${I.redo}</button>
+        <button class="icon-btn" id="edUndo" data-tip="Annuler (Ctrl+Z)" disabled aria-label="Annuler (Ctrl+Z)">${I.undo}</button>
+        <button class="icon-btn" id="edRedo" data-tip="${esc(t('editor.redo'))}" disabled aria-label="${esc(t('editor.redo'))}">${I.redo}</button>
         <span class="ed-sep"></span>
-        <button class="icon-btn" id="edRotate" data-tip="Pivoter">${I.rotate}</button>
-        <button class="icon-btn" id="edFlip" data-tip="Miroir">${I.flip}</button>
+        <button class="icon-btn" id="edRotate" data-tip="Pivoter" aria-label="Pivoter">${I.rotate}</button>
+        <button class="icon-btn" id="edFlip" data-tip="Miroir" aria-label="Miroir">${I.flip}</button>
         <span class="ed-sep"></span>
-        <button class="icon-btn ed-tab on" data-panel="filters" data-tip="Filtres">${I.sliders}</button>
-        <button class="icon-btn ed-tab" data-panel="crop" data-tip="Recadrer">${I.crop}</button>
-        <button class="icon-btn ed-tab" data-panel="draw" data-tip="Dessiner">${I.brush}</button>
-        <button class="icon-btn ed-tab" data-panel="text" data-tip="Texte">${I.text}</button>
+        <button class="icon-btn ed-tab on" data-panel="filters" data-tip="Filtres" aria-label="Filtres">${I.sliders}</button>
+        <button class="icon-btn ed-tab" data-panel="crop" data-tip="Recadrer" aria-label="Recadrer">${I.crop}</button>
+        <button class="icon-btn ed-tab" data-panel="draw" data-tip="Dessiner" aria-label="Dessiner">${I.brush}</button>
+        <button class="icon-btn ed-tab" data-panel="text" data-tip="Texte" aria-label="Texte">${I.text}</button>
       </div>
 
       <div class="ed-panel" id="pFilters">
@@ -221,7 +229,7 @@ function markup() {
 
       <div class="ed-panel hidden" id="pCrop">
         <div class="ed-ratios">
-          ${RATIOS.map(r => `<button class="pill ed-ratio" data-ratio="${r.id}">${r.label}</button>`).join('')}
+          ${edRatios().map(r => `<button class="pill ed-ratio" data-ratio="${r.id}">${r.label}</button>`).join('')}
         </div>
         <p class="t-xs t-dim2">Faites glisser les poignées sur l'image.</p>
         <button class="btn btn-outline btn-sm" id="edCropReset">Réinitialiser</button>
@@ -261,7 +269,7 @@ function buildFilterStrip() {
   const side = Math.min(img.naturalWidth, img.naturalHeight);
   const sx = (img.naturalWidth - side) / 2, sy = (img.naturalHeight - side) / 2;
 
-  strip.innerHTML = FILTERS.map(f => {
+  strip.innerHTML = edFilters().map(f => {
     tctx.filter = f.css(1) === 'none' ? 'none' : f.css(1);
     tctx.clearRect(0, 0, size, size);
     tctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
@@ -417,7 +425,7 @@ function wire(onDone) {
 }
 
 function applyRatio() {
-  const r = RATIOS.find(x => x.id === ed.ratio);
+  const r = edRatios().find(x => x.id === ed.ratio);
   if (!r || !r.value) { ed.crop = null; return; }
   const W = img.naturalWidth, H = img.naturalHeight;
   let w = W, h = W / r.value;

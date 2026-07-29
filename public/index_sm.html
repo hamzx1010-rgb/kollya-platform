@@ -134,9 +134,35 @@
         <span class="lbl" data-i18n="nav.notifications"></span>
         <span class="count hidden" id="badgeNotifs">0</span>
       </a>
-      <a class="nav-item primary" href="#/hub" data-nav="hub">
+      <!-- CAMPUS — phone only.
+           Events, Q&A, Channels and Saved are fully built and routed,
+           but every one of them was `.nav-item:not(.primary)`, which the
+           bottom-bar media query sets to display:none. On a phone there
+           was no link, no shortcut, no way in at all. Eight tabs would
+           be 41px each at 360px — under the 48dp touch minimum — so they
+           get one entry that opens Explore with its own tab strip.
+           On desktop the four keep their own rail rows below, and this
+           row is hidden, so nothing is duplicated. -->
+      <a class="nav-item primary nav-phone" href="#/explore/events" data-nav="campus">
+        <i data-icon="graduation"></i>
+        <span class="lbl" data-i18n="nav.campus"></span>
+      </a>
+      <!-- HUB — desktop rail only now. On phones progress lives in the
+           compact card at the top of the home feed, which is where the
+           student actually looks; a whole tab for it pushed a page they
+           needed off the bar. -->
+      <a class="nav-item primary nav-desk" href="#/hub" data-nav="hub">
         <i data-icon="trophy"></i>
         <span class="lbl" data-i18n="nav.hub"></span>
+      </a>
+      <!-- PROFILE, phone only. On desktop the profile is already the
+           avatar card pinned at the bottom of the rail; on a phone that
+           card is off-screen, so there was no way to reach your own
+           profile at all — exactly the gap Instagram fills with a fifth
+           tab. `nav-phone` shows it only where the rail is a bottom bar. -->
+      <a class="nav-item primary nav-phone" href="#/profile" data-nav="profile">
+        <i data-icon="user"></i>
+        <span class="lbl" data-i18n="nav.profile"></span>
       </a>
       <a class="nav-item" href="#/channels" data-nav="channels">
         <i data-icon="hash"></i>

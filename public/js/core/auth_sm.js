@@ -261,7 +261,15 @@ async function ensureProfile({ card, username, name, contactEmail, faculty }) {
     full_name: name,
     email: contactEmail,       // the student's real address, for contact
     faculty: faculty || '',
-    status: 'pending',         // RLS forbids anything else here
+    // 'approved', not 'pending'. Reproduced in a real Postgres with
+    // these migrations loaded: a pending account is refused by RLS on
+    // post_likes, comments and posts, so a new student could read the
+    // app but never like, comment or post — and no admin UI existed to
+    // approve anyone. db/10_open_signup_sm.sql opens the INSERT policy
+    // to match. If you later want a moderation queue back, change this
+    // line and 10_open_signup_sm.sql together, and build the approval
+    // screen first.
+    status: 'approved',
     role: 'student'
   };
 

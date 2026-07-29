@@ -27,7 +27,9 @@ import {
 } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
 import { openImageEditor } from './editor_sm.js';
+import { hasCamera, openCamera, haptic } from '../core/native_sm.js';
 import { openStories, loadStories, openStoryComposer } from './stories_sm.js';
+import { progressStripMarkup } from './hub_sm.js';
 
 /* ------------------------------------------------------------
    STATE
@@ -37,6 +39,7 @@ let posts = [];
 let tab = 'foryou';
 let selectedPost = null;
 let composerFiles = [];
+let globalKeysWired = false;
 
 let api = null;
 export function useApi(impl) { api = impl; }
@@ -184,7 +187,7 @@ function postCard(p) {
     </div>
 
     <div class="post-tools hover-reveal">
-      <button class="icon-btn sm" data-act="menu" data-tip="${esc(t('action.more'))}">${I.moreH}</button>
+      <button class="icon-btn sm" data-act="menu" data-tip="${esc(t('action.more'))}" aria-label="${esc(t('action.more'))}">${I.moreH}</button>
     </div>`;
   return node;
 }
@@ -332,7 +335,7 @@ async function openComments(p) {
                 <span class="t-xs t-dim">${timeAgo(c.created_at)}</span></div>
                 <div class="t-sm">${richText(c.text)}</div>
               </div>
-              ${mine ? `<button class="icon-btn sm" data-del-cmt data-tip="Supprimer">${I.trash}</button>` : ''}
+              ${mine ? `<button class="icon-btn sm" data-del-cmt data-tip="Supprimer" aria-label="Supprimer">${I.trash}</button>` : ''}
             </div>`;
         }).join('')
       : `<div class="tg-empty">${icon('comment', { size: 22 })}<span>Aucun commentaire</span></div>`;
@@ -404,11 +407,14 @@ async function openComments(p) {
    COMPOSER
    ------------------------------------------------------------ */
 
-const POST_KINDS = [
-  { id:'post',  label:t('feed.post'), desc:t('compose.shareFaculty'), icon:'edit',  grad:'var(--grad)' },
-  { id:'photo', label:t('feed.photo'),       desc:'Une image vaut mille mots',   icon:'image', grad:'linear-gradient(135deg,#F59E0B,#EF4444)' },
-  { id:'poll',  label:t('feed.poll'),     desc:'Demandez au campus',          icon:'poll',  grad:'linear-gradient(135deg,#06B6D4,#4F46E5)' },
-  { id:'anon',  label:t('feed.anonymous'),     desc:t('compose.hideIdentity'),      icon:'lock',  grad:'linear-gradient(135deg,#64748B,#334155)' }
+// A FUNCTION, not a frozen array. Evaluated at import time these
+// labels lock to whatever language loaded first and a later switch
+// never reaches them — the same bug SCREENS had in campus_sm.js.
+const postKinds = () => [
+  { id:'post',  label:t('feed.post'),      desc:t('compose.shareFaculty'), icon:'edit',  grad:'var(--grad)' },
+  { id:'photo', label:t('feed.photo'),     desc:t('compose.photoDesc'),    icon:'image', grad:'linear-gradient(135deg,#F59E0B,#EF4444)' },
+  { id:'poll',  label:t('feed.poll'),      desc:t('compose.pollDesc'),     icon:'poll',  grad:'linear-gradient(135deg,#06B6D4,#4F46E5)' },
+  { id:'anon',  label:t('feed.anonymous'), desc:t('compose.hideIdentity'), icon:'lock',  grad:'linear-gradient(135deg,#64748B,#334155)' }
 ];
 
 export function openComposer(kind = 'post') {
@@ -418,7 +424,7 @@ export function openComposer(kind = 'post') {
 
   const ta = el('textarea', {
     class: 'textarea', rows: '4',
-    placeholder: anonymous ? 'Votre message restera anonyme…' : 'Quoi de neuf sur le campus ?'
+    placeholder: anonymous ? t('compose.anonPlaceholder') : t('feed.placeholder')
   });
 
   const preview = el('div', { class: 'comp-prev' });
@@ -426,7 +432,7 @@ export function openComposer(kind = 'post') {
   const pollInputs = [];
   const addPollRow = () => {
     if (pollInputs.length >= 4) return;
-    const i = el('input', { class: 'input', placeholder: `Option ${pollInputs.length + 1}` });
+    const i = el('input', { class: 'input', placeholder: t('compose.optionN', { n: pollInputs.length + 1 }) });
     pollInputs.push(i);
     pollWrap.insertBefore(i, pollWrap.lastElementChild);
   };
@@ -434,7 +440,7 @@ export function openComposer(kind = 'post') {
   addPollRow(); addPollRow();
 
   const chips = el('div', { class: 'row g2 wrap' },
-    ...POST_KINDS.map(k => el('button', {
+    ...postKinds().map(k => el('button', {
       class: 'pill' + (k.id === kind ? ' on' : ''),
       onclick: e => {
         for (const c of chips.children) c.classList.remove('on');
@@ -442,7 +448,7 @@ export function openComposer(kind = 'post') {
         anonymous = k.id === 'anon';
         pollMode = k.id === 'poll';
         pollWrap.classList.toggle('hidden', !pollMode);
-        ta.placeholder = anonymous ? 'Votre message restera anonyme…' : 'Quoi de neuf sur le campus ?';
+        ta.placeholder = anonymous ? t('compose.anonPlaceholder') : t('feed.placeholder');
         if (k.id === 'photo') pick.click();
       },
       html: `${icon(k.icon, { size: 14 })} ${k.label}`
@@ -461,8 +467,33 @@ export function openComposer(kind = 'post') {
   });
 
   const tools = el('div', { class: 'row g2' },
-    el('button', { class: 'icon-btn', 'data-tip': 'Photo', onclick: () => pick.click(), html: I.image }),
-    el('button', { class: 'icon-btn', 'data-tip': 'Sondage',
+    // Built with el(), so these were missed by the pass that gave every
+    // template-string button an aria-label from its data-tip. An
+    // icon-only button with no accessible name is invisible to a screen
+    // reader, and 'Sondage' was hardcoded French.
+    el('button', { class: 'icon-btn', 'data-tip': t('feed.photo'), 'aria-label': t('feed.photo'),
+      onclick: () => pick.click(), html: I.image }),
+    // Only rendered where a camera exists. hasCamera() is false on the
+    // web, so the website is unchanged.
+    ...(hasCamera() ? [el('button', {
+      class: 'icon-btn', 'data-tip': t('compose.camera'), 'aria-label': t('compose.camera'),
+      onclick: async () => {
+        haptic('light');
+        const shot = await openCamera('post');
+        if (!shot?.dataUrl) return;
+        const blob = await (await fetch(shot.dataUrl)).blob();
+        const file = new File([blob], 'camera.jpg', { type: 'image/jpeg' });
+        const edited = await openImageEditor(file, 'post');
+        if (!edited) return;
+        composerFiles = [edited];
+        // Same repaint the file picker does — there is no drawPreview()
+        // helper, and inventing one would throw on the first tap.
+        preview.innerHTML =
+          `<div class="media"><img src="${URL.createObjectURL(edited)}" alt=""></div>`;
+      },
+      html: I.camera
+    })] : []),
+    el('button', { class: 'icon-btn', 'data-tip': t('feed.poll'), 'aria-label': t('feed.poll'),
       onclick: () => { pollMode = !pollMode; pollWrap.classList.toggle('hidden', !pollMode); }, html: I.poll })
   );
 
@@ -478,7 +509,7 @@ export function openComposer(kind = 'post') {
   foot.append(tools, el('div', { class: 'row g3' }, counter, publish));
 
   const m = modal({
-    title: 'Créer',
+    title: t('action.create'),
     body: el('div', { class: 'col g4' }, chips, ta, preview, pollWrap, pick),
     footer: foot
   });
@@ -531,7 +562,7 @@ function storiesBar() {
     : `<span class="story-ring${seen ? ' seen' : ''}"><span class="av lg" style="background:${avatarColor(u?.id)}">${esc(initials(u?.full_name || ''))}</span></span>`;
 
   return `<div class="stories">
-    <button class="story" data-story="new" data-tip="${esc(t('story.add'))}">
+    <button class="story" data-story="new" data-tip="${esc(t('story.add'))}" aria-label="${esc(t('story.add'))}">
       <span class="story-ring add">
         ${mineGroup || mine?.avatar_url
           ? `<span class="av lg">${mine?.avatar_url
@@ -669,16 +700,29 @@ function wireFeed() {
     if (p) postMenu(e, p);
   });
 
-  // J / K / L navigation
-  onEvent('key:next', () => move(1));
-  onEvent('key:prev', () => move(-1));
-  onEvent('key:like', () => {
-    if (!selectedPost) return;
-    const p = posts.find(x => x.id === selectedPost);
-    const card = $(`.post[data-id="${cssEscape(selectedPost)}"]`);
-    if (p && card) toggleLike(p, card);
-  });
-  onEvent('key:compose', () => openComposer());
+  // GLOBAL listeners, bound ONCE for the whole session.
+  //
+  // wireFeed() runs on every mount of the feed route, and these four
+  // live on the window-level event bus, not on the DOM that gets
+  // replaced. Re-registering them meant one press of 'c' opened as
+  // many composers as the number of times you had visited the feed.
+  // Verified in Chrome: after visiting explore -> messages -> hub ->
+  // profile -> feed, clicking Create produced TWO stacked composers
+  // with two textareas; typing filled one while the character counter
+  // and the Publish button belonged to the other, which stayed at
+  // '0 / 500' — so Publish never enabled and posting was impossible.
+  if (!globalKeysWired) {
+    globalKeysWired = true;
+    onEvent('key:next', () => move(1));
+    onEvent('key:prev', () => move(-1));
+    onEvent('key:like', () => {
+      if (!selectedPost) return;
+      const p = posts.find(x => x.id === selectedPost);
+      const card = $(`.post[data-id="${cssEscape(selectedPost)}"]`);
+      if (p && card) toggleLike(p, card);
+    });
+    onEvent('key:compose', () => openComposer());
+  }
 }
 
 function select(card) {
@@ -708,11 +752,15 @@ async function sharePost(p) {
    VIEW
    ------------------------------------------------------------ */
 
-const TABS = [
+// A FUNCTION, not a frozen constant: evaluated once at import time
+// these labels lock to whichever language loaded first, and a later
+// switch never reaches them. Verified in Chrome: the notification
+// filters stayed English while the rest of the UI was Arabic.
+const feedTabs = () => ([
   { id:'foryou',    label:t('feed.forYou') },
   { id:'following', label:t('feed.following') },
   { id:'faculty',   label:t('hub.myFaculty') }
-];
+]);
 
 /** Repost: a new post that points at the original. */
 async function repost(p) {
@@ -789,8 +837,9 @@ export function initFeed(mountFn) {
 
     host.innerHTML = `
       ${storiesBar()}
+      ${progressStripMarkup()}
       <div class="sub-tabs blur-bar">
-        ${TABS.map(t => `<button class="sub-tab${t.id === tab ? ' on' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
+        ${feedTabs().map(t => `<button class="sub-tab${t.id === tab ? ' on' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
       </div>
       <div id="feedList">${skeletonList(4)}</div>`;
 
