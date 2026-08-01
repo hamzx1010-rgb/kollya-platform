@@ -2314,6 +2314,7 @@ function renderGroupHeader() {
   const head = $('#threadHead');
   if (!head || !group) return;
   const admin = group.info?.role === 'owner' || group.info?.role === 'admin';
+  const manageKey = group.kind === 'event' ? 'events.manage' : 'channels.manage';
 
   head.innerHTML = `
     <button class="icon-btn thread-back" id="threadBack" aria-label="${esc(t('action.back'))}">${I.arrowLeft}</button>
@@ -2322,26 +2323,44 @@ function renderGroupHeader() {
       <div class="t-bold truncate">${esc(groupTitle())}</div>
       <div class="presence">${esc(t(group.kind === 'event' ? 'events.chatSub' : 'channels.chatSub'))}</div>
     </div>
-    ${admin ? `<button class="icon-btn" id="grpAdmin" data-tip="${esc(t('channels.manage'))}"
-                aria-label="${esc(t('channels.manage'))}">${icon('settings', { size: 16 })}</button>` : ''}`;
+    ${admin ? `<button class="icon-btn" id="grpAdmin" data-tip="${esc(t(manageKey))}"
+                aria-label="${esc(t(manageKey))}">${icon('settings', { size: 16 })}</button>` : ''}`;
 
   on($('#threadBack'), 'click', () => { stopGroupPoll(); group = null; go('messages'); });
-  if (admin) on($('#grpAdmin'), 'click', () => openChannelAdmin(group.id));
+  if (admin) on($('#grpAdmin'), 'click', () => openGroupAdmin());
 
-  // A member of an admins-only channel gets no composer at all. Showing
-  // a box that the database will refuse is worse than not showing one.
+  // WHEN THE PERMISSION CHECK FAILED, SHOW THE COMPOSER.
+  //
+  // `ok:false` means the RPC did not answer — a 401 mid token-refresh,
+  // a dropped request — NOT that posting is forbidden. The old code
+  // could not tell those apart (`.catch(() => false)`) and so told the
+  // OWNER of a public channel "Only moderators can post here" after the
+  // tab had been sitting idle. Measured in Chrome: fail one
+  // can_post_group call and the bar appears on a channel you own.
+  //
+  // If we genuinely cannot tell, let the student type and let the
+  // DATABASE refuse — RLS is the real gate, and it does not guess.
+  const mayPost = group.info?.ok === false ? true : !!group.info?.canPost;
+
   const wrap = $('#composerWrap');
   if (wrap) {
-    wrap.classList.toggle('hidden', !group.info?.canPost);
-    if (group.info?.canPost) wireGroupComposer();
+    wrap.classList.toggle('hidden', !mayPost);
+    if (mayPost) wireGroupComposer();
   }
   $('#readOnlyBar')?.remove();
-  if (!group.info?.canPost) {
+  if (!mayPost) {
     const thread = $('#thread');
-    thread?.append(el('div', { class: 'request-bar', id: 'readOnlyBar' },
+    const bar = el('div', { class: 'request-bar', id: 'readOnlyBar' },
       el('div', { class: 'rb-text' },
         el('div', { class: 't-sm t-bold' }, t('channels.readOnly')),
-        el('div', { class: 't-xs t-dim' }, t('channels.readOnlyWhy')))));
+        el('div', { class: 't-xs t-dim' }, t('channels.readOnlyWhy'))));
+    // A way OUT of the read-only state for the person who can change
+    // it. Before, an owner who somehow saw this bar had no recourse.
+    if (group.info?.isOwner) {
+      bar.append(el('button', { class: 'btn btn-outline btn-sm',
+        onclick: () => openGroupAdmin() }, t(manageKey)));
+    }
+    thread?.append(bar);
   }
 }
 
@@ -2440,78 +2459,166 @@ function wireGroupComposer() {
    Owner and admins only; the buttons are hidden otherwise AND the
    database refuses the calls, so hiding is convenience, not security.
    ------------------------------------------------------------ */
-async function openChannelAdmin(channelId) {
-  const box = el('div', { class: 'col g3' });
-  box.innerHTML = skeletonList(3, 'conv');
-  const m = modal({ title: t('channels.manage'), body: box });
+/* ------------------------------------------------------------
+   GROUP SETTINGS PANEL
 
-  const isOwner = group?.info?.role === 'owner';
+   Rewritten. The old one:
+     * worked for CHANNELS ONLY — an event organiser had no panel at
+       all, so there was no way to appoint anybody to an event
+     * called api.channelMembers / setChannelRole directly, which do
+       not exist for events
+     * was a flat wall of rows with no sections and no explanation of
+       what "admins only" actually does
+     * had a private checkbox that never showed its CURRENT value: it
+       rendered unchecked every time, so opening the panel on a private
+       channel and pressing Save quietly made it public
+
+   Now one panel for both, in sections, with the live state filled in.
+   ------------------------------------------------------------ */
+async function openGroupAdmin() {
+  if (!group) return;
+  const target = group.kind === 'event'
+    ? { eventId: group.id } : { channelId: group.id };
+
+  const box = el('div', { class: 'gs' });
+  box.innerHTML = skeletonList(3, 'conv');
+  // "Manage channel" on an EVENT — caught by looking at the screenshot,
+  // not by a test. The panel is shared; the wording must not be.
+  const m = modal({
+    title: t(group.kind === 'event' ? 'events.manage' : 'channels.manage'),
+    body: box
+  });
+
   let members = [], requests = [];
-  try {
+  const load = async () => {
     [members, requests] = await Promise.all([
-      api.channelMembers(channelId),
-      api.channelRequests(channelId).catch(() => [])
+      api.groupMembers(target).catch(() => []),
+      group.kind === 'channel'
+        ? api.channelRequests(group.id).catch(() => [])
+        : Promise.resolve([])
     ]);
-  } catch (err) {
+  };
+
+  try { await load(); }
+  catch (err) {
     box.innerHTML = '';
     box.append(emptyState({ icon: I.inbox, title: t('error.loading'), text: errorText(err) }));
     return;
   }
 
-  const draw = () => {
-    box.innerHTML = `
-      ${isOwner ? `<div class="field">
-        <label class="label">${esc(t('channels.whoCanPost'))}</label>
-        <div class="seg" id="policySeg">
-          <button class="seg-btn" data-policy="all">${esc(t('channels.everyone'))}</button>
-          <button class="seg-btn" data-policy="admins">${esc(t('channels.adminsOnly'))}</button>
-        </div>
-        <label class="row g2" style="margin-top:var(--s3)">
-          <input type="checkbox" id="chPrivate">
-          <span class="t-sm">${esc(t('channels.private'))}</span>
-        </label>
-        <div class="set-hint">${esc(t('channels.privateWhy'))}</div>
-      </div>` : ''}
+  const isOwner = !!group.info?.isOwner || group.info?.role === 'owner';
 
-      ${requests.length ? `<div class="hub-sec-head">${esc(t('channels.requests'))} · ${requests.length}</div>
-        ${requests.map(r => `<div class="row g3 people-row">
+  const draw = () => {
+    const policy  = group.info?.postPolicy || 'all';
+    const priv    = !!group.info?.isPrivate;
+    const admins  = members.filter(x => x.role === 'owner' || x.role === 'admin').length;
+
+    box.innerHTML = `
+      <div class="gs-head">
+        <div class="gs-icon">${icon(group.kind === 'event' ? 'calendar' : 'hash', { size: 20 })}</div>
+        <div style="min-width:0">
+          <div class="t-bold truncate">${esc(groupTitle())}</div>
+          <div class="t-xs t-dim">${esc(t('channels.memberList'))} ${members.length} ·
+            ${esc(t('channels.modCount', { n: admins }))}</div>
+        </div>
+      </div>
+
+      ${isOwner ? `
+      <section class="gs-sec">
+        <div class="gs-sec-t">${esc(t('channels.whoCanPost'))}</div>
+        <div class="gs-opts" id="policySeg">
+          <button class="gs-opt${policy === 'all' ? ' on' : ''}" data-policy="all">
+            <span class="gs-opt-i">${icon('users', { size: 16 })}</span>
+            <span class="grow">
+              <span class="gs-opt-t">${esc(t('channels.everyone'))}</span>
+              <span class="gs-opt-d">${esc(t('channels.everyoneWhy'))}</span>
+            </span>
+            <span class="gs-tick">${I.check}</span>
+          </button>
+          <button class="gs-opt${policy === 'admins' ? ' on' : ''}" data-policy="admins">
+            <span class="gs-opt-i">${icon('shield', { size: 16 })}</span>
+            <span class="grow">
+              <span class="gs-opt-t">${esc(t('group.modsOnly'))}</span>
+              <span class="gs-opt-d">${esc(t('channels.adminsOnlyWhy'))}</span>
+            </span>
+            <span class="gs-tick">${I.check}</span>
+          </button>
+        </div>
+      </section>
+
+      ${group.kind === 'channel' ? `
+      <section class="gs-sec">
+        <div class="gs-sec-t">${esc(t('channels.access'))}</div>
+        <label class="gs-row" for="chPrivate">
+          <span class="gs-opt-i">${icon('lock', { size: 16 })}</span>
+          <span class="grow">
+            <span class="gs-opt-t">${esc(t('channels.private'))}</span>
+            <span class="gs-opt-d">${esc(t('channels.privateWhy'))}</span>
+          </span>
+          <span class="switch${priv ? ' on' : ''}" id="chPrivate" role="switch"
+                tabindex="0" aria-checked="${priv}"></span>
+        </label>
+      </section>` : ''}` : ''}
+
+      ${requests.length ? `
+      <section class="gs-sec">
+        <div class="gs-sec-t">${esc(t('channels.requests'))} · ${requests.length}</div>
+        ${requests.map(r => `<div class="gs-person">
           <span class="av sm" style="background:${avatarColor(r.id)}">${esc(initials(r.full_name))}</span>
-          <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(r.full_name)}</div></div>
+          <div class="grow" style="min-width:0">
+            <div class="t-sm t-bold truncate">${esc(r.full_name)}</div>
+          </div>
           <button class="btn btn-primary btn-sm" data-accept="${esc(r.id)}">${esc(t('dm.accept'))}</button>
           <button class="btn btn-ghost btn-sm" data-decline="${esc(r.id)}">${esc(t('dm.decline'))}</button>
-        </div>`).join('')}` : ''}
+        </div>`).join('')}
+      </section>` : ''}
 
-      <div class="hub-sec-head">${esc(t('channels.memberList'))} · ${members.length}</div>
-      ${members.map(p => `<div class="row g3 people-row">
-        <span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>
-        <div class="grow" style="min-width:0">
-          <div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
-          <div class="t-xs t-dim">${esc(t('channels.role.' + p.role))}</div>
+      <section class="gs-sec">
+        <div class="gs-sec-t">${esc(t('channels.memberList'))} · ${members.length}</div>
+        <div class="gs-people">
+          ${members.map(u => `<div class="gs-person">
+            ${u.avatar_url
+              ? `<span class="av sm"><img src="${esc(safeUrl(u.avatar_url))}" alt=""></span>`
+              : `<span class="av sm" style="background:${avatarColor(u.id)}">${esc(initials(u.full_name))}</span>`}
+            <div class="grow" style="min-width:0">
+              <div class="t-sm t-bold truncate">${esc(u.full_name)}</div>
+              <div class="t-xs t-dim truncate">
+                <span class="gs-rank ${esc(u.role)}">${esc(t('channels.role.' + u.role))}</span>
+                ${u.username ? ' · @' + esc(u.username) : ''}
+              </div>
+            </div>
+            ${isOwner && u.role !== 'owner'
+              ? `<button class="btn ${u.role === 'admin' ? 'btn-ghost' : 'btn-outline'} btn-sm"
+                         data-role="${esc(u.id)}" data-next="${u.role === 'admin' ? 'member' : 'admin'}">
+                   ${esc(t(u.role === 'admin' ? 'group.demote' : 'group.promote'))}</button>`
+              : ''}
+          </div>`).join('')}
         </div>
-        ${isOwner && p.role !== 'owner'
-          ? `<button class="btn btn-outline btn-sm" data-role="${esc(p.id)}" data-next="${p.role === 'admin' ? 'member' : 'admin'}">
-               ${esc(t(p.role === 'admin' ? 'channels.demote' : 'channels.promote'))}</button>`
-          : ''}
-      </div>`).join('')}`;
-
-    if (isOwner) {
-      for (const b of box.querySelectorAll('[data-policy]')) {
-        b.classList.toggle('on', b.dataset.policy === (group?.info?.postPolicy || 'all'));
-      }
-    }
+        ${isOwner ? `<div class="set-hint">${esc(t('channels.promoteWhy'))}</div>` : ''}
+      </section>`;
   };
   draw();
+
+  /* Re-read permissions and repaint the thread: changing the policy can
+     take away my own composer, and the header must agree with the DB. */
+  const refresh = async () => {
+    group.info = await api.groupInfo(target);
+    await load();
+    renderGroupHeader();
+    draw();
+  };
 
   on(box, 'click', async e => {
     const pol = e.target.closest('[data-policy]');
     if (pol) {
-      await api.updateChannelSettings(channelId, { postPolicy: pol.dataset.policy });
-      if (group?.info) group.info.postPolicy = pol.dataset.policy;
-      // Re-read: the policy decides whether I still see a composer.
-      group.info = await api.groupInfo({ channelId });
-      renderGroupHeader();
-      draw();
-      toast(t('toast.saved'), 'ok');
+      const want = pol.dataset.policy;
+      const before = group.info?.postPolicy;
+      if (want === before) return;
+      try {
+        await api.setGroupPolicy(target, want);
+        await refresh();
+        toast(t('toast.saved'), 'ok');
+      } catch (err) { toast(errorText(err), 'err'); }
       return;
     }
 
@@ -2520,9 +2627,9 @@ async function openChannelAdmin(channelId) {
     if (acc || dec) {
       const id = (acc || dec).dataset.accept || dec.dataset.decline;
       try {
-        await api.respondChannelRequest(channelId, id, !!acc);
+        await api.respondChannelRequest(group.id, id, !!acc);
         requests = requests.filter(r => String(r.id) !== String(id));
-        if (acc) members = await api.channelMembers(channelId);
+        if (acc) members = await api.groupMembers(target);
         draw();
       } catch (err) { toast(errorText(err), 'err'); }
       return;
@@ -2530,18 +2637,37 @@ async function openChannelAdmin(channelId) {
 
     const rl = e.target.closest('[data-role]');
     if (rl) {
+      rl.disabled = true;
       try {
-        await api.setChannelRole(channelId, rl.dataset.role, rl.dataset.next);
-        members = await api.channelMembers(channelId);
+        const ok = await api.setGroupRole(target, rl.dataset.role, rl.dataset.next);
+        // The RPC returns false when the database refuses — reporting
+        // success on a `false` would be a lie the UI tells itself.
+        if ((Array.isArray(ok) ? ok[0] : ok) === false) {
+          toast(t('channels.roleRefused'), 'err');
+        } else {
+          toast(rl.dataset.next === 'admin'
+            ? t('channels.promoted') : t('channels.demoted'), 'ok');
+        }
+        members = await api.groupMembers(target);
         draw();
-      } catch (err) { toast(errorText(err), 'err'); }
+      } catch (err) { rl.disabled = false; toast(errorText(err), 'err'); }
     }
   });
 
   const priv = box.querySelector('#chPrivate');
-  if (priv) on(priv, 'change', async () => {
-    try { await api.updateChannelSettings(channelId, { isPrivate: priv.checked }); toast(t('toast.saved'), 'ok'); }
-    catch (err) { priv.checked = !priv.checked; toast(errorText(err), 'err'); }
+  if (priv) on(priv, 'click', async () => {
+    const next = !priv.classList.contains('on');
+    priv.classList.toggle('on', next);
+    priv.setAttribute('aria-checked', String(next));
+    try {
+      await api.updateChannelSettings(group.id, { isPrivate: next });
+      if (group.info) group.info.isPrivate = next;
+      toast(t('toast.saved'), 'ok');
+    } catch (err) {
+      priv.classList.toggle('on', !next);
+      priv.setAttribute('aria-checked', String(!next));
+      toast(errorText(err), 'err');
+    }
   });
 }
 

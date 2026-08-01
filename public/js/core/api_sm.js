@@ -871,7 +871,16 @@ export const campusApi = {
       name, description: description || '', faculty: faculty || null,
       owner_id: myId(), official: !!official
     });
-    await db.insert('channel_members', { channel_id: row.id, user_id: myId() }, { upsert: true });
+    // NO second insert into channel_members.
+    //
+    // trg_channel_owner_member (14_groups_sm.sql) already writes the
+    // owner row inside the same transaction as the channel. Doing it
+    // again from here hit the primary key and THREW — measured:
+    //   ERROR: duplicate key value violates unique constraint
+    //          "channel_members_pkey"
+    // The channel had already been created, so the UI reported a
+    // failure for something that had actually worked, and the student
+    // pressed Create again.
     return row;
   },
 
@@ -927,18 +936,76 @@ export const campusApi = {
   },
 
   /** Who may talk here, and am I in charge? Drives the whole UI state. */
+  /**
+   * Who am I here, and what may I do? ONE call.
+   *
+   * WHY THIS WAS REWRITTEN. The old version made two RPCs and put
+   * `.catch(() => false)` on each, which turns "I could not find out"
+   * into "you are not allowed". Reproduced in Chrome: make a single
+   * can_post_group request return 401 — exactly what a token refresh
+   * looks like — reopen a channel you OWN, and the composer vanishes
+   * behind "Only moderators can post here". That is the bar that
+   * "reappears automatically" after the tab has been idle.
+   *
+   * group_info() answers everything in one round trip, and `ok` says
+   * whether the answer is real. An unknown answer must never be
+   * rendered as a refusal.
+   */
   async groupInfo(target) {
-    if (target.eventId) {
-      const attending = await db.rpc('is_event_attendee', { p_event: target.eventId })
-        .catch(() => false);
-      return { role: attending ? 'member' : 'none', canPost: !!attending, kind: 'event' };
+    const isEvent = !!target.eventId;
+    const args = { p_channel: isEvent ? null : target.channelId,
+                   p_event:   isEvent ? target.eventId : null };
+    try {
+      const rows = await db.rpc('group_info', args);
+      const r = Array.isArray(rows) ? rows[0] : rows;
+      if (!r) throw new Error('group_info vide');
+      return {
+        ok: true,
+        kind:       r.kind || (isEvent ? 'event' : 'channel'),
+        role:       r.role || 'none',
+        canPost:    !!r.can_post,
+        canRead:    !!r.can_read,
+        isOwner:    !!r.is_owner,
+        postPolicy: r.post_policy || 'all',
+        isPrivate:  !!r.is_private,
+        members:    r.members || 0,
+        name:       r.name || ''
+      };
+    } catch (err) {
+      // Older database without 16_group_roles_sm.sql: fall back, but
+      // still say ok:false so the UI can keep the composer and let the
+      // DATABASE be the one to refuse a send.
+      console.warn('[koliya] group_info indisponible', err?.message || err);
+      return { ok: false, kind: isEvent ? 'event' : 'channel', role: 'none',
+               canPost: true, canRead: true, isOwner: false,
+               postPolicy: 'all', isPrivate: false, members: 0, name: '' };
     }
-    const [role, canPost] = await Promise.all([
-      db.rpc('channel_role',   { p_channel: target.channelId }).catch(() => null),
-      db.rpc('can_post_group', { p_channel: target.channelId, p_event: null }).catch(() => false)
-    ]);
-    const r = Array.isArray(role) ? role[0] : role;
-    return { role: r || 'none', canPost: !!canPost, kind: 'channel' };
+  },
+
+  /** Members of an event OR a channel, ranked, for the manage panel. */
+  async groupMembers(target) {
+    const rows = await db.rpc('group_members', {
+      p_channel: target.channelId || null,
+      p_event:   target.eventId   || null
+    }).catch(() => []);
+    return (Array.isArray(rows) ? rows : []).map(r => ({
+      id: r.user_id, role: r.role,
+      full_name: r.full_name, username: r.username, avatar_url: r.avatar_url
+    }));
+  },
+
+  /** Promote / demote in an event or a channel. */
+  async setGroupRole(target, userId, role) {
+    return target.eventId
+      ? db.rpc('set_event_role',   { p_event: target.eventId, p_user: userId, p_role: role })
+      : db.rpc('set_channel_role', { p_channel: target.channelId, p_user: userId, p_role: role });
+  },
+
+  /** Who may post: 'all' | 'admins'. */
+  async setGroupPolicy(target, policy) {
+    if (target.eventId) return db.rpc('set_event_policy', { p_event: target.eventId, p_policy: policy });
+    await db.update('channels', { post_policy: policy }, { id: `eq.${target.channelId}` });
+    return true;
   },
 
   /** The chat's display name, straight from the row that owns it. */
@@ -1312,6 +1379,11 @@ export async function connectApi() {
     groupMessages:         campusApi.groupMessages,
     sendGroupMessage:      campusApi.sendGroupMessage,
     channelMembers:        campusApi.channelMembers,
+    // V17: one panel for channels AND events, so the screen needs the
+    // group-shaped calls, not the channel-only ones.
+    groupMembers:          campusApi.groupMembers,
+    setGroupRole:          campusApi.setGroupRole,
+    setGroupPolicy:        campusApi.setGroupPolicy,
     channelRequests:       campusApi.channelRequests,
     respondChannelRequest: campusApi.respondChannelRequest,
     setChannelRole:        campusApi.setChannelRole,

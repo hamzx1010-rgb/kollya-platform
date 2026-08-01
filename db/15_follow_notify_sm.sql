@@ -371,3 +371,110 @@ $function$;
 GRANT EXECUTE ON FUNCTION public.create_chat_folder(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_chat_folder(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.my_chat_folders()        TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 7. LIKE / COMMENT / MENTION notifications
+--
+--    FOUND BY THE APK BUILD CHECK, not by a test.
+--
+--    After fixing follow(), I added a NEGATIVE check to build_apk.sh —
+--    "assets/js/core/api_sm.js must not contain db.insert('notifications'".
+--    It failed with 2 occurrences. One was my own comment. The other
+--    was this, at api_sm.js:272, which I had never looked at:
+--
+--        async function notify(postId, kind, text = null) {
+--          const post = await db.one('posts', ...);
+--          await db.insert('notifications',
+--            { user_id: post.user_id, actor_id: myId(), kind, post_id: postId, text });
+--        }
+--
+--    Identical bug to the follow one, and it had been there the whole
+--    time: `Prefer: return=representation` -> INSERT ... RETURNING ->
+--    notif_own refuses the read-back because the row belongs to the
+--    POST'S AUTHOR, not to me. Verified on PostgreSQL 17:
+--
+--      INSERT INTO notifications (user_id,actor_id,kind,post_id)
+--      VALUES ('s1','s2','like',9500) RETURNING id;
+--      ERROR: new row violates row-level security policy
+--
+--    And it is wrapped in `catch {}` with the comment "a missed
+--    notification must never break the action" — so every like and
+--    every comment silently failed to notify anybody, forever.
+--
+--    Same remedy: let the database do it. Triggers cannot be bypassed,
+--    cover the APK and old builds, and need no read-back.
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.notify_post_like()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $function$
+DECLARE v_author text;
+BEGIN
+  SELECT user_id INTO v_author FROM posts WHERE id = NEW.post_id;
+  IF v_author IS NULL OR v_author = NEW.user_id THEN RETURN NEW; END IF;
+
+  -- One line per post, however many times it is liked and unliked.
+  IF EXISTS (SELECT 1 FROM notifications
+              WHERE user_id = v_author AND actor_id = NEW.user_id
+                AND kind = 'like' AND post_id = NEW.post_id AND read_at IS NULL) THEN
+    UPDATE notifications SET created_at = now()
+     WHERE user_id = v_author AND actor_id = NEW.user_id
+       AND kind = 'like' AND post_id = NEW.post_id AND read_at IS NULL;
+  ELSE
+    INSERT INTO notifications (user_id, actor_id, kind, post_id)
+    VALUES (v_author, NEW.user_id, 'like', NEW.post_id);
+  END IF;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_notify_post_like ON post_likes;
+CREATE TRIGGER trg_notify_post_like
+AFTER INSERT ON public.post_likes
+FOR EACH ROW EXECUTE FUNCTION notify_post_like();
+
+/* Un-liking removes the line: an alert for something that is no longer
+   true is worse than no alert. */
+CREATE OR REPLACE FUNCTION public.clear_like_notification()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $function$
+BEGIN
+  DELETE FROM notifications
+   WHERE actor_id = OLD.user_id AND kind = 'like'
+     AND post_id = OLD.post_id AND read_at IS NULL;
+  RETURN OLD;
+EXCEPTION WHEN OTHERS THEN RETURN OLD;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_clear_like_notification ON post_likes;
+CREATE TRIGGER trg_clear_like_notification
+AFTER DELETE ON public.post_likes
+FOR EACH ROW EXECUTE FUNCTION clear_like_notification();
+
+
+/* Comments. NOT coalesced: three separate comments are three things to
+   read, unlike three likes which are one fact. */
+CREATE OR REPLACE FUNCTION public.notify_post_comment()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $function$
+DECLARE v_author text;
+BEGIN
+  SELECT user_id INTO v_author FROM posts WHERE id = NEW.post_id;
+  IF v_author IS NULL OR v_author = NEW.user_id THEN RETURN NEW; END IF;
+
+  INSERT INTO notifications (user_id, actor_id, kind, post_id, text)
+  VALUES (v_author, NEW.user_id, 'comment', NEW.post_id, LEFT(COALESCE(NEW.text,''), 120));
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_notify_post_comment ON comments;
+CREATE TRIGGER trg_notify_post_comment
+AFTER INSERT ON public.comments
+FOR EACH ROW EXECUTE FUNCTION notify_post_comment();

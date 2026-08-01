@@ -527,3 +527,83 @@ button.pill:hover:not(.on) { background: var(--hover); color: var(--text); }
   line-height: 16px;
   flex-shrink: 0;
 }
+
+/* ============================================================
+   GROUP SETTINGS PANEL  (.gs-*)
+   Channel AND event. The old panel was a flat list of rows with a
+   two-button segment and no explanation of what "admins only" does —
+   and it existed for channels only, so an event organiser had no way
+   to appoint anybody. Sections, live state, and a sentence under every
+   switch saying what it will actually do.
+   ============================================================ */
+
+.gs { display: flex; flex-direction: column; gap: var(--s4); }
+
+.gs-head {
+  display: flex; align-items: center; gap: var(--s3);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--border);
+}
+.gs-icon {
+  width: 42px; height: 42px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: var(--r);
+  background: var(--grad); color: #fff;
+}
+
+.gs-sec { display: flex; flex-direction: column; gap: var(--s2); }
+.gs-sec-t {
+  font-size: var(--fs-xs); font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* radio-style choices */
+.gs-opts { display: flex; flex-direction: column; gap: 6px; }
+.gs-opt {
+  display: flex; align-items: flex-start; gap: var(--s3);
+  width: 100%; text-align: start;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--surface);
+  transition: border-color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease);
+}
+.gs-opt:hover { background: var(--hover); }
+.gs-opt.on {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 7%, transparent);
+}
+.gs-opt-i { color: var(--text-2); flex-shrink: 0; margin-top: 1px; }
+.gs-opt.on .gs-opt-i { color: var(--brand); }
+.gs-opt-t { display: block; font-size: var(--fs-sm); font-weight: 650; color: var(--text); }
+.gs-opt-d { display: block; font-size: var(--fs-xs); color: var(--text-3); margin-top: 2px; }
+
+.gs-tick { color: var(--brand); opacity: 0; flex-shrink: 0; }
+.gs-opt.on .gs-tick { opacity: 1; }
+.gs-tick svg { width: 16px; height: 16px; }
+
+/* a switch row reuses the option shell so the panel reads as one list */
+.gs-row {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.gs-row:hover { background: var(--hover); }
+
+.gs-people { display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; }
+.gs-person {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: 7px var(--s2);
+  border-radius: var(--r-sm);
+}
+.gs-person:hover { background: var(--hover); }
+
+/* rank pill: the creator must be unmistakable at a glance */
+.gs-rank { font-weight: 700; }
+.gs-rank.owner  { color: var(--brand); }
+.gs-rank.admin  { color: var(--ok, #16a34a); }
+.gs-rank.member { color: var(--text-3); font-weight: 600; }
