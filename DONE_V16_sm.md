@@ -175,7 +175,7 @@ the conversations are unfiled, never deleted.
 |---|---|
 | `tests/run.sh` (jsdom) | **853/853** |
 | `tests/sql/run.sh` (real PostgreSQL) | **34/34** |
-| `tests/browser/v16.test.mjs` (real Chrome) | **38/38** |
+| `tests/browser/v16.test.mjs` (real Chrome) | **42/42** |
 | `browser/v13`, `browser/nav` | 30/30, 63/63 |
 
 Screenshots I looked at myself: `shots/V16-channels-in-messages.png`,
@@ -183,11 +183,66 @@ Screenshots I looked at myself: `shots/V16-channels-in-messages.png`,
 
 ---
 
+## THE APK — BUILT
+
+`apk/Koliya-1.00.apk` · **versionCode 6** · 3.9 MB · signed · zipaligned
+· **41 content checks + 2 absence checks + 10 dex checks all pass.**
+
+Same signing key (`8ae9f1af…bc8280`), so it installs straight over the
+one on your phone.
+
+Verified by unzipping the shipped file, not by looking at `public/`:
+
+```
+chat-section 2 · paintGroupList 2 · cfAdd 2 · my_group_chats 4
+dm.section.channels 4 · follow_accepted 3
+channels.role.owner 3 · profile.staff 3      (V15, missing until now)
+db.insert('notifications'  ->  0             (the bug, gone)
+```
+
+### The build caught a bug I had missed
+
+I added a **negative** check — "this string must NOT be in the shipped
+assets" — and the build refused itself with 2 occurrences. One was my
+own comment. The other was `api_sm.js:272`, which I had never read:
+
+```js
+async function notify(postId, kind, text = null) {
+  await db.insert('notifications', { user_id: post.user_id, ... });
+}
+```
+
+**Identical bug to the follow one**, sitting there the whole time and
+wrapped in `catch {}`. So **every like and every comment notified
+nobody, ever**. Confirmed on PostgreSQL 17:
+
+```
+INSERT INTO notifications (user_id,actor_id,kind,post_id)
+VALUES ('s1','s2','like',9500) RETURNING id;
+ERROR:  new row violates row-level security policy
+```
+
+The old shipped `Koliya-1.00.apk` contains that line — so this is live
+for your users right now. Fixed with triggers on `post_likes` and
+`comments`; un-liking removes the alert. Measured:
+
+```
+bob likes    -> alice_alert=like from=Bob B
+bob comments -> alert: comment "nice one"
+bob unlikes  -> remaining=1 kinds=comment
+```
+
+I also had to fix my own checker: `grep -c` exits 1 on a count of zero,
+which under `set -euo pipefail` killed the script **after** a successful
+build — the log just stopped at EXIT=1 with no failure printed.
+
 ## WHAT I DID NOT VERIFY — read this part
 
-1. **The APK does not contain any of this.** V15 wording is also still
-   missing from it. Both need a rebuild (~10 min) — say the word.
-2. **You must run `db/FULL_SCHEMA_sm.sql` again** (2405 lines), then
+1. **The APK has still never been executed.** No `/dev/kvm`, 2 GB RAM,
+   no emulator, no phone. Java is verified structurally (classes present
+   in `classes.dex`) and the web half in real Chrome — but nobody has
+   watched this file boot.
+2. **You must run `db/FULL_SCHEMA_sm.sql` again** (2471 lines), then
    Data API → **Refresh schema cache**. Given finding #2, whatever you
    ran before almost certainly applied only partly — this is not
    optional.
