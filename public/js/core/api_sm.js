@@ -554,6 +554,42 @@ export const messagesApi = {
       user_id: myId(), peer_id: peerId, folder, updated_at: new Date().toISOString()
     }, { upsert: true });
     return folder;
+  },
+
+  /* ---- custom chat folders -------------------------------------
+     The five built-in folders were a hardcoded array in messages_sm
+     AND a CHECK constraint on chat_folders.folder, so there was no
+     way to add a sixth from anywhere — no button, and nowhere to put
+     one. 15_follow_notify_sm.sql drops that CHECK and adds
+     chat_folder_defs, which is what makes an EMPTY folder possible:
+     without it a folder could only exist once something was already
+     filed in it, which is not a folder you can create. */
+
+  async listCustomFolders() {
+    const rows = await db.rpc('my_chat_folders').catch(() => []);
+    return (Array.isArray(rows) ? rows : []).map(r => r.name).filter(Boolean);
+  },
+
+  async createFolder(name) {
+    const ok = await db.rpc('create_chat_folder', { p_name: name });
+    return (Array.isArray(ok) ? ok[0] : ok) === true;
+  },
+
+  async deleteFolder(name) {
+    return db.rpc('delete_chat_folder', { p_name: name });
+  },
+
+  /**
+   * Every group chat I am actually in — channels I joined and events
+   * I am attending — in one call.
+   *
+   * Returns [] for a student who has joined nothing, which is what
+   * lets the Messages screen HIDE the Channels and Events tabs rather
+   * than showing two permanently empty ones.
+   */
+  async myGroupChats() {
+    const rows = await db.rpc('my_group_chats').catch(() => []);
+    return Array.isArray(rows) ? rows : [];
   }
 };
 
@@ -696,22 +732,27 @@ export const profileApi = {
       state: next === 'requested' ? 'pending' : 'accepted'
     }, { upsert: true });
 
-    // NOT .catch(() => {}).
+    // THE NOTIFICATION INSERT THAT USED TO LIVE HERE COULD NEVER WORK.
     //
-    // A swallowed error here is invisible: the follow succeeds, no
-    // notification row is written, and nobody ever learns why the other
-    // person was never told. Reported as "follow notifications still
-    // show nothing". Log it loudly; the follow itself already succeeded,
-    // so this must not throw.
-    try {
-      await db.insert('notifications', {
-        user_id: userId,
-        actor_id: myId(),
-        kind: next === 'requested' ? 'request' : 'follow'
-      });
-    } catch (e) {
-      console.error('[koliya] notification de suivi non écrite:', e?.message || e);
-    }
+    // It was:
+    //     await db.insert('notifications', { user_id: userId, ... })
+    //
+    // db.insert() sends `Prefer: return=representation`, so PostgREST
+    // runs `INSERT ... RETURNING *`. The INSERT passes notif_insert,
+    // but the RETURNING must READ the row back and notif_own says
+    // `user_id = auth.user_id()`. The row belongs to the person being
+    // followed, not to me, so the read is refused and Postgres fails
+    // the whole statement with "new row violates row-level security
+    // policy". Reproduced on PostgreSQL 17 with RETURNING as the only
+    // difference: without it INSERT 0 1, with it the error.
+    //
+    // So the follow was written and the alert never was — "the request
+    // follow is functional but the other person can't see it".
+    //
+    // db/15_follow_notify_sm.sql now does it in an AFTER INSERT trigger
+    // (SECURITY DEFINER, no read-back), which also covers every OTHER
+    // way to follow somebody — people lists, search, the APK — none of
+    // which ever reached this line.
   },
 
   /**
@@ -1155,14 +1196,28 @@ export const notificationsApi = {
     return db.count('notifications', { user_id: `eq.${myId()}`, read_at: 'is.null' }).catch(() => 0);
   },
 
-  /** Accept or refuse a follow request. */
+  /**
+   * Accept or refuse a follow request.
+   *
+   * One RPC instead of a bare UPDATE/DELETE: the function also flips my
+   * own 'request' line to 'follow' and tells the requester they were
+   * let in. Doing that from here would need two more writes into
+   * somebody else's inbox — which RLS refuses (see follow() above).
+   */
   async respondToRequest(actorId, accept) {
+    const ok = await db.rpc('respond_follow_request',
+      { p_actor: actorId, p_accept: !!accept }).catch(() => null);
+    if (ok !== null) return ok;
+
+    // Older database without 15_follow_notify_sm.sql applied. The
+    // accept still works; the requester just is not told.
     if (accept) {
       await db.update('follows', { state: 'accepted' },
         { follower_id: `eq.${actorId}`, followee_id: `eq.${myId()}` });
     } else {
       await db.remove('follows', { follower_id: `eq.${actorId}`, followee_id: `eq.${myId()}` });
     }
+    return true;
   }
 };
 

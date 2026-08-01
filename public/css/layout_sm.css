@@ -3035,3 +3035,63 @@ button.pf-stat:hover span { text-decoration: underline; }
   #composer.tools-open #btnMore { color: var(--brand); }
 }
 
+
+/* ============================================================
+   CHAT SECTIONS — Messages · Channels · Events
+   Above the folder strip, not part of it: a folder filters `convs`
+   (DMs only), a section changes what the list is made of. Rendered
+   only when the student is in at least one channel or event, so a
+   new account sees exactly one list and no chrome.
+   ============================================================ */
+
+.chat-sections {
+  display: flex;
+  gap: 2px;
+  padding: var(--s2) var(--s3) 0;
+  flex-shrink: 0;
+}
+
+.chat-section {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 6px;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs); font-weight: 650;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease);
+}
+.chat-section:hover { background: var(--hover); color: var(--text); }
+.chat-section.on {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+.chat-section svg { width: 15px; height: 15px; flex-shrink: 0; }
+.cs-label { overflow: hidden; text-overflow: ellipsis; }
+
+/* The + that creates a folder. Square, so it does not read as one more
+   filter sitting in the same row of pills. */
+.chat-folder.cf-add {
+  margin-inline-start: auto;
+  padding: 6px;
+  color: var(--text-3);
+}
+.chat-folder.cf-add:hover { color: var(--brand); background: var(--hover); }
+
+/* Below this the three labels no longer fit side by side.
+   1180px was too optimistic: measured in Chrome at a 1280px window the
+   list column is ~345px, and three labels plus three icons plus three
+   counts rendered as "Mess..." / "Chan..." / "Events". Seen in
+   shots/V16-events-tab.png. The breakpoint is on the CONTAINER, which
+   is why it trips so much earlier than the window suggests — so drop
+   the labels while they still fit rather than shipping ellipsised
+   words. Arabic is longer again, hence the margin. */
+@media (max-width: 1460px) {
+  .cs-label { display: none; }
+  .chat-section { padding: 9px 6px; gap: 0; }
+  .chat-section .cf-count { margin-inline-start: 5px; }
+}

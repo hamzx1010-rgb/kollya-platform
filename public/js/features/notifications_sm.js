@@ -81,6 +81,11 @@ const notifKind = () => ({
   follow:  { icon:'users',    tint:'ok',     verb:g => `${names(g)} ${t('notif.followsYou')}` },
   mention: { icon:'hash',     tint:'brand',  verb:g => `${names(g)} ${t('notif.mentioned')}` },
   request: { icon:'user',     tint:'warn',   verb:g => `${names(g)} ${t('notif.requests')}` },
+  // The database now writes this when somebody lets you in. Without an
+  // entry here notifKind()[kind] was undefined and row() fell back to
+  // `like`, so being accepted read as "X liked your post".
+  follow_accepted: { icon:'check', tint:'ok', verb:g => `${names(g)} ${t('notif.acceptedYou')}` },
+  channel_accepted: { icon:'hash', tint:'ok', verb:g => `${names(g)} ${t('channels.accepted')}` },
   badge:   { icon:'trophy',   tint:'warn',   verb:() => t('notif.newBadge') },
   event:   { icon:'calendar', tint:'brand',  verb:g => `${names(g)} ${t('notif.createdEvent')}` }
 });
@@ -130,8 +135,8 @@ function row(g) {
       <div class="t-xs t-dim">${timeAgo(g.at)}</div>
     </div>
     ${g.kind === 'request' ? `<div class="row g1">
-        <button class="btn btn-primary btn-sm" data-accept>Accepter</button>
-        <button class="btn btn-ghost btn-sm" data-decline>Refuser</button>
+        <button class="btn btn-primary btn-sm" data-accept>${esc(t('dm.accept'))}</button>
+        <button class="btn btn-ghost btn-sm" data-decline>${esc(t('dm.decline'))}</button>
       </div>` : ''}
     <button class="icon-btn sm notif-x hover-reveal" data-dismiss aria-label="${esc(t('action.delete'))}">${I.close}</button>`;
 
@@ -145,7 +150,8 @@ function render() {
 
   let list = items;
   if (filter === 'mentions') list = items.filter(n => n.kind === 'mention');
-  if (filter === 'follows')  list = items.filter(n => n.kind === 'follow' || n.kind === 'request');
+  if (filter === 'follows')  list = items.filter(n =>
+    n.kind === 'follow' || n.kind === 'request' || n.kind === 'follow_accepted');
 
   const groups = group(list);
 
@@ -278,7 +284,8 @@ export function initNotifications(mountFn) {
 
       const target = node.dataset.target;
       const actor = node.dataset.actor;
-      if (node.dataset.kind === 'follow' || node.dataset.kind === 'request') {
+      if (node.dataset.kind === 'follow' || node.dataset.kind === 'request'
+          || node.dataset.kind === 'follow_accepted') {
         const u = person(actor);
         if (u.username) { go('profile', u.username); return; }
       }
@@ -314,3 +321,11 @@ export async function refreshNotificationBadge() {
   setState({ unread: { ...state.unread, notifications: n } });
   return n;
 }
+
+/* koliya-patch-applied: V16_NOTIF_KINDS */
+
+/* koliya-patch-applied: V16_NOTIF_FILTER */
+
+/* koliya-patch-applied: V16_NOTIF_OPEN */
+
+/* koliya-patch-applied: V16_NOTIF_I18N_BTNS */

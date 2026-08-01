@@ -52,6 +52,14 @@ let selectedId = null;     // message whose toolbar is open
 let infoOpen = true;       // right-hand info panel — open by default
 let folder = 'all';        // active chat folder
 let folders = {};          // peerId -> folder name
+
+/* THE THREE TOP-LEVEL SECTIONS.
+   'dm' | 'channels' | 'events'. Not folders: a folder filters `convs`,
+   which only ever holds rows from the `messages` table, so no folder
+   could show a channel however it was named. */
+let section = 'dm';
+let groupChats = [];       // my_group_chats() — channels AND events
+let customFolders = [];    // names created by this student
 let requests = [];         // conversations waiting for a decision
 let showingRequests = false;
 
@@ -339,7 +347,10 @@ const chatFolders = () => ([
   { id: 'pinned',   label: t('dm.pinnedFolder'), icon: 'pin'      },
   { id: 'study',    label: 'Études',   icon: 'graduation' },
   { id: 'muted',    label: 'Muets',    icon: 'mute'     },
-  { id: 'archived', label: t('dm.archivedFolder'), icon: 'bookmark' }
+  { id: 'archived', label: t('dm.archivedFolder'), icon: 'bookmark' },
+  // Whatever this student made. `custom: true` so the strip can offer
+  // Delete on them and not on the built-ins.
+  ...customFolders.map(n => ({ id: n, label: n, icon: 'bookmark', custom: true }))
 ]);
 
 const folderOf = peerId => folders[String(peerId)] || 'all';
@@ -352,7 +363,39 @@ function inFolder(c) {
   return f === folder;
 }
 
+/* The three sections. Channels and Events are rendered ONLY when the
+   student is actually in one — "if he's not, there is no need to make
+   it visible". my_group_chats() returns [] for somebody who has joined
+   nothing, so this collapses to a single Messages tab, which is what
+   the screen looked like before. */
+function sectionBar() {
+  const chans  = groupChats.filter(g => g.kind === 'channel');
+  const events = groupChats.filter(g => g.kind === 'event');
+  const secs = [{ id: 'dm', label: t('dm.section.messages'), icon: 'message',
+                  n: convs.reduce((a, c) => a + (c.unread || 0), 0) }];
+  if (chans.length)  secs.push({ id: 'channels', label: t('dm.section.channels'),
+                                 icon: 'hash', n: chans.length });
+  if (events.length) secs.push({ id: 'events', label: t('dm.section.events'),
+                                 icon: 'calendar', n: events.length });
+
+  // One section and nothing else to switch to is not a choice; drawing
+  // a single tab is chrome for its own sake.
+  if (secs.length === 1) return '';
+
+  return `<div class="chat-sections" id="chatSections" role="tablist">
+    ${secs.map(s => `<button class="chat-section${s.id === section ? ' on' : ''}"
+        data-section="${s.id}" role="tab" aria-selected="${s.id === section}"
+        aria-label="${esc(s.label)}">
+      ${icon(s.icon, { size: 15 })}<span class="cs-label">${esc(s.label)}</span>
+      ${s.n ? `<span class="cf-count">${s.n}</span>` : ''}
+    </button>`).join('')}
+  </div>`;
+}
+
 function folderBar() {
+  // Folders belong to the Messages section. A channel is not filed in
+  // "Pinned" or "Muted" — those act on `convs`, which holds DMs only.
+  if (section !== 'dm') return '';
   return `<div class="chat-folders" id="chatFolders">
     ${chatFolders().map(f => {
       const n = f.id === 'all'
@@ -362,7 +405,13 @@ function folderBar() {
         : f.id === 'unread'
           ? convs.filter(c => c.unread > 0 && folderOf(c.peer.id) !== 'archived').length
           : convs.filter(c => folderOf(c.peer.id) === f.id).length;
-      const label = f.id === 'requests' ? t('dm.requests') : t('dm.folder.' + f.id);
+      // A CUSTOM folder's label is the name the student typed. Running
+      // it through t('dm.folder.' + id) looked up a key that cannot
+      // exist and rendered the literal string "dm.folder.Projet PFE"
+      // on the strip. Caught by the raw-key sweep in v16.test.mjs.
+      const label = f.custom      ? f.label
+                  : f.id === 'requests' ? t('dm.requests')
+                  : t('dm.folder.' + f.id);
       return `<button class="chat-folder${f.id === folder ? ' on' : ''}${f.id === 'requests' && n ? ' has-requests' : ''}"
                       data-folder="${f.id}" data-tip="${esc(label)}" aria-label="${esc(label)}">
           ${icon(f.icon, { size: 14 })}
@@ -370,17 +419,94 @@ function folderBar() {
           ${n ? `<span class="cf-count">${n}</span>` : ''}
         </button>`;
     }).join('')}
+    <button class="chat-folder cf-add" id="cfAdd"
+            data-tip="${esc(t('dm.newFolder'))}" aria-label="${esc(t('dm.newFolder'))}">
+      ${icon('plus', { size: 14 })}
+    </button>
   </div>`;
 }
 
+/* Create a folder. Named here rather than inline so the empty-state
+   button can call the same thing. */
+async function promptNewFolder() {
+  const input = el('input', { class: 'input', maxlength: '24',
+                              placeholder: t('dm.folderNamePh') });
+  const box = el('div', { class: 'col g3' },
+    el('div', { class: 't-sm t-dim' }, t('dm.newFolderWhy')), input);
+
+  // modal() takes `footer`, NOT an `actions` array — I wrote `actions`
+  // first and it silently rendered a dialog with no buttons at all,
+  // because the option is simply ignored. Checked against
+  // campus_sm.js openChannelComposer(), which is the same shape.
+  const foot = el('div', { class: 'row g2' });
+  const m = modal({ title: t('dm.newFolder'), body: box, footer: foot });
+
+  const submit = async () => {
+    const name = (input.value || '').trim();
+    if (!name) { input.focus(); return; }
+    try {
+      const ok = await api.createFolder(name);
+      if (!ok) { toast(t('dm.folderNameTaken'), 'err'); return; }
+      customFolders = await api.listCustomFolders();
+      folder = name;
+      m.close();
+      paintConvList();
+      toast(t('dm.folderCreated', { folder: name }), 'ok');
+    } catch (err) { toast(errorText(err), 'err'); }
+  };
+
+  foot.append(
+    el('button', { class: 'btn btn-ghost', onclick: () => m.close() }, t('action.cancel')),
+    el('button', { class: 'btn btn-primary', onclick: submit }, t('action.create'))
+  );
+  on(input, 'keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+  setTimeout(() => input.focus(), 50);
+}
+
 function wireFolders() {
+  const secBar = $('#chatSections');
+  if (secBar) {
+    on(secBar, 'click', e => {
+      const btn = e.target.closest('[data-section]');
+      if (!btn) return;
+      section = btn.dataset.section;
+      paintConvList();
+    });
+  }
+
   const bar = $('#chatFolders');
   if (!bar) return;
   on(bar, 'click', e => {
+    if (e.target.closest('#cfAdd')) { promptNewFolder(); return; }
+
     const btn = e.target.closest('[data-folder]');
     if (!btn) return;
     folder = btn.dataset.folder;
     paintConvList();
+  });
+
+  // Right-click a folder you made to delete it. Built-ins have no
+  // menu — there is nothing to do to them.
+  on(bar, 'contextmenu', e => {
+    const btn = e.target.closest('[data-folder]');
+    if (!btn) return;
+    const name = btn.dataset.folder;
+    if (!customFolders.includes(name)) return;
+    e.preventDefault();
+    contextMenu(e, [
+      { title: name },
+      { label: t('dm.deleteFolder'), icon: I.trash, danger: true, onClick: async () => {
+          try {
+            await api.deleteFolder(name);
+            customFolders = customFolders.filter(x => x !== name);
+            // Anything filed here is unfiled, not deleted.
+            for (const k of Object.keys(folders)) if (folders[k] === name) delete folders[k];
+            if (folder === name) folder = 'all';
+            paintConvList();
+            toast(t('dm.folderDeleted'), 'ok');
+          } catch (err) { toast(errorText(err), 'err'); }
+        } }
+    ]);
   });
 }
 
@@ -390,7 +516,13 @@ function convMenu(e, c) {
   const current = folderOf(c.peer.id);
   contextMenu(e, [
     { title: c.peer.full_name },
-    ...FOLDERS.filter(f => f.id !== 'unread').map(f => ({
+    // WAS `FOLDERS` — a bare identifier that does not exist anywhere in
+    // this file (the array was renamed to the chatFolders() function).
+    // Right-clicking a conversation therefore threw
+    // "FOLDERS is not defined" and NO context menu opened at all, which
+    // is why filing a chat by right-click never worked. Caught by
+    // grepping for the identifier, not by any test.
+    ...chatFolders().filter(f => f.id !== 'unread' && f.id !== 'requests').map(f => ({
       label: f.id === 'all' ? t('menu.removeFolder') : `Déplacer vers ${f.label}`,
       icon: I[f.icon] || I.message,
       kbd: current === f.id ? '✓' : '',
@@ -486,14 +618,26 @@ async function renderConvList({ quiet = false } = {}) {
   if (!quiet || !box.querySelector('.conv')) box.innerHTML = skeletonList(5, 'conv');
 
   try {
-    const [rows, f, reqs] = await Promise.all([
+    // .catch on each: a database that has not had
+    // 15_follow_notify_sm.sql applied yet has no my_group_chats(), and
+    // ONE missing RPC must not blank the entire conversation list.
+    // Without this the screen showed "error loading" and no DMs at all.
+    const [rows, f, reqs, groups, custom] = await Promise.all([
       loadConversations(),
       api?.listFolders  ? api.listFolders()  : Promise.resolve({}),
-      api?.listRequests ? api.listRequests() : Promise.resolve([])
+      api?.listRequests ? api.listRequests() : Promise.resolve([]),
+      api?.myGroupChats ? api.myGroupChats().catch(() => []) : Promise.resolve([]),
+      api?.listCustomFolders ? api.listCustomFolders().catch(() => []) : Promise.resolve([])
     ]);
     convs = rows;
     folders = f || {};
     requests = reqs || [];
+    groupChats = groups || [];
+    customFolders = custom || [];
+
+    // The tab I am standing in just disappeared (left the last channel).
+    if (section === 'channels' && !groupChats.some(g => g.kind === 'channel')) section = 'dm';
+    if (section === 'events'   && !groupChats.some(g => g.kind === 'event'))   section = 'dm';
   } catch (err) {
     box.innerHTML = '';
     box.append(emptyState({
@@ -639,14 +783,86 @@ function paintRequests() {
 }
 
 /** Repaint from memory — no network, so folders switch instantly. */
+/** One row in the Channels or Events list. */
+function groupRow(g) {
+  const isOpen = group && group.kind === g.kind && String(group.id) === String(g.id);
+  const node = el('button', {
+    class: 'conv' + (isOpen ? ' on' : ''),
+    'data-group': `${g.kind}-${g.id}`,
+    onclick: () => openGroupThread(g.kind, String(g.id))
+  });
+
+  node.append(
+    el('div', { class: 'av', style: { background: 'var(--brand)' },
+                html: icon(g.kind === 'event' ? 'calendar' : 'hash', { size: 16 }) }),
+    el('div', { class: 'conv-body' },
+      el('div', { class: 'conv-top' },
+        el('span', { class: 'conv-name truncate' }, g.name || ''),
+        g.is_private ? el('span', { class: 'conv-mark', html: icon('lock', { size: 12 }) }) : null,
+        el('span', { class: 'conv-time' }, g.last_at ? timeAgo(g.last_at) : '')
+      ),
+      el('div', { class: 'row g2' },
+        el('span', { class: 'conv-last truncate grow' },
+          // "1 members" — the app has no plural machinery, and this
+          // was visible in the very first screenshot of the Channels
+          // list. Arabic needs a different word entirely, so the
+          // singular is its own key rather than a stripped "s".
+          g.last_text || (Number(g.members) === 1
+            ? t('dm.groupMember1')
+            : t('dm.groupMembers', { n: g.members || 0 }))),
+        // Your rank in the channel, so "why can't I post here" has a
+        // visible answer before you try.
+        g.role && g.role !== 'member'
+          ? el('span', { class: 'pill xs' }, t('channels.role.' + g.role))
+          : null
+      )
+    )
+  );
+  return node;
+}
+
+/** Channels / Events. Separate from the DM list: nothing here is a peer. */
+function paintGroupList() {
+  const box = $('#convScroll');
+  if (!box) return;
+  box.innerHTML = '';
+
+  const want = section === 'channels' ? 'channel' : 'event';
+  const rows = groupChats.filter(g => g.kind === want);
+
+  if (!rows.length) {
+    // Reachable only in the instant between leaving your last channel
+    // and the tab disappearing.
+    box.append(emptyState({
+      icon: want === 'event' ? I.calendar : I.hash,
+      title: t(want === 'event' ? 'dm.noEvents' : 'dm.noChannels'),
+      text: t(want === 'event' ? 'dm.noEventsWhy' : 'dm.noChannelsWhy'),
+      action: { label: t('nav.campus'), onClick: () => go('campus') }
+    }));
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(g => frag.append(groupRow(g)));
+  box.append(frag);
+}
+
 function paintConvList() {
   const box = $('#convScroll');
   if (!box) return;
 
+  // The section bar sits ABOVE the folder strip and is redrawn with it,
+  // because switching sections changes which folders exist.
+  const secBar = $('#chatSections');
+  if (secBar) secBar.outerHTML = sectionBar() || '<div id="chatSections" hidden></div>';
+  else box.insertAdjacentHTML('beforebegin', sectionBar());
+
   const bar = $('#chatFolders');
-  if (bar) bar.outerHTML = folderBar();
+  if (bar) bar.outerHTML = folderBar() || '<div id="chatFolders" hidden></div>';
   else box.insertAdjacentHTML('beforebegin', folderBar());
   wireFolders();
+
+  if (section !== 'dm') { showingRequests = false; paintGroupList(); return; }
 
   if (folder === 'requests') { showingRequests = true; paintRequests(); return; }
   showingRequests = false;
@@ -1803,8 +2019,19 @@ function wireComposer() {
   // completely dead. Same latent double-fire on send, mic and emoji.
   if (composer?.dataset.wired === '1') {
     // still refresh the per-peer bits that legitimately change
-    const saved = draft.get(peer.id);
-    input.value = saved || '';
+    //
+    // `peer` is NULL in a group chat — openGroupThread() sets it to null
+    // on purpose, to stop the DM poller. wireGroupComposer() calls this
+    // function to get the send button enabled, so on the SECOND group
+    // chat opened in a session (the first sets wired='1') this line threw
+    //     TypeError: Cannot read properties of null (reading 'id')
+    // out of renderGroupHeader(), leaving the header half-drawn and the
+    // composer unwired. A draft belongs to a conversation; a group has no
+    // peer to key one by, so there is simply nothing to restore.
+    if (peer) {
+      const saved = draft.get(peer.id);
+      input.value = saved || '';
+    }
     autoGrow(input);
     syncSendState();
     return;
@@ -2604,3 +2831,19 @@ export function initMessages(mountFn) {
   });
   on(document, 'visibilitychange', retune);
 }
+
+/* koliya-patch-applied: V16_SECTION_STATE */
+
+/* koliya-patch-applied: V16_CUSTOM_FOLDERS */
+
+/* koliya-patch-applied: V16_SECTION_BAR */
+
+/* koliya-patch-applied: V16_ADD_FOLDER_BTN */
+
+/* koliya-patch-applied: V16_WIRE_SECTIONS */
+
+/* koliya-patch-applied: V16_PAINT_GROUPS */
+
+/* koliya-patch-applied: V16_LOAD_GROUPS */
+
+/* koliya-patch-applied: V16_FOLDERS_UNDEFINED */

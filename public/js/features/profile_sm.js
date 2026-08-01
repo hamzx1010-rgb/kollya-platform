@@ -94,7 +94,7 @@ function headerMarkup(u) {
     <div class="row g2" style="align-items:center;flex-wrap:wrap">
       <h2 style="font-size:var(--fs-xl)">${esc(u.full_name)}</h2>
       ${u.private ? `<span class="pill">${icon('lock',{size:12})} ${esc(t('profile.private'))}</span>` : ''}
-      ${u.role === 'admin' ? '<span class="pill on">Admin</span>' : ''}
+      ${u.role === 'admin' ? `<span class="pill on">${esc(t('profile.staff'))}</span>` : ''}
       <span id="pfRank"></span>
     </div>
     <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div>
