@@ -15,7 +15,7 @@
 import {
   $, $$, el, on, esc, timeAgo, initials, avatarColor, truncate, onVisible
 } from '../core/utils_sm.js';
-import { me, setState, state, scoped } from '../core/store_sm.js';
+import { me, setState, state, scoped, on as onEvent } from '../core/store_sm.js';
 import { t } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { safeUrl } from '../core/utils_sm.js';
@@ -89,8 +89,13 @@ function names(g) {
   if (!g.actors.length) return '';
   const first = person(g.actors[0]).full_name;
   if (g.actors.length === 1) return esc(first);
-  if (g.actors.length === 2) return `${esc(first)} et ${esc(person(g.actors[1]).full_name.split(' ')[0])}`;
-  return `${esc(first)} et ${g.actors.length - 1} autres`;
+  if (g.actors.length === 2) {
+    return t('notif.twoPeople', {
+      a: esc(first),
+      b: esc(person(g.actors[1]).full_name.split(' ')[0])
+    });
+  }
+  return t('notif.manyPeople', { a: esc(first), n: g.actors.length - 1 });
 }
 
 /* ------------------------------------------------------------
@@ -194,6 +199,22 @@ const notifFilters = () => ([
 ]);
 
 export function initNotifications(mountFn) {
+
+  // THE BELL ONLY EVER COUNTED AT BOOT.
+  //
+  // refreshNotificationBadge() was called once from app_sm.js and never
+  // again, so a like or a follow arriving later changed nothing on
+  // screen — the bell kept whatever number it had at startup. Reported
+  // as "the notification page isn't showing the numbers when someone
+  // likes or follows".
+  //
+  // core/notify_sm.js already polls pending_alerts() every 20s and
+  // emits this. Both calls are cheap and guarded.
+  onEvent('notify:alerts', () => {
+    refreshNotificationBadge().catch(() => {});
+    // Repaint the list too, but only when it is actually on screen.
+    if ($('#notifList')) load().then(rows => { items = rows; render(); });
+  });
   route('notifications', async () => {
     const host = mountFn();
     if (!host) return;

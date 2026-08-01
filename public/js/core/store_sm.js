@@ -95,15 +95,48 @@ export function clearAll(keep = []) {
   for (const k of backend.keys()) if (!keepSet.has(k)) backend.remove(k);
 }
 
-/** Namespaced sub-store, so features never collide on key names. */
+/**
+ * Namespaced sub-store, so features never collide on key names.
+ *
+ * THE ACCOUNT-BLEED BUG
+ * The prefix used to be just `namespace + ':'` — no account in it. Every
+ * signed-in user on the same device therefore shared ONE set of local
+ * keys, so liking your own post appeared to happen on every account:
+ * the liked marks, seen stories, quest progress, chat prefs and the
+ * notify marker were all written to the same place and read back by
+ * whoever signed in next.
+ *
+ * The key now carries the user id, so two accounts on one phone cannot
+ * see each other's local state. Signed out, it falls back to `anon`.
+ *
+ * The id is read at CALL time, not when scoped() runs: every feature
+ * calls scoped() at module load, long before sign-in resolves.
+ * Capturing it once would pin every store to `anon` for the whole
+ * session — the same "frozen at import time" trap that froze the
+ * language in thirteen other places.
+ */
+function currentScopeId() {
+  try {
+    return (_state.me?.id) || read(KEYS.ME)?.id || read(KEYS.SESSION)?.userId || 'anon';
+  } catch {
+    return 'anon';
+  }
+}
+
 export function scoped(namespace) {
-  const p = namespace + ':';
+  const prefix = () => `${namespace}:${currentScopeId()}:`;
   return {
-    get:    (k, f) => read(p + k, f),
-    set:    (k, v) => write(p + k, v),
-    remove: k => remove(p + k),
-    keys:   () => backend.keys().filter(k => k.startsWith(p)).map(k => k.slice(p.length)),
-    clear:  () => backend.keys().filter(k => k.startsWith(p)).forEach(backend.remove)
+    get:    (k, f) => read(prefix() + k, f),
+    set:    (k, v) => write(prefix() + k, v),
+    remove: k => remove(prefix() + k),
+    keys:   () => {
+      const p = prefix();
+      return backend.keys().filter(k => k.startsWith(p)).map(k => k.slice(p.length));
+    },
+    clear:  () => {
+      const p = prefix();
+      backend.keys().filter(k => k.startsWith(p)).forEach(backend.remove);
+    }
   };
 }
 

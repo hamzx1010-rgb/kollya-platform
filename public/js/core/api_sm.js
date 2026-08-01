@@ -39,8 +39,13 @@ const myId = () => me.id;
 const inList = ids => `in.(${[...new Set(ids.map(String))]
   .map(v => `"${v.replace(/"/g, '""')}"`).join(',')})`;
 
+// student_card is included on purpose: it is the number printed on the
+// physical university card and what every student signs in with. Showing
+// it proves the account belongs to a real enrolled student rather than an
+// outsider. Verified in PostgreSQL that RLS lets one student read
+// another's — it is not private data here.
 const PROFILE_COLS =
-  'id,username,full_name,faculty,avatar_url,banner_url,bio,xp,streak,role,status,is_private,last_seen,website,github,linkedin,pronouns';
+  'id,username,full_name,faculty,avatar_url,banner_url,bio,xp,streak,role,status,is_private,last_seen,website,github,linkedin,pronouns,student_card';
 
 /** Load any profiles we do not have cached yet, in one request. */
 async function hydratePeople(ids) {
@@ -397,6 +402,23 @@ export const messagesApi = {
       { id: `eq.${msgId}`, receiver_id: `eq.${myId()}`, seen_at: 'is.null' }).catch(() => {});
   },
 
+  /**
+   * Clear the NOTIFICATION rows for a conversation.
+   *
+   * Separate from markRead(), which only touches messages.seen_at.
+   * Since 12_dm_notify_sm.sql a DM also writes a row into
+   * `notifications`, and pending_alerts() keeps returning it until
+   * read_at is set — so without this the phone would re-announce a
+   * conversation you are looking at, every poll, for ever.
+   *
+   * Fire-and-forget: opening a thread must not wait on it, and a
+   * failure is a stale badge, not a broken screen.
+   */
+  async clearDmAlerts(peerId) {
+    if (!peerId) return;
+    await db.rpc('mark_dm_read', { p_peer: String(peerId) }).catch(() => {});
+  },
+
   async editMessage(id, text) {
     await db.update('messages',
       { text, edited_at: new Date().toISOString() },
@@ -674,9 +696,36 @@ export const profileApi = {
       state: next === 'requested' ? 'pending' : 'accepted'
     }, { upsert: true });
 
-    await db.insert('notifications',
-      { user_id: userId, actor_id: myId(), kind: next === 'requested' ? 'request' : 'follow' })
-      .catch(() => {});
+    // NOT .catch(() => {}).
+    //
+    // A swallowed error here is invisible: the follow succeeds, no
+    // notification row is written, and nobody ever learns why the other
+    // person was never told. Reported as "follow notifications still
+    // show nothing". Log it loudly; the follow itself already succeeded,
+    // so this must not throw.
+    try {
+      await db.insert('notifications', {
+        user_id: userId,
+        actor_id: myId(),
+        kind: next === 'requested' ? 'request' : 'follow'
+      });
+    } catch (e) {
+      console.error('[koliya] notification de suivi non écrite:', e?.message || e);
+    }
+  },
+
+  /**
+   * Remove somebody who follows ME.
+   *
+   * Not the same as unfollowing: this deletes THEIR follow of me, the
+   * only way off a private account once you have let someone in. RLS
+   * allows it — follows_delete covers followee_id = auth.user_id().
+   */
+  async removeFollower(userId) {
+    await db.remove('follows', {
+      follower_id: `eq.${userId}`,
+      followee_id: `eq.${myId()}`
+    });
   },
 
   async followers(userId) {
@@ -785,9 +834,115 @@ export const campusApi = {
     return row;
   },
 
+  /**
+   * Join or leave a channel.
+   *
+   * Goes through the join_channel() RPC, not a direct insert: a private
+   * channel must produce a REQUEST, not a membership, and that decision
+   * cannot live in the browser. 14_groups_sm.sql refuses direct inserts
+   * into channel_members for exactly that reason, so the old
+   * db.insert() here would now fail the RLS check.
+   *
+   * Returns 'joined' | 'requested' | 'left' | 'error' so the UI can say
+   * "Request sent" instead of pretending you are in.
+   */
   async joinChannel(id, on) {
-    if (on) await db.insert('channel_members', { channel_id: id, user_id: myId() }, { upsert: true });
-    else    await db.remove('channel_members', { channel_id: `eq.${id}`, user_id: `eq.${myId()}` });
+    if (!on) {
+      const ok = await db.rpc('leave_channel', { p_channel: id }).catch(() => false);
+      // The owner cannot leave their own channel — somebody has to run it.
+      return ok === false ? 'owner' : 'left';
+    }
+    const res = await db.rpc('join_channel', { p_channel: id });
+    return (Array.isArray(res) ? res[0] : res) || 'error';
+  },
+
+  /* ---- group chat: channels and events share one screen ---------- */
+
+  async groupMessages(target, { since = null, limit = 60 } = {}) {
+    const q = target.channelId
+      ? { channel_id: `eq.${target.channelId}` }
+      : { event_id: `eq.${target.eventId}` };
+    if (since) q.created_at = `gt.${since}`;
+    const rows = await db.select('group_messages', {
+      ...q, order: 'created_at.asc', limit
+    });
+    await hydratePeople(rows.map(r => r.sender_id));
+    return rows;
+  },
+
+  async sendGroupMessage(target, payload) {
+    const row = {
+      sender_id: myId(),
+      text: payload.text || '',
+      channel_id: target.channelId || null,
+      event_id: target.eventId || null
+    };
+    if (payload.file) {
+      row.media_url = await toStorable(payload.file, 'dm');
+      row.media_type = (payload.file.type || '').startsWith('image/') ? 'image' : 'file';
+    }
+    const [created] = await db.insert('group_messages', row);
+    return created;
+  },
+
+  /** Who may talk here, and am I in charge? Drives the whole UI state. */
+  async groupInfo(target) {
+    if (target.eventId) {
+      const attending = await db.rpc('is_event_attendee', { p_event: target.eventId })
+        .catch(() => false);
+      return { role: attending ? 'member' : 'none', canPost: !!attending, kind: 'event' };
+    }
+    const [role, canPost] = await Promise.all([
+      db.rpc('channel_role',   { p_channel: target.channelId }).catch(() => null),
+      db.rpc('can_post_group', { p_channel: target.channelId, p_event: null }).catch(() => false)
+    ]);
+    const r = Array.isArray(role) ? role[0] : role;
+    return { role: r || 'none', canPost: !!canPost, kind: 'channel' };
+  },
+
+  /** The chat's display name, straight from the row that owns it. */
+  async groupName(kind, id) {
+    if (kind === 'event') {
+      const row = await db.one('events', { id: `eq.${id}`, select: 'title' });
+      return row?.title || '';
+    }
+    const row = await db.one('channels', { id: `eq.${id}`, select: 'name' });
+    return row?.name || '';
+  },
+
+  async channelMembers(channelId) {
+    const rows = await db.select('channel_members', {
+      channel_id: `eq.${channelId}`, order: 'role.asc', limit: 200
+    });
+    await hydratePeople(rows.map(r => r.user_id));
+    return rows.map(r => ({ ...person(r.user_id), role: r.role }));
+  },
+
+  async channelRequests(channelId) {
+    const rows = await db.select('channel_requests', {
+      channel_id: `eq.${channelId}`, state: 'eq.pending', order: 'created_at.desc', limit: 100
+    });
+    await hydratePeople(rows.map(r => r.user_id));
+    return rows.map(r => person(r.user_id));
+  },
+
+  async respondChannelRequest(channelId, userId, accept) {
+    return db.rpc('respond_channel_request',
+      { p_channel: channelId, p_user: userId, p_accept: !!accept });
+  },
+
+  async setChannelRole(channelId, userId, role) {
+    return db.rpc('set_channel_role',
+      { p_channel: channelId, p_user: userId, p_role: role });
+  },
+
+  /** Owner-only switches: private, and admins-only posting. */
+  async updateChannelSettings(channelId, { isPrivate, postPolicy } = {}) {
+    const patch = {};
+    if (isPrivate !== undefined)  patch.is_private = !!isPrivate;
+    if (postPolicy !== undefined) patch.post_policy = postPolicy;
+    if (!Object.keys(patch).length) return;
+    await db.update('channels', patch, { id: `eq.${channelId}` });
   },
 
   async deleteChannel(id) {
@@ -806,7 +961,7 @@ export const campusApi = {
     return rows.map(e => ({ ...e, going: (byEv.get(String(e.id)) || []).map(a => a.user_id) }));
   },
 
-  async createEvent({ title, description, location, starts_at, faculty, coverFile }) {
+  async createEvent({ title, description, location, starts_at, faculty, coverFile, cover_side }) {
     const row = {
       owner_id: myId(), title,
       description: description || '',
@@ -815,6 +970,11 @@ export const campusApi = {
       faculty: faculty || me.get()?.faculty || null
     };
     if (coverFile) row.cover_url = await toStorable(coverFile, 'banner');
+    // Which side the cover sits on when the event is opened. Stored in
+    // the description as a marker rather than a column: it is a purely
+    // cosmetic preference, and a schema change for it would have to be
+    // migrated onto every existing deployment for no functional gain.
+    if (cover_side === 'left') row.description = (row.description || '') + '\n[img:left]';
     const [created] = await db.insert('events', row);
     await db.insert('event_attendees', { event_id: created.id, user_id: myId() }, { upsert: true });
     return { ...created, going: [myId()] };
@@ -1070,7 +1230,7 @@ export const statsApi = {
    ============================================================ */
 
 export async function connectApi() {
-  const [feed, messages, stories, profile, campus, notifications, hub, leaderboard] =
+  const [feed, messages, stories, profile, campus, notifications, hub, leaderboard, inbox] =
     await Promise.all([
       import('../features/feed_sm.js'),
       import('../features/messages_sm.js'),
@@ -1079,23 +1239,44 @@ export async function connectApi() {
       import('../features/campus_sm.js'),
       import('../features/notifications_sm.js'),
       import('../features/hub_sm.js'),
-      import('../features/leaderboard_sm.js')
+      import('../features/leaderboard_sm.js'),
+      // The app-wide inbox poller. Not a feature screen — it runs on
+      // every route so a message arrives while you are on the feed.
+      import('./inbox_sm.js')
     ]);
 
   feed.useApi(feedApi);
-  messages.useApi(messagesApi);
+  // The group-chat calls live on campusApi (channels and events are its
+  // domain) but the SCREEN is messages_sm — one thread view for people
+  // and groups alike. Hand it both, rather than duplicating six methods
+  // or splitting the chat across two files.
+  messages.useApi({
+    ...messagesApi,
+    groupInfo:             campusApi.groupInfo,
+    groupName:             campusApi.groupName,
+    groupMessages:         campusApi.groupMessages,
+    sendGroupMessage:      campusApi.sendGroupMessage,
+    channelMembers:        campusApi.channelMembers,
+    channelRequests:       campusApi.channelRequests,
+    respondChannelRequest: campusApi.respondChannelRequest,
+    setChannelRole:        campusApi.setChannelRole,
+    updateChannelSettings: campusApi.updateChannelSettings
+  });
   stories.useApi(storiesApi);
   profile.useApi(profileApi);
   campus.useApi(campusApi);
   notifications.useApi(notificationsApi);
   hub.useApi(statsApi);
   leaderboard.useApi(statsApi);
+  inbox.useApi(messagesApi);
+  inbox.initInbox();
+  inbox.startInbox();
 
   // my own profile is always in the cache, so my name never renders
   // as "Étudiant" while the first request is in flight
   cachePeople(me.get());
 
-  console.info('[koliya] API connectée à Neon — 8 modules');
+  console.info('[koliya] API connectée à Neon — 9 modules');
   return true;
 }
 

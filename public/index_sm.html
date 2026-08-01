@@ -207,6 +207,16 @@
       </button>
       <span class="topbar-title" id="topbarTitle">Accueil</span>
       <div class="topbar-actions">
+        <!-- CREATE, top right, Instagram style.
+             `rail-compose` at the foot of the sidebar is display:none
+             under 900px, so a phone had NO way to make a post at all —
+             the single most important thing the app does. This button
+             is phone-only (.topbar-new is hidden on desktop, where the
+             sidebar button is already there) and opens the same sheet. -->
+        <button class="icon-btn topbar-new" id="btnComposeTop"
+                data-i18n-attr="aria-label:nav.compose" data-tip="N">
+          <i data-icon="plus"></i>
+        </button>
         <!-- Language, top right, as requested. The current code is on
              the button so you can see what you are in at a glance. -->
         <button class="icon-btn lang-btn" id="btnLang" aria-label="Language" data-tip="Language">

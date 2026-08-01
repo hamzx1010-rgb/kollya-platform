@@ -21,14 +21,14 @@
 import {
   $, $$, el, on, esc, html, raw, timeAgo, clockTime, dayLabel, sameDay,
   duration, initials, avatarColor, debounce, rafThrottle, imagesFromPaste,
-  onVisible, env, uid, safeUrl, cssEscape
+  onVisible, env, uid, safeUrl, cssEscape, richText
 } from '../core/utils_sm.js';
 import { state, setState, me, draft, scoped, on as onEvent, emit } from '../core/store_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { I, icon, reactionIcon, reactionLabel, REACTION_KEYS } from '../core/icons_sm.js';
 import {
   toast, contextMenu, reactionPicker, actionBar, lightbox,
-  confirmDialog, skeletonList, emptyState, optimistic, closeMenu
+  confirmDialog, skeletonList, emptyState, optimistic, closeMenu, modal
 } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
 import { t, errorText } from '../core/i18n_sm.js';
@@ -477,10 +477,13 @@ const mediaLabel = kind => ({
   audio: t('dm.voice'), file:  t('dm.file')
 }[kind] || t('dm.attachment'));
 
-async function renderConvList() {
+async function renderConvList({ quiet = false } = {}) {
   const box = $('#convScroll');
   if (!box) return;
-  box.innerHTML = skeletonList(5, 'conv');
+  // quiet: a background refresh from the inbox poller. Showing skeletons
+  // every five seconds would make the list flicker while you read it, so
+  // only the first paint (or an explicit reload) gets them.
+  if (!quiet || !box.querySelector('.conv')) box.innerHTML = skeletonList(5, 'conv');
 
   try {
     const [rows, f, reqs] = await Promise.all([
@@ -1809,7 +1812,11 @@ function wireComposer() {
   if (composer) composer.dataset.wired = '1';
 
   // restore an unfinished message
-  const saved = draft.get(peer.id);
+  //
+  // peer is null in a GROUP chat (a channel or an event has no single
+  // peer), and draft.get(null.id) threw, which left the send button
+  // permanently disabled — nothing could be posted to a group at all.
+  const saved = peer ? draft.get(peer.id) : null;
   if (saved) { input.value = saved; autoGrow(input); }
   syncSendState();
 
@@ -1817,7 +1824,9 @@ function wireComposer() {
     autoGrow(input);
     syncSendState();
     saveDraft();
-    api?.setTyping?.(peer.id);
+    // No typing indicator in a group: there is no single peer to tell,
+    // and peer.id threw here when a channel chat was open.
+    if (peer) api?.setTyping?.(peer.id);
   });
 
   on(input, 'keydown', e => {
@@ -2013,7 +2022,308 @@ function jumpTo(id) {
    OPEN A THREAD
    ------------------------------------------------------------ */
 
+/* ============================================================
+   GROUP CHATS — channels and events
+   ============================================================
+   One screen for both, reusing the thread markup. The differences are
+   only in who may post and what the header says, so a separate screen
+   would be the same code twice with two sets of bugs.
+
+   Everything below trusts the DATABASE for permission:
+   14_groups_sm.sql refuses an insert from a member of an admins-only
+   channel, and refuses a read from a non-member. The UI hides what it
+   can, but hiding is not enforcing.
+   ============================================================ */
+
+let group = null;        // { kind, id, info } while a group chat is open
+let groupTimer = 0;
+
+function stopGroupPoll() {
+  if (groupTimer) clearInterval(groupTimer);
+  groupTimer = 0;
+}
+
+export async function openGroupThread(kind, id) {
+  peer = null;                       // not a person: stop the DM poller
+  stopPolling();
+  group = { kind, id, info: null };
+
+  setState({ activeChat: `${kind}-${id}` });
+  $('#dm')?.setAttribute('data-open', 'thread');
+  for (const n of $$('.conv')) n.classList.remove('on');
+
+  const body = $('#threadBody');
+  if (body) body.innerHTML = skeletonList(4);
+
+  let info = { role: 'none', canPost: false, kind };
+  try {
+    info = await api.groupInfo(kind === 'event' ? { eventId: id } : { channelId: id });
+  } catch { /* fall through: no post box, and the list will show why */ }
+  group.info = info;
+
+  try {
+    group.name = await api.groupName?.(kind, id) || '';
+  } catch { group.name = ''; }
+
+  renderGroupHeader();
+  await renderGroupMessages();
+
+  // Same cadence as a DM thread. A group is chattier, not slower.
+  stopGroupPoll();
+  groupTimer = setInterval(() => { if (!document.hidden) renderGroupMessages({ append: true }); }, 4000);
+  groupTimer?.unref?.();
+}
+
+/* The chat's name, cached on the group object.
+   NOT read out of campus_sm's arrays: those are module-private, and
+   reaching into another screen's state means the title is wrong
+   whenever that screen has not been visited yet. */
+function groupTitle() {
+  if (!group) return '';
+  return group.name || t(group.kind === 'event' ? 'events.chat' : 'channels.chat');
+}
+
+function renderGroupHeader() {
+  const head = $('#threadHead');
+  if (!head || !group) return;
+  const admin = group.info?.role === 'owner' || group.info?.role === 'admin';
+
+  head.innerHTML = `
+    <button class="icon-btn thread-back" id="threadBack" aria-label="${esc(t('action.back'))}">${I.arrowLeft}</button>
+    <div class="av sm" style="background:var(--brand)">${icon(group.kind === 'event' ? 'calendar' : 'hash', { size: 16 })}</div>
+    <div class="grow" style="min-width:0">
+      <div class="t-bold truncate">${esc(groupTitle())}</div>
+      <div class="presence">${esc(t(group.kind === 'event' ? 'events.chatSub' : 'channels.chatSub'))}</div>
+    </div>
+    ${admin ? `<button class="icon-btn" id="grpAdmin" data-tip="${esc(t('channels.manage'))}"
+                aria-label="${esc(t('channels.manage'))}">${icon('settings', { size: 16 })}</button>` : ''}`;
+
+  on($('#threadBack'), 'click', () => { stopGroupPoll(); group = null; go('messages'); });
+  if (admin) on($('#grpAdmin'), 'click', () => openChannelAdmin(group.id));
+
+  // A member of an admins-only channel gets no composer at all. Showing
+  // a box that the database will refuse is worse than not showing one.
+  const wrap = $('#composerWrap');
+  if (wrap) {
+    wrap.classList.toggle('hidden', !group.info?.canPost);
+    if (group.info?.canPost) wireGroupComposer();
+  }
+  $('#readOnlyBar')?.remove();
+  if (!group.info?.canPost) {
+    const thread = $('#thread');
+    thread?.append(el('div', { class: 'request-bar', id: 'readOnlyBar' },
+      el('div', { class: 'rb-text' },
+        el('div', { class: 't-sm t-bold' }, t('channels.readOnly')),
+        el('div', { class: 't-xs t-dim' }, t('channels.readOnlyWhy')))));
+  }
+}
+
+async function renderGroupMessages({ append = false } = {}) {
+  if (!group) return;
+  const body = $('#threadBody');
+  if (!body) return;
+
+  const target = group.kind === 'event' ? { eventId: group.id } : { channelId: group.id };
+  let rows = [];
+  try {
+    rows = await api.groupMessages(target);
+  } catch {
+    body.innerHTML = '';
+    body.append(emptyState({ icon: I.lock, title: t('channels.noAccess'), text: t('channels.noAccessWhy') }));
+    return;
+  }
+
+  // The welcome row the trigger writes has no text; it exists only so
+  // the chat is not an empty table.
+  const real = rows.filter(r => (r.text || '').trim() || r.media_url);
+  const sig = real.map(r => r.id).join(',');
+  if (append && body.dataset.sig === sig) return;   // nothing new: do not repaint
+  body.dataset.sig = sig;
+
+  if (!real.length) {
+    body.innerHTML = '';
+    body.append(emptyState({ icon: I.message, title: t('channels.chatEmpty'), text: t('channels.chatEmptyWhy') }));
+    return;
+  }
+
+  const stick = nearBottom(body);
+  body.innerHTML = real.map(r => {
+    const a = person(r.sender_id);
+    const mine = String(r.sender_id) === String(me.id);
+    return `<div class="bubble-row${mine ? ' me' : ''}">
+      ${mine ? '' : `<span class="av xs" style="background:${avatarColor(a.id)}">${esc(initials(a.full_name))}</span>`}
+      <div class="bubble${mine ? ' me' : ''}">
+        ${mine ? '' : `<div class="t-xs t-bold" style="color:var(--brand-on-tint)">${esc(a.full_name)}</div>`}
+        ${r.media_url ? `<div class="media"><img src="${esc(safeUrl(r.media_url))}" alt=""></div>` : ''}
+        ${r.text ? `<div>${richText(r.text)}</div>` : ''}
+        <span class="bubble-time">${timeAgo(r.created_at)}</span>
+      </div>
+    </div>`;
+  }).join('');
+  if (stick) scrollToBottom(true);
+}
+
+let groupComposerWired = false;
+function wireGroupComposer() {
+  // Reuse the DM composer's own wiring first: it owns the auto-grow,
+  // the character state and — the part that mattered — enabling the
+  // send button when there is text. Without this the button stayed
+  // disabled and nothing could be sent to a group at all. It is
+  // idempotent by design, so calling it here is free.
+  wireComposer();
+
+  if (groupComposerWired) return;
+  const btn = $('#btnSend');
+  const input = $('#composerInput');
+  if (!btn || !input) return;
+  groupComposerWired = true;
+
+  const sendGroup = async e => {
+    // Only while a group chat is open. The DM composer owns these same
+    // elements, so without this guard a normal message would be sent
+    // twice — once by each handler.
+    if (!group) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    const text = (input.value || '').trim();
+    if (!text) return;
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));   // resets the send button
+
+    const target = group.kind === 'event' ? { eventId: group.id } : { channelId: group.id };
+    try {
+      await api.sendGroupMessage(target, { text });
+      await renderGroupMessages();
+    } catch (err) {
+      input.value = text;                 // never lose what they typed
+      toast(errorText(err), 'err');
+    }
+  };
+
+  // Capture phase so this runs BEFORE the DM handler and can stop it.
+  btn.addEventListener('click', sendGroup, true);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) sendGroup(e);
+  }, true);
+}
+
+/* ------------------------------------------------------------
+   CHANNEL ADMIN — the Telegram-style controls.
+   Owner and admins only; the buttons are hidden otherwise AND the
+   database refuses the calls, so hiding is convenience, not security.
+   ------------------------------------------------------------ */
+async function openChannelAdmin(channelId) {
+  const box = el('div', { class: 'col g3' });
+  box.innerHTML = skeletonList(3, 'conv');
+  const m = modal({ title: t('channels.manage'), body: box });
+
+  const isOwner = group?.info?.role === 'owner';
+  let members = [], requests = [];
+  try {
+    [members, requests] = await Promise.all([
+      api.channelMembers(channelId),
+      api.channelRequests(channelId).catch(() => [])
+    ]);
+  } catch (err) {
+    box.innerHTML = '';
+    box.append(emptyState({ icon: I.inbox, title: t('error.loading'), text: errorText(err) }));
+    return;
+  }
+
+  const draw = () => {
+    box.innerHTML = `
+      ${isOwner ? `<div class="field">
+        <label class="label">${esc(t('channels.whoCanPost'))}</label>
+        <div class="seg" id="policySeg">
+          <button class="seg-btn" data-policy="all">${esc(t('channels.everyone'))}</button>
+          <button class="seg-btn" data-policy="admins">${esc(t('channels.adminsOnly'))}</button>
+        </div>
+        <label class="row g2" style="margin-top:var(--s3)">
+          <input type="checkbox" id="chPrivate">
+          <span class="t-sm">${esc(t('channels.private'))}</span>
+        </label>
+        <div class="set-hint">${esc(t('channels.privateWhy'))}</div>
+      </div>` : ''}
+
+      ${requests.length ? `<div class="hub-sec-head">${esc(t('channels.requests'))} · ${requests.length}</div>
+        ${requests.map(r => `<div class="row g3 people-row">
+          <span class="av sm" style="background:${avatarColor(r.id)}">${esc(initials(r.full_name))}</span>
+          <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(r.full_name)}</div></div>
+          <button class="btn btn-primary btn-sm" data-accept="${esc(r.id)}">${esc(t('dm.accept'))}</button>
+          <button class="btn btn-ghost btn-sm" data-decline="${esc(r.id)}">${esc(t('dm.decline'))}</button>
+        </div>`).join('')}` : ''}
+
+      <div class="hub-sec-head">${esc(t('channels.memberList'))} · ${members.length}</div>
+      ${members.map(p => `<div class="row g3 people-row">
+        <span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>
+        <div class="grow" style="min-width:0">
+          <div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
+          <div class="t-xs t-dim">${esc(t('channels.role.' + p.role))}</div>
+        </div>
+        ${isOwner && p.role !== 'owner'
+          ? `<button class="btn btn-outline btn-sm" data-role="${esc(p.id)}" data-next="${p.role === 'admin' ? 'member' : 'admin'}">
+               ${esc(t(p.role === 'admin' ? 'channels.demote' : 'channels.promote'))}</button>`
+          : ''}
+      </div>`).join('')}`;
+
+    if (isOwner) {
+      for (const b of box.querySelectorAll('[data-policy]')) {
+        b.classList.toggle('on', b.dataset.policy === (group?.info?.postPolicy || 'all'));
+      }
+    }
+  };
+  draw();
+
+  on(box, 'click', async e => {
+    const pol = e.target.closest('[data-policy]');
+    if (pol) {
+      await api.updateChannelSettings(channelId, { postPolicy: pol.dataset.policy });
+      if (group?.info) group.info.postPolicy = pol.dataset.policy;
+      // Re-read: the policy decides whether I still see a composer.
+      group.info = await api.groupInfo({ channelId });
+      renderGroupHeader();
+      draw();
+      toast(t('toast.saved'), 'ok');
+      return;
+    }
+
+    const acc = e.target.closest('[data-accept]');
+    const dec = e.target.closest('[data-decline]');
+    if (acc || dec) {
+      const id = (acc || dec).dataset.accept || dec.dataset.decline;
+      try {
+        await api.respondChannelRequest(channelId, id, !!acc);
+        requests = requests.filter(r => String(r.id) !== String(id));
+        if (acc) members = await api.channelMembers(channelId);
+        draw();
+      } catch (err) { toast(errorText(err), 'err'); }
+      return;
+    }
+
+    const rl = e.target.closest('[data-role]');
+    if (rl) {
+      try {
+        await api.setChannelRole(channelId, rl.dataset.role, rl.dataset.next);
+        members = await api.channelMembers(channelId);
+        draw();
+      } catch (err) { toast(errorText(err), 'err'); }
+    }
+  });
+
+  const priv = box.querySelector('#chPrivate');
+  if (priv) on(priv, 'change', async () => {
+    try { await api.updateChannelSettings(channelId, { isPrivate: priv.checked }); toast(t('toast.saved'), 'ok'); }
+    catch (err) { priv.checked = !priv.checked; toast(errorText(err), 'err'); }
+  });
+}
+
 export async function openThread(peerId, { asRequest = false } = {}) {
+  // Leaving a group chat for a person: stop the group poller, or two
+  // pollers write into the same #threadBody.
+  stopGroupPoll();
+  group = null;
+
   // A peer with no history yet is legitimate — it is exactly what
   // "start a conversation" means. person() falls back to the cache
   // that openConversationWith() just seeded, so the header shows a
@@ -2201,6 +2511,21 @@ function markup() {
 }
 
 export function initMessages(mountFn) {
+
+  // THE LIST NOW REPAINTS BY ITSELF.
+  //
+  // Before, renderConvList() only ran from inside this route handler and
+  // from beat() — and beat() bails out when no thread is open. So a
+  // message that arrived while you sat on the conversation list did not
+  // show up until you navigated away and came back.
+  //
+  // core/inbox_sm.js polls every 5s on EVERY route and emits this when
+  // anything changed. Guarded by the element check, so it costs nothing
+  // when Messages is not on screen.
+  onEvent('inbox:changed', () => {
+    if ($('#convScroll')) renderConvList({ quiet: true });
+  });
+
   route('messages', async (arg) => {
     const host = mountFn();
     if (!host) return;
@@ -2251,6 +2576,11 @@ export function initMessages(mountFn) {
     const panelWide = measured > 720;
 
     if (arg) {
+      // `event-12` / `channel-7` open a GROUP chat; anything else is a
+      // person. One route and one screen for all three, because they
+      // are the same screen — a second messages page would drift.
+      const g = /^(event|channel)-(.+)$/.exec(arg);
+      if (g) { await openGroupThread(g[1], g[2]); return; }
       await openThread(arg);
       return;
     }

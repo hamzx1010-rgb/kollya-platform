@@ -70,7 +70,7 @@ function headerMarkup(u) {
           u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}</div>
       </div>
       ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="${esc(t('profile.changePhoto'))}" aria-label="${esc(t('profile.changePhoto'))}">${I.camera}</button>` : ''}
-      <span class="pf-level">Niv. ${lv.level}</span>
+      <span class="pf-level">${esc(t('hub.levelShort', { n: lv.level }))}</span>
     </div>
 
     <div class="pf-actions">
@@ -93,11 +93,16 @@ function headerMarkup(u) {
   <div class="pf-identity">
     <div class="row g2" style="align-items:center;flex-wrap:wrap">
       <h2 style="font-size:var(--fs-xl)">${esc(u.full_name)}</h2>
-      ${u.private ? `<span class="pill">${icon('lock',{size:12})} Privé</span>` : ''}
+      ${u.private ? `<span class="pill">${icon('lock',{size:12})} ${esc(t('profile.private'))}</span>` : ''}
       ${u.role === 'admin' ? '<span class="pill on">Admin</span>' : ''}
       <span id="pfRank"></span>
     </div>
     <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div>
+    ${u.student_card ? `<div class="pf-card" data-tip="${esc(t('profile.cardTip'))}">
+      ${icon('graduation', { size: 13 })}
+      <span class="pf-card-label">${esc(t('profile.card'))}</span>
+      <span class="pf-card-num">${esc(u.student_card)}</span>
+    </div>` : ''}
     ${u.bio ? `<p class="pf-bio">${richText(u.bio)}</p>` : ''}
     ${profileLinks(u)}
 
@@ -164,7 +169,7 @@ async function renderTabBody(u) {
     host.append(emptyState({
       icon: I.lock,
       title: t('profile.privateTitle'),
-      text: `Suivez ${u.full_name} pour voir ses publications.`
+      text: t('profile.privateBody', { name: u.full_name })
     }));
     return;
   }
@@ -437,10 +442,21 @@ function wireActions(u) {
     });
   }
 
+  // On a private account the two people counts are not buttons at all.
+  // Leaving them clickable and then showing a lock reads as broken.
+  if (graphHidden(u)) {
+    for (const b of $$('.pf-stat[data-stat="followers"], .pf-stat[data-stat="following"]')) {
+      b.setAttribute('disabled', '');
+      b.classList.add('is-locked');
+      b.setAttribute('data-tip', t('profile.privateList'));
+    }
+  }
+
   for (const b of $$('.pf-stat[data-stat]')) {
     on(b, 'click', () => {
       const kind = b.dataset.stat;
       if (kind === 'posts') { activeTab = 'posts'; syncTabs(u); return; }
+      if (graphHidden(u) && (kind === 'followers' || kind === 'following')) return;
       openPeopleList(kind, u);
     });
   }
@@ -465,26 +481,87 @@ function wireActions(u) {
   });
 }
 
+/** True when this account's social graph must stay hidden from me. */
+function graphHidden(u) {
+  return !!u.private && !u.isMe && u.followState !== 'following';
+}
+
 async function openPeopleList(kind, u) {
+  // A private account hid its POSTS but not its followers: the counts
+  // were clickable and the modal listed every name. That defeats the
+  // point of a private account, so it is gated on the same condition
+  // the post list already uses.
+  if (graphHidden(u)) {
+    const box = el('div', { class: 'col g3' });
+    box.append(emptyState({
+      icon: I.lock,
+      title: t('profile.privateTitle'),
+      text: t('profile.privateList')
+    }));
+    modal({ title: kind === 'followers' ? t('profile.followersTitle') : t('profile.followingTitle'), body: box });
+    return;
+  }
+
   const list = el('div', { class: 'col g3' });
   list.innerHTML = skeletonList(3, 'conv');
-  modal({ title: kind === 'followers' ? t('profile.followers') : t('profile.following'), body: list });
+  modal({ title: kind === 'followers' ? t('profile.followersTitle') : t('profile.followingTitle'), body: list });
 
   let rows = [];
   try {
     rows = kind === 'followers' ? await api.followers(u.id) : await api.following(u.id);
   } catch { /* fall through to the empty state */ }
 
+  // "Remove" only on MY OWN followers list: it deletes THEIR follow of
+  // me, which is the only way to get somebody off a private account
+  // once they have been let in. Meaningless on anyone else's list, or
+  // on a list of people I follow.
+  const canRemove = u.isMe && kind === 'followers';
+
   list.innerHTML = rows.length
     ? rows.map(p => `
-      <a class="row g3" href="#/profile/${esc(p.username)}">
-        ${p.avatar_url
-          ? `<span class="av sm"><img src="${esc(safeUrl(p.avatar_url))}" alt=""></span>`
-          : `<span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>`}
-        <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
-        <div class="t-xs t-dim"><span class="handle">@${esc(p.username)}</span> · ${esc(p.faculty || '')}</div></div>
-      </a>`).join('')
+      <div class="row g3 people-row">
+        <a class="row g3 grow" style="min-width:0" href="#/profile/${esc(p.username)}">
+          ${p.avatar_url
+            ? `<span class="av sm"><img src="${esc(safeUrl(p.avatar_url))}" alt=""></span>`
+            : `<span class="av sm" style="background:${avatarColor(p.id)}">${esc(initials(p.full_name))}</span>`}
+          <div class="grow" style="min-width:0"><div class="t-sm t-bold truncate">${esc(p.full_name)}</div>
+          <div class="t-xs t-dim"><span class="handle">@${esc(p.username)}</span> · ${esc(p.faculty || '')}</div></div>
+        </a>
+        ${canRemove ? `<button class="btn btn-outline btn-sm" data-remove="${esc(p.id)}">
+          ${esc(t('profile.removeFollower'))}</button>` : ''}
+      </div>`).join('')
     : `<div class="tg-empty">${icon('user', { size: 22 })}<span>${esc(t('profile.noPeople'))}</span></div>`;
+
+  if (!canRemove) return;
+
+  on(list, 'click', async e => {
+    const btn = e.target.closest('[data-remove]');
+    if (!btn) return;
+    e.preventDefault();
+
+    const id = btn.dataset.remove;
+    const who = rows.find(r => String(r.id) === String(id));
+    if (!await confirmDialog({
+      title: t('profile.removeFollowerQ', { name: who?.full_name || '' }),
+      message: t('profile.removeFollowerWhy'),
+      confirmLabel: t('profile.removeFollower'),
+      danger: true
+    })) return;
+
+    btn.disabled = true;
+    const row = btn.closest('.people-row');
+    try {
+      await api.removeFollower(id);
+      row?.remove();
+      // The count on the page behind the modal is now stale.
+      const n = $('#stFollowers');
+      if (n) n.textContent = Math.max(0, (Number(n.textContent) || 1) - 1);
+      toast(t('profile.removedFollower'), 'ok');
+    } catch (err) {
+      btn.disabled = false;
+      toast(errorText(err), 'err');
+    }
+  });
 }
 
 /* ------------------------------------------------------------

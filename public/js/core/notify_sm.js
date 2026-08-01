@@ -166,7 +166,7 @@ export async function askPermission({ force = false } = {}) {
  */
 export function offerNotifications() {
   if (!supported() || asked) return;
-  if (permission() !== 'default') { if (canNotify()) startWatching(); return; }
+  if (permission() !== 'default') { startWatching(); return; }
   if (store.get('offered', false)) return;
 
   asked = true;
@@ -270,13 +270,43 @@ const kindText = () => ({
 
 const ROUTE = {
   follow: '#/notifications', request: '#/notifications',
-  message: '#/messages', like: '#/notifications',
+  message: '#/messages', dm_request: '#/messages', like: '#/notifications',
   comment: '#/notifications', mention: '#/notifications'
 };
 
+/**
+ * The DM trigger stores a media message as a bracketed marker rather
+ * than translated text, because ONE row is read by users in three
+ * languages — a French string written at INSERT time would still be
+ * French for an Arabic reader. dm_preview() in SQL emits the marker;
+ * this turns it back into the reader's own language.
+ */
+const MEDIA_MARK = {
+  '[image]': 'notif.photo',
+  '[video]': 'notif.video',
+  '[audio]': 'notif.voice',
+  '[file]':  'notif.attachment'
+};
+
+function mediaLabel(text) {
+  const key = MEDIA_MARK[String(text || '').trim()];
+  return key ? t(key) : (text || '');
+}
+
 /** Ask the database what happened since the last check. */
 async function checkAlerts() {
-  if (!canNotify() || !me.id) return;
+  // NOT `if (!canNotify()) return`.
+  //
+  // That gate meant the whole alert pipeline was dead unless the student
+  // had granted SYSTEM notification permission: no bell count, no in-app
+  // banner, no list refresh. Someone who tapped "not now" once — or any
+  // WebView, where the permission is always 'default' — saw the bell
+  // frozen at whatever it read on boot. Reported as "the notification
+  // page isn't showing the numbers when someone likes or follows".
+  //
+  // The poll now always runs; only the SHADE notification at the bottom
+  // is permission-gated, and notify() already no-ops without it.
+  if (!me.id) return;
   // Notifying about something already on screen is noise.
   if (!document.hidden && location.hash.startsWith('#/notifications')) return;
 
@@ -308,12 +338,15 @@ async function checkAlerts() {
   if (rows.length === 1) {
     const r = rows[0];
     const fn = kindText()[r.kind];
-    const [title, body] = fn ? fn(r.actor_name, r.text) : [r.actor_name, r.text || ''];
+    const preview = mediaLabel(r.text);
+    const [title, body] = fn ? fn(r.actor_name, preview) : [r.actor_name, preview];
     notify({ title, body, tag: `koliya-${r.kind}-${r.id}`,
              icon: r.actor_avatar, url: ROUTE[r.kind] || '#/notifications' });
   } else {
     notify({
-      title: `${rows.length} nouvelles notifications`,
+      // Was the hardcoded French "nouvelles notifications" — it stayed
+      // French in an Arabic UI.
+      title: t('notif.manyNew', { n: rows.length }),
       body: rows.slice(0, 3).map(r => r.actor_name).join(', '),
       tag: 'koliya-digest',
       url: '#/notifications'
@@ -326,7 +359,10 @@ async function checkAlerts() {
 let watching = false;
 
 export function startWatching() {
-  if (watching || !canNotify()) return;
+  // Same reasoning as checkAlerts(): the poller must run even when the
+  // system permission was refused, because it also feeds the bell count
+  // and the in-app banner — neither of which needs permission.
+  if (watching) return;
   watching = true;
   lastSeen = readLastSeen();
 
@@ -353,20 +389,98 @@ export function stopWatching() {
 export function initNotify() {
   if (!supported()) return;
 
-  onEvent('dm:incoming', ({ from, name, text, avatar, muted } = {}) => {
-    if (!canNotify() || muted) return;
-    // If you are looking at that very conversation, you already know.
-    if (!document.hidden && location.hash.startsWith(`#/messages/${from}`)) return;
+  /*
+    HOW A NEW MESSAGE IS ANNOUNCED — the Instagram rules.
+
+    The old version started with `if (!canNotify() ...) return`, so with
+    system notifications off NOTHING happened: no banner, no toast, no
+    sign at all while you were using the app. And it only ever fired
+    from messages_sm's beat(), which does not run unless a thread is
+    open — so the one case it handled was the one case you did not need.
+
+    Now, in order:
+      in that very thread, on screen  -> nothing, you can see it
+      elsewhere in the app            -> in-app banner you can tap
+      app hidden or closed            -> system notification
+    Muted conversations are silent everywhere.
+  */
+  onEvent('dm:incoming', ({ from, name, text, mediaType, avatar, muted } = {}) => {
+    if (muted) return;
+
+    const inThatThread =
+      !document.hidden && location.hash.startsWith(`#/messages/${from}`);
+    if (inThatThread) return;
+
+    const who = name || t('notif.newMessage');
+    // mediaLabel turns the database's "[image]" marker into the
+    // reader's own language; a bare text message passes through.
+    const body = mediaLabel(text) || (mediaType ? t('notif.attachment') : '');
+
+    // Hidden tab: the shade is the only place the student will see it.
+    if (document.hidden) {
+      notify({
+        title: who, body,
+        tag: `koliya-dm-${from}`,
+        icon: avatar,
+        url: `#/messages/${from}`
+      });
+      return;
+    }
+
+    // Visible, but on another screen: an in-app banner, which works
+    // even when the browser permission was never granted.
+    toast(body ? `${who}: ${body}` : who, {
+      kind: 'info',
+      duration: 6000,
+      action: { label: t('action.view'), fn: () => { location.hash = `#/messages/${from}`; } }
+    });
+    emit('notify:inapp', { kind: 'message', from });
+
+    // AND put it in the system shade.
+    //
+    // You asked for the little white bubble to be "connected with the
+    // system notification". The banner alone dies with the toast, so a
+    // student who looks away for ten seconds misses it entirely and has
+    // nothing to come back to. notify() is a no-op without permission,
+    // so this never double-fires where the browser has refused — the
+    // banner above is still the fallback there.
     notify({
-      title: name || t('notif.newMessage'),
-      body: text || t('notif.attachment'),
+      title: who, body,
       tag: `koliya-dm-${from}`,
       icon: avatar,
       url: `#/messages/${from}`
     });
   });
 
-  if (canNotify()) startWatching();
+  /*
+    The same rule for everything else — follows, likes, comments,
+    mentions. checkAlerts() only ever produced a system notification, so
+    with the app open and the permission missing these were invisible
+    until you happened to open the notifications page.
+  */
+  onEvent('notify:alerts', rows => {
+    if (document.hidden || !Array.isArray(rows) || !rows.length) return;
+    if (location.hash.startsWith('#/notifications')) return;
+
+    const r = rows[0];
+    const fn = kindText()[r.kind];
+    const [title, body] = fn
+      ? fn(r.actor_name, mediaLabel(r.text))
+      : [r.actor_name, mediaLabel(r.text)];
+
+    toast(rows.length > 1 ? t('notif.manyNew', { n: rows.length }) : (body ? `${title} — ${body}` : title), {
+      kind: 'info',
+      duration: 6000,
+      action: {
+        label: t('action.view'),
+        fn: () => { location.hash = ROUTE[r.kind] || '#/notifications'; }
+      }
+    });
+  });
+
+  // Always: the poller feeds the bell count and the in-app banner too,
+  // and those work with no system permission at all.
+  startWatching();
   offerNotifications();
 }
 

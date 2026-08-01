@@ -89,6 +89,13 @@
 .nav-item.nav-phone { display: none; }
 .nav-item.nav-desk  { display: flex; }
 
+/* CREATE, in the top bar, phone only.
+   The sidebar's Create button is display:none under 900px, which left a
+   phone with no way to post at all. Hidden on desktop so the action is
+   not offered twice. Declared before the media query so the query can
+   override it without a specificity fight. */
+.topbar-new { display: none; }
+
 /* labels fade out when collapsed, back in on peek */
 
 .rail-foot {
@@ -662,6 +669,14 @@
      into Events / Q&A / Channels / Saved on a phone. Six items = 55px
      each at 360px, above the 48dp touch minimum. Seven would be 47px. */
   .nav-item.primary.nav-phone { display: flex; }
+  /* ...and the Create button appears exactly where the sidebar one
+     disappears. Brand-tinted: it is the primary action on the screen. */
+  .topbar-new {
+    display: inline-flex;
+    color: var(--brand-on-tint);
+    background: color-mix(in srgb, var(--brand) 12%, transparent);
+  }
+  .topbar-new:hover { background: color-mix(in srgb, var(--brand) 20%, transparent); }
   .nav-item.nav-desk { display: none; }
 
   /* In the sidebar the count sits at the END of the row, pushed there
@@ -1677,7 +1692,45 @@
 .pf-identity { padding: var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
 .pf-bio { font-size: var(--fs-md); line-height: 1.55; margin-top: var(--s1); }
 
+/* STUDENT CARD — the number printed on the physical university card.
+   Shown on every profile: it is what proves the account belongs to a
+   real enrolled student, which is the whole premise of a campus-only
+   network. */
+.pf-card {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px var(--s3);
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border));
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+.pf-card svg { width: 13px; height: 13px; flex-shrink: 0; color: var(--brand-on-tint); }
+.pf-card-label { color: var(--text-3); }
+.pf-card-num {
+  font-weight: 700;
+  color: var(--brand-on-tint);
+  font-variant-numeric: tabular-nums;
+  /* "CS-042" beside Arabic text gets dragged to the wrong end by the
+     bidi algorithm without this. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .pf-stats { display: flex; gap: var(--s5); margin-top: var(--s2); flex-wrap: wrap; }
+
+/* A private account's follower counts are not clickable, and must not
+   pretend to be: no pointer, no hover lift. The number still shows —
+   Instagram shows "142 followers" on a locked profile and hides the
+   list, which is the honest version. */
+.pf-stat.is-locked { cursor: default; opacity: .75; }
+.pf-stat.is-locked:hover { background: none; transform: none; }
+
+/* One row of the followers/following modal, with room for Remove. */
+.people-row { align-items: center; gap: var(--s3); }
+.people-row > a { text-decoration: none; color: inherit; }
+.people-row [data-remove] { flex-shrink: 0; }
 .pf-stat {
   display: flex; align-items: baseline; gap: 5px;
   font-size: var(--fs-sm); color: var(--text-2);
@@ -2205,7 +2258,39 @@ button.pf-stat:hover span { text-decoration: underline; }
 }
 
 /* event cover inside its detail modal */
+/* EVENT DETAIL — cover beside the information, on the chosen side.
+   Two columns on a wide dialog; stacked on a phone, where 50/50 would
+   leave both halves unreadable. */
+.ev-detail { display: flex; flex-direction: column; gap: var(--s3); }
+.ev-detail-info { min-width: 0; }
+
+@media (min-width: 620px) {
+  .ev-detail.has-cover { flex-direction: row; align-items: flex-start; }
+  /* row-reverse rather than a second rule set: one declaration flips
+     the whole layout and the two sides cannot drift apart. */
+  .ev-detail.has-cover.img-left { flex-direction: row-reverse; }
+  .ev-detail.has-cover > .ev-cover { flex: 0 0 42%; max-height: none; }
+  .ev-detail.has-cover > .ev-detail-info { flex: 1 1 auto; }
+}
+/* In Arabic the whole dialog is already mirrored, so "left" and
+   "right" would swap meaning. Undo the flip so the organiser's choice
+   means what they saw when they made it. */
+[dir="rtl"] .ev-detail.has-cover { flex-direction: row-reverse; }
+[dir="rtl"] .ev-detail.has-cover.img-left { flex-direction: row; }
+
 .ev-cover { border-radius: var(--r-lg); overflow: hidden; max-height: 220px; }
+.ev-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* The picker in the create-event sheet. */
+.ev-cover-pick {
+  width: 84px; height: 84px; flex-shrink: 0;
+  border-radius: var(--r);
+  border: 1px dashed var(--border);
+  background: var(--surface-2);
+  display: grid; place-items: center; overflow: hidden;
+}
+.ev-cover-pick img { width: 100%; height: 100%; object-fit: cover; }
+.ev-cover-empty { color: var(--text-3); display: grid; place-items: center; }
 .ev-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* a taller empty state, so a hero screen never looks truncated */

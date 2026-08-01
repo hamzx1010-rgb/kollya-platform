@@ -150,10 +150,41 @@ export async function getToken({ force = false } = {}) {
       expiresAt: Date.now() + TOKEN_TTL
     });
   }
+  pushTokenToNative(token);
   return token;
 }
 
-export function clearToken() { cached = { token: null, at: 0 }; }
+/**
+ * Give the APK's background poller the token we just fetched.
+ *
+ * WHY THIS EXISTS — the fix for "streak notifications arrive but
+ * message ones never do".
+ *
+ * The streak reminder is woken by WorkManager and posts locally: no
+ * network, no auth, so it always worked. The message poller had to
+ * authenticate itself first, and step one was reading the session
+ * cookie with CookieManager.getCookie() — which returns null for an
+ * httpOnly + SameSite cookie on many WebView builds. The service then
+ * got NOT_SIGNED_IN and went silent, with nothing visible anywhere.
+ * Same scheduler, same service; only the auth path differed.
+ *
+ * The page already holds a valid token here, so it simply hands it
+ * over. No-op in a browser: window.AndroidSync does not exist.
+ */
+function pushTokenToNative(token) {
+  try {
+    const s = typeof window !== 'undefined' && window.AndroidSync;
+    if (!s?.setToken) return;
+    s.setToken(token || '', String(Date.now() + TOKEN_TTL));
+  } catch { /* a bridge failure must never break signing in */ }
+}
+
+export function clearToken() {
+  cached = { token: null, at: 0 };
+  // Signing out has to reach the service, or it keeps polling with a
+  // token for an account nobody is signed into any more.
+  pushTokenToNative(null);
+}
 
 /* ------------------------------------------------------------
    PUBLIC API

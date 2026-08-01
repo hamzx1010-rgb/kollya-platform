@@ -238,6 +238,9 @@ async function renderEvents(q = '') {
   on($('#heroCreateEvent'), 'click', openEventComposer);
 }
 
+/** The description without the [img:left] layout marker. */
+const cleanDesc = d => String(d || '').replace(/\n?\[img:(left|right)\]/g, '').trim();
+
 function openEventDetail(e) {
   const d = e.starts_at ? new Date(e.starts_at) : null;
   const owner = person(e.owner_id);
@@ -246,43 +249,109 @@ function openEventDetail(e) {
 
   const m = modal({
     title: e.title,
-    body: `<div class="col g3">
+    // The cover sits BESIDE the details, on the side the organiser
+    // chose, and stacks above them on a phone where there is no room
+    // for two columns. `[img:left]` is the marker createEvent() writes.
+    body: `<div class="ev-detail${/\[img:left\]/.test(e.description || '') ? ' img-left' : ''}${e.cover_url ? ' has-cover' : ''}">
       ${e.cover_url ? `<div class="ev-cover"><img src="${esc(safeUrl(e.cover_url))}" alt=""></div>` : ''}
+      <div class="col g3 ev-detail-info">
       <div class="row g3"><span class="tg-ic">${icon('calendar', { size: 16 })}</span>
         <div><div class="t-sm">${d ? d.toLocaleDateString('fr', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Date à préciser'}</div>
         <div class="t-xs t-dim">${d ? d.toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' }) + ' · ' : ''}${countdown(e.starts_at)}</div></div></div>
       <div class="row g3"><span class="tg-ic">${icon('compass', { size: 16 })}</span>
         <div class="t-sm">${esc(e.location || t('compose.locationTbd'))}</div></div>
       <div class="row g3"><span class="tg-ic">${icon('user', { size: 16 })}</span>
-        <div class="t-sm">Organisé par ${esc(owner.full_name)}</div></div>
-      ${e.description ? `<p class="t-sm">${esc(e.description)}</p>` : ''}
-      ${(e.going || []).length ? `<div><div class="t-xs t-dim" style="margin-bottom:6px">${e.going.length} participant${e.going.length > 1 ? 's' : ''}</div>
+        <div class="t-sm">${esc(t('events.organisedBy', { name: owner.full_name }))}</div></div>
+      ${cleanDesc(e.description) ? `<p class="t-sm">${esc(cleanDesc(e.description))}</p>` : ''}
+      ${(e.going || []).length ? `<div><div class="t-xs t-dim" style="margin-bottom:6px">${esc(t('events.attendees', { n: e.going.length }))}</div>
         <div class="av-stack">${e.going.slice(0, 8).map(id => avatarChip(person(id), 'av xs')).join('')}</div></div>` : ''}
+      </div>
     </div>`,
     footer: foot
   });
 
   if (isMine) {
     foot.append(el('button', { class: 'btn btn-ghost danger', onclick: async () => {
-      if (!await confirmDialog({ title: t('confirm.deleteEvent'), confirmLabel: 'Supprimer', danger: true })) return;
+      if (!await confirmDialog({ title: t('confirm.deleteEvent'), confirmLabel: t('action.delete'), danger: true })) return;
       try { await api.deleteEvent(e.id); m.close(); toast(t('toast.eventDeleted'), 'ok'); renderEvents(); }
       catch { toast(t('toast.deleteFailed'), 'err'); }
     }}, t('action.delete')));
+  }
+  if ((e.going || []).includes(me.id)) {
+    foot.append(el('button', { class: 'btn btn-outline', onclick: () => {
+      m.close();
+      go('messages', 'event-' + e.id);
+    }}, t('events.openChat')));
   }
   foot.append(el('button', { class: 'btn btn-primary', onclick: () => m.close() }, t('action.close')));
 }
 
 function openEventComposer() {
   const title = el('input', { class: 'input', placeholder: t('events.titlePh'), maxlength: '80' });
-  const place = el('input', { class: 'input', placeholder: 'Lieu (amphi, salle, adresse…)' });
+  const place = el('input', { class: 'input', placeholder: t('events.wherePh') });
   const when  = el('input', { class: 'input', type: 'datetime-local' });
-  const desc  = el('textarea', { class: 'textarea', rows: '3', placeholder: 'Détails…', maxlength: '400' });
+  const desc  = el('textarea', { class: 'textarea', rows: '3', placeholder: t('events.whatPh'), maxlength: '400' });
   const foot  = el('div', { class: 'row g2' });
+
+  /* ---- cover image -------------------------------------------------
+     Stored as a data: URL in events.cover_url, the same way avatars and
+     post media already are — no file host to add, and the SQL CHECK
+     constraints already accept it. */
+  let coverFile = null;
+  let coverUrl = null;
+  const pick = el('input', { type: 'file', accept: 'image/*', class: 'hidden' });
+  const preview = el('div', { class: 'ev-cover-pick' });
+  const pickBtn = el('button', { class: 'btn btn-outline btn-sm', type: 'button',
+                                 onclick: () => pick.click() },
+                     t('events.addImage'));
+
+  const drawPreview = () => {
+    preview.innerHTML = coverUrl
+      ? `<img src="${esc(safeUrl(coverUrl))}" alt="">`
+      : `<span class="ev-cover-empty">${icon('image', { size: 20 })}</span>`;
+  };
+  drawPreview();
+
+  on(pick, 'change', () => {
+    const f = pick.files?.[0];
+    if (!f) return;
+    // Keep the File and preview it locally. createEvent() already runs
+    // it through toStorable(), which resizes and compresses exactly
+    // like every other image in the app — converting here as well
+    // would do the work twice.
+    if (coverUrl) URL.revokeObjectURL(coverUrl);
+    coverFile = f;
+    coverUrl = URL.createObjectURL(f);
+    drawPreview();
+  });
+
+  /* Which side the image sits on when the event is opened. You asked to
+     choose; the value rides along in the description as a marker so no
+     schema change is needed for a purely cosmetic preference. */
+  let side = 'right';
+  const sideBtn = side => el('button', {
+    class: 'seg-btn', type: 'button', 'data-side': side
+  }, t(side === 'right' ? 'events.imgRight' : 'events.imgLeft'));
+  const sideSeg = el('div', { class: 'seg' }, sideBtn('left'), sideBtn('right'));
+  const syncSide = () => {
+    for (const b of sideSeg.children) b.classList.toggle('on', b.dataset.side === side);
+  };
+  syncSide();
+  on(sideSeg, 'click', e => {
+    const b = e.target.closest('[data-side]');
+    if (!b) return;
+    side = b.dataset.side;
+    syncSide();
+  });
 
   const m = modal({
     title: t('compose.createEvent'),
     body: el('div', { class: 'col g3' },
-      el('div', { class: 'field' }, el('label', { class: 'label' }, 'Titre'), title),
+      el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.fieldTitle')), title),
+      el('div', { class: 'field' },
+        el('label', { class: 'label' }, t('events.image')),
+        el('div', { class: 'row g3' }, preview, el('div', { class: 'col g2' }, pickBtn, sideSeg)),
+        pick),
       el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.where')), place),
       el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.when')), when),
       el('div', { class: 'field' }, el('label', { class: 'label' }, t('events.what')), desc)),
@@ -301,7 +370,9 @@ function openEventComposer() {
           title: title.value.trim(),
           location: place.value.trim() || null,
           starts_at: new Date(when.value).toISOString(),
-          description: desc.value.trim()
+          description: desc.value.trim(),
+          coverFile,
+          cover_side: side
         });
         act('event_create', created?.id);
         m.close();
@@ -647,10 +718,16 @@ const screenCfg = () => ({
    language loaded first and a later switch never reaches the labels.
    That exact bug was fixed in thirteen other places already.
    ------------------------------------------------------------ */
-const CAMPUS_TABS = ['explore', 'events', 'qa', 'channels', 'saved'];
+// Explore is NOT in this list any more.
+//
+// V9 put all five discovery screens behind one strip because the phone
+// had no way into Events or Q&A at all. But Explore is search — you go
+// there to look something up, not to browse the campus — so the strip
+// appeared above a search box it had nothing to do with. Explore is now
+// plain search; Campus owns the four campus screens.
+const CAMPUS_TABS = ['events', 'qa', 'channels', 'saved'];
 
 const campusTabs = () => ([
-  { id: 'explore',  label: t('nav.explore'),  icon: 'users' },
   { id: 'events',   label: t('nav.events'),   icon: 'calendar' },
   { id: 'qa',       label: t('nav.qa'),       icon: 'help' },
   { id: 'channels', label: t('nav.channels'), icon: 'hash' },
@@ -677,7 +754,7 @@ function mountScreen(name, mountFn) {
   // Screens with a hero carry their create button inside it, so the
   // toolbar above stays a search field and nothing else.
   host.innerHTML = `
-    ${tabStrip(name)}
+    ${name === 'explore' ? '' : tabStrip(name)}
     ${cfg.placeholder ? `<div class="campus-bar">
       <div class="grow" style="position:relative">
         <span class="input-icon">${icon('search', { size: 15 })}</span>
@@ -735,11 +812,30 @@ async function handleListClick(screen, e) {
       c.joined = !was;
       c.members = Math.max(0, (c.members || 0) + (was ? -1 : 1));
       card.replaceWith(el('div', { html: channelCard(c) }).firstElementChild);
-      try { await api.joinChannel(c.id, !was); toast(t(was ? 'toast.leftChannel' : 'toast.joinedChannel', { name: c.name }), 'ok'); }
+      try {
+        const res = await api.joinChannel(c.id, !was);
+        if (res === 'requested') {
+          // A private channel: an admin has to let you in. Do NOT show
+          // it as joined — that would be a lie the next tap exposes.
+          c.joined = false;
+          renderChannels();
+          toast(t('channels.requestSent', { name: c.name }), 'ok');
+        } else if (res === 'owner') {
+          c.joined = true;
+          renderChannels();
+          toast(t('channels.ownerCannotLeave'), 'err');
+        } else {
+          toast(t(was ? 'toast.leftChannel' : 'toast.joinedChannel', { name: c.name }), 'ok');
+        }
+      }
       catch { c.joined = was; renderChannels(); toast(t('toast.actionFailed'), 'err'); }
       return;
     }
-    toast(t('toast.channelSoon', { name: c.name }));
+    // Tapping a channel opens its group chat. Members only: a
+    // non-member cannot read it (RLS refuses), so sending them to an
+    // error screen would be worse than saying "join first".
+    if (c.joined) { go('messages', 'channel-' + c.id); return; }
+    toast(t('channels.joinFirst', { name: c.name }));
     return;
   }
 

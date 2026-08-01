@@ -179,6 +179,15 @@ onEvent('state:unread', u => {
   setBadge('notifications', u.notifications);
 });
 
+// The message badge used to be written only inside renderConvList(),
+// which runs on the Messages screen. Everywhere else it kept whatever
+// number it had when you last visited — so a message arriving while you
+// read the feed changed nothing on screen at all.
+// core/inbox_sm.js polls on every route and emits this.
+onEvent('inbox:unread', ({ total }) => {
+  setState({ unread: { ...state.unread, messages: total } });
+});
+
 /* ------------------------------------------------------------
    7. SHORTCUTS SHEET
    ------------------------------------------------------------ */
@@ -237,6 +246,10 @@ export function initShell() {
   syncLangButton();
   $('#btnSearch') && on($('#btnSearch'), 'click', () => emit('key:search'));
   $('#btnCompose')&& on($('#btnCompose'), 'click', () => emit('key:compose'));
+  // The phone's Create button. Same event as the sidebar one, so there
+  // is one composer and one code path — a second implementation would
+  // drift the moment either changed.
+  $('#btnComposeTop') && on($('#btnComposeTop'), 'click', () => emit('key:compose'));
   $('#railMe')    && on($('#railMe'), 'click', () => go('profile', me.get()?.username || null));
 
   onEvent('key:shortcuts', showShortcuts);

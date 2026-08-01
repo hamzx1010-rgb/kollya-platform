@@ -141,6 +141,15 @@ function repostQuote(p) {
     </a>`;
 }
 
+/*
+ * Counters use compact(), never `x || ''`.
+ *
+ * `0 || ''` is the empty string, so a post with no likes rendered
+ * NOTHING beside the heart. Pressing like then had to make a number
+ * appear from nowhere, which reads as "the button does nothing" — the
+ * counts looked static because at zero they were invisible.
+ * A visible 0 that ticks to 1 is the whole feedback loop.
+ */
 function postCard(p) {
   const anon = p.anonymous;
   const u = anon ? { full_name:t('feed.anonymous'), username:'anonyme', id:'anon' } : person(p.user_id);
@@ -175,14 +184,15 @@ function postCard(p) {
     ${commenterFaces(p)}
 
     <div class="post-actions">
+
       <button class="act like${liked ? ' on' : ''}" data-act="like" aria-pressed="${liked}" aria-label="${t('action.like')}">
         ${liked ? reactionIcon('love', 18) : I.smile.replace(I.smile, heartOutline())}
-        <span class="c">${p.likes.length || ''}</span>
+        <span class="c">${compact(p.likes?.length || 0)}</span>
       </button>
-      <button class="act" data-act="comment" aria-label="${t('action.reply')}">${I.comment}<span class="c">${p.comments?.length || ''}</span></button>
+      <button class="act" data-act="comment" aria-label="${t('action.reply')}">${I.comment}<span class="c">${compact(p.comments?.length || 0)}</span></button>
       <button class="act${reposted ? ' on' : ''}" data-act="repost" aria-pressed="${reposted}"
-              aria-label="${t('action.repost')}">${I.repost}<span class="c">${p.reposts?.length || ''}</span></button>
-      <button class="act" data-act="share" aria-label="${t('action.share')}">${I.share}</button>
+              aria-label="${t('action.repost')}">${I.repost}<span class="c">${compact(p.reposts?.length || 0)}</span></button>
+      <button class="act" data-act="share" aria-label="${t('action.share')}">${I.share}<span class="c">${compact(p.shares || 0)}</span></button>
       <button class="act${saved ? ' on' : ''}" data-act="save" aria-label="${t('action.save')}" style="margin-inline-start:auto">${I.bookmark}</button>
     </div>
 
@@ -219,13 +229,13 @@ function toggleLike(p, node, viaDoubleClick = false) {
       btn.setAttribute('aria-pressed', String(!was));
       btn.firstElementChild?.remove();
       btn.insertAdjacentHTML('afterbegin', !was ? reactionIcon('love', 18) : heartOutline());
-      count.textContent = p.likes.length || '';
+      count.textContent = compact(p.likes.length);
       if (!was && viaDoubleClick) heartBurst(node.querySelector('.post-media') || node);
     },
     () => {
       p.likes = was ? [...p.likes, me.id] : p.likes.filter(x => x !== me.id);
       btn.classList.toggle('on', was);
-      count.textContent = p.likes.length || '';
+      count.textContent = compact(p.likes.length);
     },
     async () => {
       await api.like(p.id, !was);
@@ -235,7 +245,7 @@ function toggleLike(p, node, viaDoubleClick = false) {
         if (p.user_id && p.user_id !== me.id) act('like_received', p.id);
       }
     },
-    'Impossible d\'aimer cette publication'
+    t('toast.likeFailed')
   );
 }
 
@@ -650,6 +660,18 @@ function render() {
   }
 }
 
+/**
+ * Look a post up by id, whatever type the id happens to be.
+ *
+ * posts.id is `bigserial`, so Neon sends a NUMBER, while
+ * element.dataset.id is ALWAYS a string. The old `x.id === card.dataset.id`
+ * compared 1 to "1", got false, and every click handler below bailed out
+ * before doing anything — like, comment, repost, share, save, the menu,
+ * poll votes and double-tap-to-like were all dead on the home feed while
+ * working fine on a profile, which coerced both sides.
+ */
+const findPost = id => posts.find(x => String(x.id) === String(id));
+
 function wireFeed() {
   const list = $('#feedList');
   if (!list) return;
@@ -657,7 +679,7 @@ function wireFeed() {
   on(list, 'click', e => {
     const card = e.target.closest('.post');
     if (!card) return;
-    const p = posts.find(x => x.id === card.dataset.id);
+    const p = findPost(card.dataset.id);
     if (!p) return;
 
     const actBtn = e.target.closest('[data-act]');
@@ -689,14 +711,14 @@ function wireFeed() {
     const media = e.target.closest('.post-media');
     if (!media) return;
     const card = media.closest('.post');
-    const p = posts.find(x => x.id === card.dataset.id);
+    const p = findPost(card.dataset.id);
     if (p && !p.likes.includes(me.id)) toggleLike(p, card, true);
   });
 
   on(list, 'contextmenu', e => {
     const card = e.target.closest('.post');
     if (!card) return;
-    const p = posts.find(x => x.id === card.dataset.id);
+    const p = findPost(card.dataset.id);
     if (p) postMenu(e, p);
   });
 
@@ -717,7 +739,7 @@ function wireFeed() {
     onEvent('key:prev', () => move(-1));
     onEvent('key:like', () => {
       if (!selectedPost) return;
-      const p = posts.find(x => x.id === selectedPost);
+      const p = findPost(selectedPost);
       const card = $(`.post[data-id="${cssEscape(selectedPost)}"]`);
       if (p && card) toggleLike(p, card);
     });

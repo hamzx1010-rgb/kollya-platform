@@ -291,6 +291,15 @@
   display: flex; flex-direction: column; align-items: center; gap: var(--s2);
   pointer-events: none;
 }
+
+/* Clear the bottom tab bar.
+   Toasts are now the in-app notification banner for a new message, so
+   they must not sit ON TOP of the very badge they are announcing.
+   Measured at 412px: the toast covered the nav row entirely, hiding the
+   Messages count. 58px bar + the safe-area inset + the normal gutter. */
+@media (max-width: 900px) {
+  .toasts { bottom: calc(58px + env(safe-area-inset-bottom) + var(--s3)); }
+}
 .toast {
   display: flex; align-items: center; gap: var(--s3);
   max-width: min(440px, calc(100vw - var(--s8)));
