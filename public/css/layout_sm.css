@@ -136,6 +136,43 @@
 .topbar-title { font-size: var(--fs-lg); font-weight: 650; }
 .topbar-actions { margin-inline-start: auto; display: flex; align-items: center; gap: var(--s1); }
 
+/* Controls must never be flexed down to 0px on a narrow screen — a
+   350px window used to crush the hamburger and the bell to nothing. */
+.topbar > .icon-btn,
+.topbar .topbar-actions,
+.topbar .topbar-brand { flex: none; }
+
+/* BRAND GROUP — ☰ next to the "Koliya" wordmark, at the inline-start
+   of the bar (RTL-safe: in Arabic the group sits on the right). The
+   wordmark itself only shows on phones; on desktop it already lives at
+   the top of the rail and repeating it would be noise. */
+.topbar-brand { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+.topbar-brand-word {
+  display: none;
+  font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+/* The top-bar bell wears the same badge the rail item used to. */
+.topbar-actions .notif-btn { position: relative; color: inherit; }
+.topbar-actions .notif-btn .count {
+  position: absolute; top: 1px; inset-inline-end: -2px;
+}
+.topbar-actions .notif-btn.on { color: var(--brand); }
+
+/* Stale Neon schema cache — dismissible banner shown at boot when the
+   new tables are missing from the Data API's cache. */
+.schema-banner {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  background: color-mix(in srgb, var(--warn, #B45309) 14%, var(--surface));
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.schema-banner strong { flex: none; }
+.schema-banner span { min-width: 0; }
+.schema-banner .icon-btn { margin-inline-start: auto; flex: none; }
+
 /* the back arrow only exists when there is somewhere to go back to */
 .topbar .back-btn { display: none; }
 .app[data-can-back="true"] .topbar .back-btn { display: inline-flex; }
@@ -718,6 +755,14 @@
     background: color-mix(in srgb, var(--brand) 12%, transparent);
   }
   .topbar-new:hover { background: color-mix(in srgb, var(--brand) 20%, transparent); }
+
+  /* Phone top bar: [☰ Koliya] at the inline-start, actions at the end.
+     The wordmark appears (it is not in a rail any more down here) and
+     the page title goes — the active bottom tab already names the
+     screen, and both would not fit next to five action buttons. */
+  .topbar-brand-word { display: inline; }
+  .topbar-title { display: none; }
+
   .nav-item.nav-desk { display: none; }
 
   /* In the sidebar the count sits at the END of the row, pushed there

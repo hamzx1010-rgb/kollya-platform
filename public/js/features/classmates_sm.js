@@ -10,7 +10,7 @@
 
 import { $, on, esc, initials, avatarColor, groupBy } from '../core/utils_sm.js';
 import { me, scoped, on as onEvent } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { emptyState, skeletonList } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
@@ -23,16 +23,19 @@ let faculty = store.get('faculty', '');
 let level   = store.get('level', '');
 let people  = [];
 let loading = false;
+let loadError = null;
 let lastHost = null;
 
 async function load() {
   if (!api?.list) { people = []; return; }
   loading = true;
+  loadError = null;
   try {
     people = await api.list({ faculty, level }) || [];
   } catch (e) {
     console.warn('[koliya] classmates indisponibles', e.message);
     people = [];
+    loadError = e;
   } finally {
     loading = false;
   }
@@ -62,10 +65,14 @@ function render(host) {
   const groups = faculties.map(f => {
     const rows = people.filter(p => (p.faculty || '') === f);
     const byLevel = groupBy(rows, p => p.level || '');
+    // "1 levels" is exactly the kind of sloppiness a student notices.
+    // One level gets its own string; everything else interpolates {n}.
+    const nLevels = byLevel.size;
+    const levelsLabel = nLevels === 1 ? t('classmates.levelOne') : t('classmates.levels', { n: nLevels });
     return `<section class="clm-fac">
       <div class="clm-fac-head">
         <span class="clm-fac-name">${esc(f)}</span>
-        <span class="clm-fac-count">${rows.length} ${esc(t('classmates.students'))}</span>
+        <span class="clm-fac-count">${rows.length} ${esc(t('classmates.students'))} · ${esc(levelsLabel)}</span>
       </div>
       ${LEVELS.filter(l => byLevel.has(l)).map(l => `
         <div class="clm-level-title">${esc(levelLabel(l))}</div>
@@ -90,7 +97,12 @@ function render(host) {
       <button class="btn btn-outline" id="clmSearch">${icon('search', { size: 15 })} ${esc(t('action.apply'))}</button>
     </div>
     ${loading ? skeletonList(4, 'post') : ''}
-    ${!loading && !people.length ? `<div>${emptyState({
+    ${!loading && loadError ? `<div>${emptyState({
+      icon: I.graduation,
+      title: t('error.loading'),
+      text: errorText(loadError)
+    })}</div>` : ''}
+    ${!loading && !loadError && !people.length ? `<div>${emptyState({
       icon: I.graduation,
       title: t('classmates.empty.title'),
       text: me.get()?.faculty ? t('classmates.empty.myFaculty') : t('classmates.empty.text')

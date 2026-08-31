@@ -132,6 +132,46 @@ async function handleSignOut() {
   showAuthScreen();
 }
 
+/* ------------------------------------------------------------
+   2b. SCHEMA-CACHE PROBE
+   The founder's "could not found / can't post": the SQL for
+   marketplace_items and documents ran, but Neon's Data API keeps its
+   own schema cache, and until someone clicks "Refresh schema cache"
+   PostgREST answers 404 PGRST205 for those tables. The app used to
+   translate that into "the market is empty", which is a lie. Probe
+   once at boot and show a dismissible banner with the real fix.
+   ------------------------------------------------------------ */
+
+async function checkSchemaCache() {
+  if (!canUseDatabase()) return;
+  const { db } = await import('./core/db_sm.js');
+  try {
+    await Promise.all([
+      db.select('marketplace_items', { select: 'id', limit: 1 }),
+      db.select('documents', { select: 'id', limit: 1 })
+    ]);
+  } catch (e) {
+    if (e?.code !== 'PGRST205' && e?.status !== 404) return;   // other errors have their own screens
+    showSchemaBanner();
+  }
+}
+
+function showSchemaBanner() {
+  if ($('#schemaBanner')) return;
+  const main = $('#main');
+  if (!main) return;
+  const div = document.createElement('div');
+  div.id = 'schemaBanner';
+  div.className = 'schema-banner';
+  div.setAttribute('role', 'alert');
+  div.innerHTML = `
+    <strong>${t('error.schemaCacheTitle')}</strong>
+    <span>${t('error.schemaCache')}</span>
+    <button class="icon-btn" id="schemaBannerClose" aria-label="${t('action.close')}">${icon('close', { size: 16 })}</button>`;
+  main.prepend(div);
+  div.querySelector('#schemaBannerClose')?.addEventListener('click', () => div.remove());
+}
+
 function bootDone() {
   // window.dispatchEvent, not the bare global: `dispatchEvent` alone is
   // undefined in some module scopes and throws, which would kill boot
@@ -155,6 +195,11 @@ async function enterApp() {
     console.error('[koliya] connexion API échouée', err);
     toast(t('boot.noDatabase'), { kind: 'err', duration: 8000 });
   }
+
+  // If the V19 tables are missing from the Data API's schema cache
+  // (PGRST205), every "list" would look empty for no visible reason.
+  // Say it once, at the top, with the exact fix. Non-blocking.
+  checkSchemaCache().catch(() => {});
 
   // The game engine listens for 'game:action' events, so it must be
   // wired before the first screen can fire one.

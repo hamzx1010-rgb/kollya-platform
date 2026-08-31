@@ -45,7 +45,7 @@ const inList = ids => `in.(${[...new Set(ids.map(String))]
 // outsider. Verified in PostgreSQL that RLS lets one student read
 // another's — it is not private data here.
 const PROFILE_COLS =
-  'id,username,full_name,faculty,university,avatar_url,banner_url,bio,xp,streak,role,status,is_private,last_seen,website,github,linkedin,pronouns,student_card';
+  'id,username,full_name,faculty,university,level,avatar_url,banner_url,bio,xp,streak,role,status,is_private,last_seen,website,github,linkedin,pronouns,student_card';
 
 /** Load any profiles we do not have cached yet, in one request. */
 async function hydratePeople(ids) {
@@ -1421,7 +1421,11 @@ export const marketplaceApi = {
       params.seller_id = `eq.${mine.id}`;
       params.status = 'eq.sold';
     }
-    const rows = await soft(db.select('marketplace_items', params));
+    // No soft() here on purpose. A 404 on marketplace_items means the
+    // Data API schema cache is stale (PGRST205) — swallowing it painted
+    // a fake "the market is empty" while the real fix is one click in
+    // Neon. Let it throw; the screen shows errorText() instead.
+    const rows = await db.select('marketplace_items', params);
     await hydratePeople(rows.map(r => r.seller_id).filter(Boolean));
     return rows.map(r => ({ ...r, seller: person(r.seller_id) }));
   },
@@ -1464,9 +1468,11 @@ export const marketplaceApi = {
 
 export const documentsApi = {
   async list() {
-    const rows = await soft(db.select('documents', {
+    // No soft() — see marketplaceApi.list. A stale schema cache must
+    // surface as the schema-cache message, not "your shelf is empty".
+    const rows = await db.select('documents', {
       order: 'created_at.desc', limit: 100, select: '*'
-    }));
+    });
     await hydratePeople(rows.map(r => r.owner_id).filter(Boolean));
     return rows.map(r => ({ ...r, owner: person(r.owner_id) }));
   },
@@ -1506,7 +1512,12 @@ export const classmatesApi = {
     };
     if (faculty) params.faculty = `eq.${faculty}`;
     if (level) params.level = `eq.${level}`;
-    const rows = await db.select('profiles', params).catch(() => []);
+    // Schema errors must reach the screen (see marketplaceApi.list);
+    // anything else degrades to an empty list like before.
+    const rows = await db.select('profiles', params).catch(e => {
+      if (e?.code === 'PGRST205' || e?.code === 'PGRST204' || e?.status === 404) throw e;
+      return [];
+    });
     cachePeople(rows);
     return rows;
   }

@@ -73,13 +73,25 @@ for (const name of ROUTES) {
   ok(`${name}: title updated`, D.getElementById('topbarTitle').textContent.length>0);
 }
 
-// V19 hamburger drawer: every tab reachable from the phone.
-ok('hamburger button exists', !!D.getElementById('btnMenu'));
-D.getElementById('btnMenu').click();
+// V19.1 hamburger drawer: the ☰ moved next to the Koliya wordmark
+// (#btnMenuTop, brand group at the inline-start of the top bar).
+const burger = D.getElementById('btnMenuTop') || D.getElementById('btnMenu');
+ok('hamburger button exists', !!burger);
+ok('hamburger sits in the brand group next to the wordmark', !!D.querySelector('.topbar-brand #btnMenuTop'));
+burger.click();
 ok('hamburger opens the drawer', D.getElementById('navDrawer').classList.contains('open'));
 ok('drawer lists the main tabs', D.querySelectorAll('#navDrawerPanel a').length >= 12);
+ok('drawer has NO notifications entry (it lives in the top bar now)',
+   !D.querySelector('#navDrawerPanel a[data-drawer="notifications"]'));
 D.getElementById('navDrawerScrim').click();
 ok('scrim closes the drawer', !D.getElementById('navDrawer').classList.contains('open'));
+
+// V19.1 notifications bell in the top bar, badge id unchanged.
+ok('top bar bell exists', !!D.getElementById('btnNotifsTop'));
+ok('bell links to notifications', D.getElementById('btnNotifsTop').getAttribute('href') === '#/notifications');
+ok('bell carries data-nav for the active state', D.getElementById('btnNotifsTop').dataset.nav === 'notifications');
+ok('badge kept its id inside the bell', !!D.querySelector('#btnNotifsTop #badgeNotifs'));
+ok('notifications is gone from the rail', !D.querySelector('#railNav [data-nav="notifications"]'));
 
 // Deep links with an argument.
 // This test boots the real app_sm.js with nobody signed in, so no API

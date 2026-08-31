@@ -10,7 +10,7 @@
 
 import { $, $$, el, on, esc, truncate, initials, avatarColor, safeUrl } from '../core/utils_sm.js';
 import { me, scoped, on as onEvent } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, confirmDialog, emptyState, skeletonList } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
@@ -22,6 +22,7 @@ const store = scoped('marketplace');
 let filter = store.get('filter', 'all');   // all | available | mine
 let items  = [];
 let loading = false;
+let loadError = null;
 let lastHost = null;
 
 const FILTERS = [
@@ -44,11 +45,16 @@ const CONDITIONS = ['new', 'like-new', 'used', 'for-parts'];
 async function load() {
   if (!api?.list) { items = []; return; }
   loading = true;
+  loadError = null;
   try {
     items = await api.list({ filter }) || [];
   } catch (e) {
+    // A stale Neon schema cache (PGRST205) used to be swallowed here
+    // and the market looked "empty" — the user's "could not found".
+    // Keep the error and render it; errorText() says what to do.
     console.warn('[koliya] marketplace indisponible', e.message);
     items = [];
+    loadError = e;
   } finally {
     loading = false;
   }
@@ -102,6 +108,12 @@ function render(host) {
   list.className = 'col g3';
   if (loading) {
     list.innerHTML = skeletonList(3, 'post');
+  } else if (loadError) {
+    list.innerHTML = `<div>${emptyState({
+      icon: I.store,
+      title: t('error.loading'),
+      text: errorText(loadError)
+    })}</div>`;
   } else if (!items.length) {
     list.innerHTML = `<div>${emptyState({
       icon: I.store,

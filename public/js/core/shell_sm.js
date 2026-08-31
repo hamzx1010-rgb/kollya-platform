@@ -279,8 +279,11 @@ onEvent('inbox:unread', ({ total }) => {
    from ROUTES, not from a second list that can drift.
    ------------------------------------------------------------ */
 
+// Notifications is NOT here: it moved to the top bar (#btnNotifsTop),
+// so listing it again in the drawer would be a second entry point with
+// a second active state for the same route.
 const DRAWER_ROUTES = [
-  'feed', 'explore', 'messages', 'notifications', 'hub',
+  'feed', 'explore', 'messages', 'hub',
   'marketplace', 'channels', 'events', 'documents', 'classmates',
   'qa', 'profile', 'saved', 'leaderboard', 'settings'
 ];
@@ -314,18 +317,23 @@ export function closeDrawer() {
   if (!d) return;
   d.classList.remove('open');
   d.setAttribute('aria-hidden', 'true');
-  $('#btnMenu')?.focus();
+  ($('#btnMenuTop') || $('#btnMenu'))?.focus();
 }
 
 function wireDrawer() {
-  const btn = $('#btnMenu');
+  // The hamburger moved from the actions cluster into the brand group
+  // (#btnMenuTop, next to the wordmark). Accept the old id too so
+  // nothing depending on it breaks.
+  const buttons = [$('#btnMenuTop'), $('#btnMenu')].filter(Boolean);
   const drawer = $('#navDrawer');
-  if (!btn || !drawer) return;
+  if (!buttons.length || !drawer) return;
   renderDrawer();
 
-  on(btn, 'click', () => {
-    drawer.classList.contains('open') ? closeDrawer() : openDrawer();
-  });
+  for (const btn of buttons) {
+    on(btn, 'click', () => {
+      drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+    });
+  }
   on($('#navDrawerScrim'), 'click', closeDrawer);
   on($('#navDrawerClose'), 'click', closeDrawer);
   on(drawer, 'click', e => {
