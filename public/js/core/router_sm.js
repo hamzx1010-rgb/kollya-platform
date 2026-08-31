@@ -42,7 +42,11 @@ export const ROUTES = {
   settings:      { title: 'nav.settings',      nav: false, icon: 'settings' },
   post:          { title: 'feed.post',         nav: false },
   channel:       { title: 'nav.channels',      nav: false },
-  auth:          { title: 'auth.signIn',       nav: false, public: true }
+  auth:          { title: 'auth.signIn',       nav: false, public: true },
+  // A hash nobody recognises used to be rewritten to the feed in
+  // silence, so a wrong or dead link looked like "the app took me
+  // home for no reason". It gets its own screen now.
+  notFound:      { title: 'error.notFoundTitle', nav: false, public: true }
 };
 
 /** The human label for a route, in the current language. */
@@ -60,7 +64,8 @@ export function parseHash(hash = location.hash) {
   const [path, qs] = raw.split('?');
   const [name = '', arg = null] = path.split('/');
   return {
-    name:  ROUTES[name] ? name : DEFAULT_ROUTE,
+    // empty hash -> home; a hash that names nothing -> the 404 screen
+    name:  ROUTES[name] ? name : (name ? 'notFound' : DEFAULT_ROUTE),
     arg:   arg ? decodeURIComponent(arg) : null,
     query: Object.fromEntries(new URLSearchParams(qs || ''))
   };

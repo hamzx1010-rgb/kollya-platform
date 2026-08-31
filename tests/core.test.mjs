@@ -69,7 +69,10 @@ ok('theme defaults to system', ['system','light','dark'].includes(S.prefs.theme)
 const R=await import(b+'core/router_sm.js');
 ok('parse route', R.parseHash('#/messages/u1?t=1').name==='messages');
 ok('parse arg', R.parseHash('#/messages/u1').arg==='u1');
-ok('unknown falls back', R.parseHash('#/zzz').name==='feed');
+// V20: a hash that names nothing gets the 404 screen instead of being
+// silently rewritten to the feed. An EMPTY hash still means home.
+ok('unknown hash routes to the 404 screen', R.parseHash('#/zzz').name==='notFound');
+ok('empty hash still means home', R.parseHash('#/').name==='feed' && R.parseHash('').name==='feed');
 ok('build roundtrip', R.parseHash(R.buildHash('profile','a')).arg==='a');
 // SHORTCUTS is now shortcuts(): a frozen const froze its labels to
 // whichever language loaded first.

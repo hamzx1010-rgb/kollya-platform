@@ -13,7 +13,7 @@ import { $, $$ } from './core/utils_sm.js';
 import { initStore, session, me, emit, on as onEvent } from './core/store_sm.js';
 import { initRouter, route, guard, go } from './core/router_sm.js';
 import { initShell, show, mount } from './core/shell_sm.js';
-import { toast, modal } from './core/ui_sm.js';
+import { toast, modal, emptyState } from './core/ui_sm.js';
 import { icon, I } from './core/icons_sm.js';
 import { initMessages } from './features/messages_sm.js';
 import { initFeed, openComposer } from './features/feed_sm.js';
@@ -250,6 +250,27 @@ function registerPlaceholders() {
 }
 
 /* ------------------------------------------------------------
+   3b. UNKNOWN ROUTE
+   parseHash() sends any hash that names no route here. Saying
+   "this page does not exist" and offering the way home is the
+   honest version of silently landing on the feed.
+   ------------------------------------------------------------ */
+
+function registerNotFound() {
+  route('notFound', () => {
+    const host = mount();
+    if (!host) return;
+    host.innerHTML = '';
+    host.append(emptyState({
+      icon: I.compass,
+      title: t('error.notFoundTitle'),
+      text: t('error.notFoundText'),
+      action: { label: t('error.backHome'), onClick: () => go('feed') }
+    }));
+  });
+}
+
+/* ------------------------------------------------------------
    4. GLOBAL SHORTCUT WIRING
    ------------------------------------------------------------ */
 
@@ -365,6 +386,7 @@ async function boot() {
   applyI18n();
   initShell();
   registerPlaceholders();
+  registerNotFound();
   wireGlobalKeys();
   wireVisibility();
 

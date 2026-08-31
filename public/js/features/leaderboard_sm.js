@@ -19,7 +19,7 @@ import {
   $, $$, el, on, esc, compact, initials, avatarColor, debounce, env
 } from '../core/utils_sm.js';
 import { me, scoped } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, emptyState, skeletonList, countUp } from '../core/ui_sm.js';
 import { route, go } from '../core/router_sm.js';
@@ -37,8 +37,20 @@ let rows   = [];
    DATA
    ------------------------------------------------------------ */
 
+// A throw here used to escape into route:error, leaving the board on
+// its skeletons behind a generic toast. Keep the error and let
+// render() show it — schema-cache included.
+let loadError = null;
+
 async function load() {
-  const list = api?.leaderboard ? await api.leaderboard({ scope, metric }) : [];
+  loadError = null;
+  let list = [];
+  try {
+    list = api?.leaderboard ? await api.leaderboard({ scope, metric }) : [];
+  } catch (e) {
+    loadError = e;
+    list = [];
+  }
   const mine = me.get();
 
   // The faculty filter is applied by the query, so nothing is thrown
@@ -103,13 +115,20 @@ function render() {
 
   if (!rows.length) {
     host.innerHTML = '';
-    host.append(emptyState({
-      icon: I.trophy,
-      title: t('lb.empty'),
-      text: scope === 'faculty'
-        ? t('lb.emptyFaculty')
-        : t('empty.postToAppear')
-    }));
+    host.append(loadError
+      ? emptyState({
+          icon: I.trophy,
+          title: t('error.loading'),
+          text: errorText(loadError),
+          action: { label: t('action.retry'), onClick: async () => { rows = await load(); render(); } }
+        })
+      : emptyState({
+          icon: I.trophy,
+          title: t('lb.empty'),
+          text: scope === 'faculty'
+            ? t('lb.emptyFaculty')
+            : t('empty.postToAppear')
+        }));
     $('#lbMine')?.classList.add('hidden');
     return;
   }

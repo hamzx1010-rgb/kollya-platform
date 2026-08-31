@@ -101,12 +101,12 @@ function render(host) {
       icon: I.graduation,
       title: t('error.loading'),
       text: errorText(loadError)
-    })}</div>` : ''}
+    }).outerHTML}</div>` : ''}
     ${!loading && !loadError && !people.length ? `<div>${emptyState({
       icon: I.graduation,
       title: t('classmates.empty.title'),
       text: me.get()?.faculty ? t('classmates.empty.myFaculty') : t('classmates.empty.text')
-    })}</div>` : ''}
+    }).outerHTML}</div>` : ''}
     ${!loading && groups ? groups : ''}`;
 
   wire(host);

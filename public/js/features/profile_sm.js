@@ -51,6 +51,19 @@ async function loadProfile(username) {
    HEADER
    ------------------------------------------------------------ */
 
+/**
+ * The profile head IS the student card.
+ *
+ * There is no card widget bolted inside the profile any more (that
+ * version copied the official Algerian card — chip, barcode, QR — and
+ * was rejected). Instead the head itself is laid out like one: a
+ * SQUARE photo pinned onto a panel, the identity beside it, and a
+ * strip of printed-looking fields underneath (university, faculty,
+ * level, card number). The banner above is untouched.
+ *
+ * Everything is logical-property CSS and translated strings, so it
+ * mirrors in Arabic without a second layout.
+ */
 function headerMarkup(u) {
   const lv = levelFromXp(u.xp || 0);
   const badges = earnedBadges({ ...u, level: lv.level, likes: 0, comments: 0, answers: 0, events: 0, saved: 0, nightPosts: 0 });
@@ -63,136 +76,96 @@ function headerMarkup(u) {
     ${u.isMe ? `<button class="icon-btn pf-cover-edit" id="pfCoverEdit" data-tip="${esc(t('profile.changeCover'))}" aria-label="${esc(t('profile.changeCover'))}">${I.camera}</button>` : ''}
   </div>
 
-  <div class="pf-head">
-    <div class="pf-avatar-wrap">
-      <div class="av-ring" style="--pct:${lv.pct}" data-tip="${t('hub.levelTip', { n: lv.level, into: lv.into, need: lv.need })}">
-        <div class="av xl" id="pfAvatar" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>${
-          u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}</div>
+  <section class="pf-idcard" aria-label="${esc(t('profile.card'))}">
+    <div class="pf-head">
+      <div class="pf-avatar-wrap">
+        <div class="av-ring" style="--pct:${lv.pct}" data-tip="${esc(t('hub.levelTip', { n: lv.level, into: lv.into, need: lv.need }))}">
+          <div class="av xl" id="pfAvatar" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>${
+            u.avatar_url
+              ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="${esc(t('profile.photoOf', { name: u.full_name || u.username || '' }))}">`
+              : esc(initials(u.full_name))}</div>
+        </div>
+        ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="${esc(t('profile.changePhoto'))}" aria-label="${esc(t('profile.changePhoto'))}">${I.camera}</button>` : ''}
+        <span class="pf-level">${esc(t('hub.levelShort', { n: lv.level }))}</span>
       </div>
-      ${u.isMe ? `<button class="icon-btn pf-avatar-edit" id="pfAvatarEdit" data-tip="${esc(t('profile.changePhoto'))}" aria-label="${esc(t('profile.changePhoto'))}">${I.camera}</button>` : ''}
-      <span class="pf-level">${esc(t('hub.levelShort', { n: lv.level }))}</span>
-    </div>
 
-    <div class="pf-actions">
-      ${u.isMe
-        ? `<button class="btn btn-outline" id="pfEdit">${icon('edit',{size:16})} ${t('profile.edit')}</button>
-           <button class="icon-btn" id="pfSettings" data-tip="${esc(t('nav.settings'))}" aria-label="${esc(t('nav.settings'))}">${I.settings}</button>`
-        : `<button class="btn ${u.followState === 'following' ? 'btn-outline btn-follow' : 'btn-primary'}"
-                   id="pfFollow" data-state="${u.followState || 'none'}">
-             ${followLabel(u.followState)}
-           </button>
-           ${u.canMessage
-             ? `<button class="btn btn-outline" id="pfMessage"
-                        data-request="${u.willBeRequest ? '1' : ''}">
-                  ${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}
-                </button>` : ''}
-           <button class="icon-btn" id="pfMore" data-tip="${esc(t('action.more'))}" aria-label="${esc(t('action.more'))}">${I.moreH}</button>`}
-    </div>
-  </div>
-
-  <div class="pf-identity">
-    <div class="row g2" style="align-items:center;flex-wrap:wrap">
-      <h2 style="font-size:var(--fs-xl)">${esc(u.full_name)}</h2>
-      ${u.private ? `<span class="pill">${icon('lock',{size:12})} ${esc(t('profile.private'))}</span>` : ''}
-      ${u.role === 'admin' ? `<span class="pill on">${esc(t('profile.staff'))}</span>` : ''}
-      <span id="pfRank"></span>
-    </div>
-    <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div>
-    ${u.student_card ? studentCardMarkup(u) : ''}
-    ${u.bio ? `<p class="pf-bio">${richText(u.bio)}</p>` : ''}
-    ${profileLinks(u)}
-
-    <div class="pf-stats">
-      <button class="pf-stat" data-stat="posts"><b id="stPosts">0</b><span>${t('profile.posts')}</span></button>
-      <button class="pf-stat" data-stat="followers"><b id="stFollowers">0</b><span>${t('profile.followers')}</span></button>
-      <button class="pf-stat" data-stat="following"><b id="stFollowing">0</b><span>${t('profile.following')}</span></button>
-      <div class="pf-stat"><b class="row g1" style="color:var(--streak)">${icon('fire',{size:15})} ${u.streak || 0}</b><span>${t('profile.streak')}</span></div>
-    </div>
-
-    ${badges.length ? `<div class="pf-badges">
-      ${badges.slice(0, 6).map(b => `<span class="pf-badge" data-tip="${esc(b.name)} — ${esc(b.desc)}">${icon(b.icon,{size:15})}</span>`).join('')}
-      ${badges.length > 6 ? `<button class="pill" id="pfAllBadges">+${badges.length - 6}</button>` : ''}
-    </div>` : ''}
-  </div>`;
-}
-
-/**
- * The profile identity as a student card — inspired by the Algerian
- * student card (photo, number, validity, barcode) but unmistakably
- * Koliya: its own wordmark and layout, none of the official wording,
- * so it reads as a nod, not a forgery.
- */
-function studentCardMarkup(u) {
-  const startYear = u.created_at ? new Date(u.created_at).getFullYear() : new Date().getFullYear();
-  const untilYear = startYear + 5;
-  const place = [u.university, u.faculty].filter(Boolean).join(' · ');
-  return `
-  <div class="student-card" data-tip="${esc(t('profile.cardTip'))}">
-    <div class="sc-top">
-      <span class="sc-brand">
-        <span class="sc-mark" aria-hidden="true">K</span>
-        <span class="sc-word">Koliya</span>
-      </span>
-      <span class="sc-type">${esc(t('profile.studentCard'))}</span>
-      <span class="sc-chip" aria-hidden="true"></span>
-    </div>
-    <div class="sc-body">
-      <div class="sc-id">
-        <span class="sc-av" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>
-          ${u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}
+      <div class="pf-who">
+        <span class="pf-eyebrow">
+          <span class="pf-eyebrow-mark" aria-hidden="true">K</span>
+          <span>${esc(t('profile.studentCard'))}</span>
         </span>
-        <div class="sc-who">
-          <div class="sc-name">${esc(u.full_name || '—')}</div>
-          <div class="sc-handle"><span class="handle">@${esc(u.username || '')}</span></div>
-          ${place ? `<div class="sc-uni">${esc(place)}</div>` : ''}
+        <div class="pf-name-row">
+          <h2 class="pf-name">${esc(u.full_name)}</h2>
+          ${u.private ? `<span class="pill">${icon('lock',{size:12})} ${esc(t('profile.private'))}</span>` : ''}
+          ${u.role === 'admin' ? `<span class="pill on">${esc(t('profile.staff'))}</span>` : ''}
+          <span id="pfRank"></span>
+        </div>
+        <div class="pf-handle-line t-sm t-dim">
+          <span class="handle">@${esc(u.username)}</span>${u.faculty ? ` · ${esc(u.faculty)}` : ''}
         </div>
       </div>
-      <div class="sc-data">
-        <div class="sc-field">
-          <span class="sc-label">${esc(t('profile.cardNumber'))}</span>
-          <span class="sc-num">${esc(u.student_card)}</span>
-        </div>
-        <div class="sc-field">
-          <span class="sc-label">${esc(t('profile.cardValid'))}</span>
-          <span class="sc-dates">${startYear} → ${untilYear}</span>
-        </div>
+
+      <div class="pf-actions">
+        ${u.isMe
+          ? `<button class="btn btn-outline" id="pfEdit">${icon('edit',{size:16})} ${t('profile.edit')}</button>
+             <button class="icon-btn" id="pfSettings" data-tip="${esc(t('nav.settings'))}" aria-label="${esc(t('nav.settings'))}">${I.settings}</button>`
+          : `<button class="btn ${u.followState === 'following' ? 'btn-outline btn-follow' : 'btn-primary'}"
+                     id="pfFollow" data-state="${u.followState || 'none'}">
+               ${followLabel(u.followState)}
+             </button>
+             ${u.canMessage
+               ? `<button class="btn btn-outline" id="pfMessage"
+                          data-request="${u.willBeRequest ? '1' : ''}">
+                    ${icon('message', { size: 16 })} ${esc(t('profile.msgBtn'))}
+                  </button>` : ''}
+             <button class="icon-btn" id="pfMore" data-tip="${esc(t('action.more'))}" aria-label="${esc(t('action.more'))}">${I.moreH}</button>`}
       </div>
     </div>
-    <div class="sc-foot">
-      <span class="sc-barcode" aria-hidden="true"></span>
-      <span class="sc-qr" aria-hidden="true">${qrPattern(u.id)}</span>
+
+    ${cardFields(u)}
+
+    <div class="pf-identity">
+      ${u.bio ? `<p class="pf-bio">${richText(u.bio)}</p>` : ''}
+      ${profileLinks(u)}
+
+      <div class="pf-stats">
+        <button class="pf-stat" data-stat="posts"><b id="stPosts">0</b><span>${t('profile.posts')}</span></button>
+        <button class="pf-stat" data-stat="followers"><b id="stFollowers">0</b><span>${t('profile.followers')}</span></button>
+        <button class="pf-stat" data-stat="following"><b id="stFollowing">0</b><span>${t('profile.following')}</span></button>
+        <div class="pf-stat"><b class="row g1" style="color:var(--streak)">${icon('fire',{size:15})} ${u.streak || 0}</b><span>${t('profile.streak')}</span></div>
+      </div>
+
+      ${badges.length ? `<div class="pf-badges">
+        ${badges.slice(0, 6).map(b => `<span class="pf-badge" data-tip="${esc(b.name)} — ${esc(b.desc)}">${icon(b.icon,{size:15})}</span>`).join('')}
+        ${badges.length > 6 ? `<button class="pill" id="pfAllBadges">+${badges.length - 6}</button>` : ''}
+      </div>` : ''}
     </div>
-  </div>`;
+  </section>`;
 }
 
 /**
- * A deterministic QR-*looking* pattern seeded by the user id. It is
- * decorative — the real identifier is the card number above it — and
- * it stays identical on every visit, which is what makes it feel like
- * a printed card. Finders in the corners, pseudo-random core.
+ * The printed strip of a card: label above, value below. Only fields
+ * that exist are drawn — an empty "University —" row makes the head
+ * look broken rather than informative.
+ *
+ * The card number is the one value that must stay left-to-right even
+ * in Arabic: "CS-042" gets dragged to the wrong end by the bidi
+ * algorithm otherwise.
  */
-function qrPattern(seed) {
-  const N = 9;
-  let h = 0;
-  const s = String(seed || '');
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  const rects = [];
-  const finder = (x, y) => {
-    const fx = x % 3, fy = y % 3;
-    return fx === 0 || fy === 0 || fx === 2 || fy === 2;
-  };
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
-      const corner = (x < 3 && y < 3) || (x >= N - 3 && y < 3) || (x < 3 && y >= N - 3);
-      let on = corner ? finder(x, y) : false;
-      if (!corner) {
-        h = (h * 1103515245 + 12345) >>> 0;
-        on = (h & 3) !== 0;   // ~75% density, like a real QR core
-      }
-      if (on) rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
-    }
-  }
-  return `<svg viewBox="0 0 ${N} ${N}" class="sc-qr-svg" aria-hidden="true">${rects.join('')}</svg>`;
+function cardFields(u) {
+  const rows = [
+    u.university  && [t('profile.university'), esc(u.university), ''],
+    u.faculty     && [t('profile.faculty'),    esc(u.faculty), ''],
+    u.level       && [t('hub.level'),          esc(String(u.level)), 'pf-num'],
+    u.student_card&& [t('profile.cardNumber'), esc(u.student_card), 'pf-num pf-cardnum']
+  ].filter(Boolean);
+  if (!rows.length) return '';
+  return `<dl class="pf-fields">
+    ${rows.map(([label, value, cls]) => `<div class="pf-field">
+      <dt class="pf-field-label">${esc(label)}</dt>
+      <dd class="pf-field-value${cls ? ' ' + cls : ''}">${value}</dd>
+    </div>`).join('')}
+  </dl>`;
 }
 
 /** Two labels stacked: "Following" normally, "Unfollow" on hover. */

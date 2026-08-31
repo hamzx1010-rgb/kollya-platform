@@ -85,6 +85,8 @@ ok('no email on sign-in', !D.getElementById('inMail'));
 ok('card field is labelled',
    (D.querySelector('label[for="inCard"]')?.textContent || '').trim().length > 2);
 ok('forgot link', !!D.getElementById('forgotBtn'));
+ok('forgot link is translated, not hardcoded French',
+   /Forgot|oublié|نسيت/i.test(D.getElementById('forgotBtn').textContent));
 ok('switch to signup', !!D.getElementById('toSignup'));
 ok('password toggle', !!D.querySelector('[data-eye="inPass"]'));
 
@@ -93,7 +95,10 @@ const card=D.getElementById('inCard');
 card.value='ab';
 card.dispatchEvent(new window.Event('blur',{bubbles:true}));
 await new Promise(r=>setTimeout(r,20));
-ok('invalid card flagged on blur', D.getElementById('inCard-msg').textContent.includes('invalide'));
+// The auth screen is translated now (it used to be hardcoded French),
+// so assert the MEANING in any of the three languages, not one string.
+ok('invalid card flagged on blur',
+   /invalide|Invalid|غير صحيحة/i.test(D.getElementById('inCard-msg').textContent));
 card.value='cs 042';
 card.dispatchEvent(new window.Event('blur',{bubbles:true}));
 await new Promise(r=>setTimeout(r,20));
@@ -123,8 +128,9 @@ ok('signup has 5 required fields', ['inCard','inName','inUser','inMail','inPass'
 ok('faculty select present', !!D.getElementById('inFac'));
 ok('faculty has options', D.getElementById('inFac').options.length>10);
 ok('password meter present', !!D.getElementById('pwMeter'));
-ok('mentions admin approval', D.querySelector('.auth-card').textContent.includes('administrateur'));
-ok('email marked as contact only', D.getElementById('inMail-msg').textContent.includes('pas pour la connexion'));
+ok('mentions admin approval', /administrateur|administrator|المشرف/i.test(D.querySelector('.auth-card').textContent));
+ok('email marked as contact only',
+   /pas pour la connexion|not for signing in|وليس لتسجيل الدخول/i.test(D.getElementById('inMail-msg').textContent));
 
 // strength meter reacts
 const p2=D.getElementById('inPass');
@@ -139,11 +145,16 @@ D.getElementById('toSignin').click();
 await new Promise(r=>setTimeout(r,40));
 ok('switch back to signin', !D.getElementById('inMail'));
 
+// V20 audit — the terms and the privacy policy must be reachable
+// BEFORE an account exists, not only from Settings.
+ok('terms link on the auth screen', !!D.querySelector('.auth-legal a[href="cgu.html"]'));
+ok('privacy link on the auth screen', !!D.querySelector('.auth-legal a[href="privacy.html"]'));
+
 // ---------- pending screen ----------
 let out=false;
 UI.renderPending(()=>{out=true});
-ok('pending screen renders', D.querySelector('#auth').textContent.includes('attente'));
-ok('pending explains why', D.querySelector('#auth').textContent.includes('carte étudiant'));
+ok('pending screen renders', /attente|pending|المراجعة/i.test(D.querySelector('#auth').textContent));
+ok('pending explains why', /carte étudiant|student card|بطاقة الطالب/i.test(D.querySelector('#auth').textContent));
 D.getElementById('pendingOut').click();
 ok('pending can sign out', out);
 

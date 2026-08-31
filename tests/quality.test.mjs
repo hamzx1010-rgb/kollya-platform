@@ -161,14 +161,54 @@ const layout = read('public/css/layout_sm.css');
 const baseCss = read('public/css/base_sm.css');
 const html2 = read('public/index_sm.html');
 
-// The sidebar fold was removed, not fixed: three mechanisms (route
-// rule, auto-fold timer, hover peek) disagreed and produced crushed
-// icons. Nothing should reintroduce it silently.
-ok('no fold button in the shell', !/id="btnFold"|id="btnDmFold"/.test(html2));
-ok('no collapsed-rail CSS', !/data-rail="collapsed"/.test(layout));
+// The three mechanisms that fought each other (per-route rule,
+// auto-fold timer, hover peek) stay gone. V20 brings the fold back as
+// ONE explicit thing: a ☰ inside the sidebar, plus folding when you
+// open a tab. Guard the shape of that, not its absence.
+const shellJs = read('public/js/core/shell_sm.js');
+ok('no floating fold button in the shell', !/id="btnFold"|id="btnDmFold"/.test(html2));
 ok('no hover-peek CSS', !/data-peek/.test(layout));
 ok('no dm-folded CSS', !/dm-folded/.test(layout));
-ok('shell always expands the rail', /app\.dataset\.rail = 'expanded'/.test(read('public/js/core/shell_sm.js')));
+ok('the fold button lives inside the sidebar, on the logo row',
+   /<div class="rail-logo">[\s\S]{0,400}id="btnRailFold"[\s\S]{0,400}<\/div>/.test(html2));
+ok('the phone hamburger stays next to the wordmark',
+   /<div class="topbar-brand">[\s\S]{0,300}id="btnMenuTop"/.test(html2));
+ok('collapsed-rail CSS exists again', /\.app\[data-rail="collapsed"\]/.test(layout));
+ok('collapsed rail hides the labels',
+   /\.app\[data-rail="collapsed"\][^{]*\.nav-item \.lbl[^{]*\{[^}]*display:\s*none/.test(layout));
+ok('collapsed rail hides the wordmark',
+   /\.app\[data-rail="collapsed"\][^{]*\.rail-logo \.word/.test(layout));
+ok('collapsed rail uses the narrow track', /data-rail="collapsed"\][^}]*--nav-w-collapsed/.test(layout));
+ok('collapsed rail keeps 48px touch targets',
+   /\.app\[data-rail="collapsed"\] \.nav-item \{[^}]*height:\s*48px/.test(layout));
+ok('the fold is desktop-only (phone media query neutralises it)',
+   /\.app\[data-rail="collapsed"\][^{]*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(layout));
+ok('shell drives the rail from one state', /app\.dataset\.rail = collapsed \? 'collapsed' : 'expanded'/.test(shellJs));
+ok('rail state is only changed by a click', /function setRail\(/.test(shellJs) && /wireRailFold/.test(shellJs));
+ok('collapsed rail keeps its labels as tooltips', /setAttribute\('title', label\)/.test(shellJs));
+
+// V20 audit — "Report" used to fire a success toast and write nothing.
+// A moderation action that only pretends is worse than none.
+const feedJs = read('public/js/features/feed_sm.js');
+const dmJs   = read('public/js/features/messages_sm.js');
+ok('reporting a post really reports it',
+   /profileApi\.report\('post'/.test(feedJs) && !/label: t\('action\.report'\)[^}]*toast\(t\('toast\.reportSent'\)/.test(feedJs));
+ok('reporting a message really reports it',
+   /profileApi\.report\('message'/.test(dmJs));
+// The auth screen was hardcoded French while the rest of the app is
+// trilingual — the reset link, the labels and the pending screen too.
+const authJs = read('public/js/features/auth_ui_sm.js');
+ok('the auth screen carries no hardcoded French',
+   !/'Champ obligatoire'|Se connecter<|Mot de passe oublié|Sélectionnez…|Faculté<|Une erreur est survenue/.test(authJs));
+ok('terms and privacy are reachable before sign-up',
+   /auth-legal[\s\S]{0,300}cgu\.html[\s\S]{0,200}privacy\.html/.test(authJs));
+// Empty is not the same as broken: both these screens used to swallow
+// the error and paint "nothing here".
+ok('notifications show load errors', /loadError/.test(read('public/js/features/notifications_sm.js')));
+ok('the leaderboard shows load errors', /loadError/.test(read('public/js/features/leaderboard_sm.js')));
+ok('an unknown hash has its own route', /notFound/.test(read('public/js/core/router_sm.js')));
+ok('the offline page speaks all three languages',
+   /ar:\s*\{/.test(read('public/offline_sm.html')) && /fr:\s*\{/.test(read('public/offline_sm.html')));
 
 // A <button> is width:auto by default, which made the conversation
 // row shrink-wrap and left an unclickable strip beside it.

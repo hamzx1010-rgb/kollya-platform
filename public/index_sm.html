@@ -107,12 +107,22 @@
 <div id="app" class="app hidden" data-rail="expanded">
 
   <!-- ---- NAV RAIL ----
-       No fold button. It collapses on its own when you open a
-       conversation and expands when the mouse comes near. -->
+       Folds to an icon strip when you open a tab; the ☰ on the logo
+       row (#btnRailFold) folds/unfolds it by hand. Desktop only. -->
   <nav class="nav-rail" id="rail" aria-label="Navigation" data-i18n-attr="aria-label:nav.main">
+    <!-- The ☰ lives INSIDE the sidebar, Facebook style: it sits on the
+         logo row and folds the rail down to an icon strip. Opening a
+         tab folds it automatically; this button brings it back. It is
+         desktop-only — under 900px .rail-logo is display:none and the
+         phone hamburger is #btnMenuTop next to the top-bar wordmark. -->
     <div class="rail-logo">
       <span class="mark">K</span>
       <span class="word">Koliya</span>
+      <button class="icon-btn rail-fold" id="btnRailFold" type="button" aria-expanded="true"
+              aria-controls="railNav" aria-label="Collapse sidebar" title="Collapse sidebar"
+              data-i18n-attr="aria-label:nav.collapse, title:nav.collapse">
+        <i data-icon="menu"></i>
+      </button>
     </div>
 
     <div class="rail-nav" id="railNav">
