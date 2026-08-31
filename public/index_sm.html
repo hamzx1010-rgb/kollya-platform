@@ -129,11 +129,10 @@
         <span class="lbl" data-i18n="nav.messages"></span>
         <span class="count hidden" id="badgeMessages">0</span>
       </a>
-      <a class="nav-item primary" href="#/notifications" data-nav="notifications">
-        <i data-icon="bell"></i>
-        <span class="lbl" data-i18n="nav.notifications"></span>
-        <span class="count hidden" id="badgeNotifs">0</span>
-      </a>
+      <!-- NOTIFICATIONS is no longer a rail/bottom-bar item: the founder
+           asked for it in the TOP BAR (bell next to the language
+           switcher, #btnNotifsTop above). Keeping a second entry here
+           would show two active states for one route. -->
       <!-- CAMPUS — phone only.
            Events, Q&A, Channels and Saved are fully built and routed,
            but every one of them was `.nav-item:not(.primary)`, which the
@@ -214,11 +213,31 @@
   <!-- ---- MAIN ---- -->
   <main class="main" id="main">
     <header class="topbar blur-bar">
+      <!-- BRAND GROUP — the ☰ lives NEXT TO the Koliya wordmark at the
+           inline-start of the bar (founder's request), not near the
+           language switcher. On desktop the wordmark stays in the rail,
+           so only the hamburger shows here; on phones the wordmark
+           appears and the page title below is hidden. -->
+      <div class="topbar-brand">
+        <button class="icon-btn menu-btn" id="btnMenuTop" aria-label="Menu" data-tip="Menu">
+          <i data-icon="menu"></i>
+        </button>
+        <span class="topbar-brand-word">Koliya</span>
+      </div>
       <button class="icon-btn back-btn" id="btnBack" data-i18n-attr="aria-label:action.back" data-tip="Alt+←">
         <i data-icon="arrowLeft"></i>
       </button>
       <span class="topbar-title" id="topbarTitle">Accueil</span>
       <div class="topbar-actions">
+        <!-- NOTIFICATIONS — moved OUT of the sidebar and the drawer INTO
+             the top bar, next to the language switcher. data-nav keeps
+             the active state in sync, and the badge keeps its id so
+             setBadge('notifications', n) works unchanged. -->
+        <a class="icon-btn notif-btn" id="btnNotifsTop" href="#/notifications" data-nav="notifications"
+           data-i18n-attr="aria-label:nav.notifications">
+          <i data-icon="bell"></i>
+          <span class="count hidden" id="badgeNotifs">0</span>
+        </a>
         <!-- CREATE, top right, Instagram style.
              `rail-compose` at the foot of the sidebar is display:none
              under 900px, so a phone had NO way to make a post at all —
@@ -233,12 +252,6 @@
              the button so you can see what you are in at a glance. -->
         <button class="icon-btn lang-btn" id="btnLang" aria-label="Language" data-tip="Language">
           <span class="lang-code" id="langCode">EN</span>
-        </button>
-        <!-- HAMBURGER — the phone's way into every tab. The bottom
-             bar only has room for five core items, so Marketplace,
-             Documents and Classmates live in this drawer. -->
-        <button class="icon-btn menu-btn" id="btnMenu" aria-label="Menu" data-tip="Menu">
-          <i data-icon="menu"></i>
         </button>
         <button class="icon-btn" id="btnSearch" data-i18n-attr="aria-label:action.search" data-tip="Ctrl+K">
           <i data-icon="search"></i>

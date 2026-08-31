@@ -39,7 +39,7 @@ for (const width of [360, 412]) {
     });
   });
 
-  s.eq(bar.length, 6, `${width}px: exactly 6 bottom tabs`);
+  s.eq(bar.length, 5, `${width}px: exactly 5 bottom tabs (notifications moved to the top bar)`);
   s.ok(bar.every(b => b.w >= 48),
        `${width}px: every tab is at least 48px wide (smallest ${Math.min(...bar.map(b => b.w))})`);
   s.ok(bar.every(b => b.left >= -1 && b.right <= width + 1),

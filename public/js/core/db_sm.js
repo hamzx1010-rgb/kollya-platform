@@ -24,10 +24,11 @@ import { MEDIA_BUDGET } from './media_sm.js';
 const base = () => CONFIG.DATA_API_URL.replace(/\/$/, '');
 
 export class DbError extends Error {
-  constructor(message, status, detail) {
+  constructor(message, status, detail, code) {
     super(message);
     this.status = status;
     this.detail = detail;
+    this.code = code;
   }
 }
 
@@ -61,8 +62,15 @@ async function request(path, { method = 'GET', body, prefer, retry = true } = {}
 
   if (!res.ok) {
     const msg = data?.message || data?.hint || `Erreur ${res.status}`;
+    // A 404 from PostgREST almost always means the table exists in the
+    // SQL files but the Data API schema cache was never refreshed after
+    // running them (Neon → Data API → "Refresh schema cache"). PostgREST
+    // labels that PGRST205 ("Could not find the table ... in the schema
+    // cache"). Tag it so errorText() can tell the student exactly what
+    // to do instead of showing a mute "empty" screen.
+    const code = data?.code || (res.status === 404 ? 'PGRST205' : undefined);
     // RLS refusals surface as 401/403 or an empty result, not a crash
-    throw new DbError(msg, res.status, data?.detail);
+    throw new DbError(msg, res.status, data?.detail, code);
   }
   return data;
 }

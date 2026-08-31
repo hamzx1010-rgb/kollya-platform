@@ -9,7 +9,7 @@
 
 import { $, $$, el, on, esc, truncate, initials, avatarColor, safeUrl, fileSize } from '../core/utils_sm.js';
 import { me, on as onEvent } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, confirmDialog, emptyState, skeletonList } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
@@ -19,6 +19,7 @@ export function useApi(impl) { api = impl; }
 
 let items = [];
 let loading = false;
+let loadError = null;
 let lastHost = null;
 
 const LEVELS = ['', '1', '2', '3', '4', '5', '6'];
@@ -26,11 +27,15 @@ const LEVELS = ['', '1', '2', '3', '4', '5', '6'];
 async function load() {
   if (!api?.list) { items = []; return; }
   loading = true;
+  loadError = null;
   try {
     items = await api.list() || [];
   } catch (e) {
+    // Same story as the marketplace: a stale schema cache must show
+    // the "Database update needed" message, not an empty shelf.
     console.warn('[koliya] documents indisponibles', e.message);
     items = [];
+    loadError = e;
   } finally {
     loading = false;
   }
@@ -82,9 +87,14 @@ function render(host) {
     </div>
     <div class="col g2">
       ${loading ? skeletonList(3, 'post') : ''}
+      ${!loading && loadError ? `<div>${emptyState({
+        icon: I.folder,
+        title: t('error.loading'),
+        text: errorText(loadError)
+      })}</div>` : ''}
       ${section(t('documents.myShelf'), mine)}
       ${section(t('documents.sharedShelf'), shared)}
-      ${!loading && !items.length ? `<div>${emptyState({
+      ${!loading && !loadError && !items.length ? `<div>${emptyState({
         icon: I.folder,
         title: t('documents.empty.title'),
         text: t('documents.empty.text')

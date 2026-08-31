@@ -658,6 +658,7 @@ const STRINGS = {
     'classmates.sub': 'Find students by faculty and level.',
     'classmates.students': 'students', 'classmates.facultyPh': 'Faculty…',
     'classmates.levelN': 'Level {n}', 'classmates.levelAny': 'Any level',
+    'classmates.levelOne': '1 level', 'classmates.levels': '{n} levels',
     'classmates.empty.title': 'No classmates found',
     'classmates.empty.text': 'Try a different faculty or level.',
     'classmates.empty.myFaculty': 'Nobody in your faculty has set a level yet.',
@@ -702,6 +703,8 @@ const STRINGS = {
     'error.session': 'Session expired — please sign in again',
     'error.notFound': 'Not found', 'error.loading': 'Could not load',
     'error.saveFailed': 'Save failed', 'error.tooHeavy': 'File too large',
+    'error.schemaCacheTitle': 'Database update needed',
+    'error.schemaCache': 'Database update needed: open Neon → SQL Editor → run FULL_SCHEMA_sm.sql, then Data API → Refresh schema cache.',
 
     'time.now': 'now', 'time.minute': '{n}m', 'time.hour': '{n}h',
     'time.day': '{n}d', 'time.week': '{n}w',
@@ -1333,6 +1336,7 @@ const STRINGS = {
     'classmates.sub': 'Trouve les étudiants par faculté et par niveau.',
     'classmates.students': 'étudiants', 'classmates.facultyPh': 'Faculté…',
     'classmates.levelN': 'Niveau {n}', 'classmates.levelAny': 'Tous les niveaux',
+    'classmates.levelOne': '1 niveau', 'classmates.levels': '{n} niveaux',
     'classmates.empty.title': 'Aucun camarade trouvé',
     'classmates.empty.text': 'Essaie une autre faculté ou un autre niveau.',
     'classmates.empty.myFaculty': 'Personne de ta faculté n’a encore renseigné de niveau.',
@@ -1379,6 +1383,8 @@ const STRINGS = {
     'error.session': 'Session expirée — reconnectez-vous',
     'error.notFound': 'Introuvable', 'error.loading': 'Chargement impossible',
     'error.saveFailed': 'Enregistrement échoué', 'error.tooHeavy': 'Fichier trop lourd',
+    'error.schemaCacheTitle': 'Mise à jour de la base requise',
+    'error.schemaCache': 'Mise à jour de la base requise : ouvrez Neon → SQL Editor → exécutez FULL_SCHEMA_sm.sql, puis Data API → Refresh schema cache.',
 
     'time.now': "à l'instant", 'time.minute': '{n} min', 'time.hour': '{n} h',
     'time.day': '{n} j', 'time.week': '{n} sem',
@@ -2010,6 +2016,7 @@ const STRINGS = {
     'classmates.sub': 'ابحث عن زملائك حسب الكلية والمستوى.',
     'classmates.students': 'طالباً', 'classmates.facultyPh': 'الكلية…',
     'classmates.levelN': 'المستوى {n}', 'classmates.levelAny': 'كل المستويات',
+    'classmates.levelOne': 'مستوى واحد', 'classmates.levels': '{n} مستويات',
     'classmates.empty.title': 'لا زملاء',
     'classmates.empty.text': 'جرّب كلية أو مستوى آخر.',
     'classmates.empty.myFaculty': 'لا أحد في كليتك حدّد مستواه بعد.',
@@ -2053,6 +2060,8 @@ const STRINGS = {
     'error.session': 'انتهت الجلسة — سجّل الدخول من جديد',
     'error.notFound': 'غير موجود', 'error.loading': 'تعذّر التحميل',
     'error.saveFailed': 'فشل الحفظ', 'error.tooHeavy': 'الملف كبير جداً',
+    'error.schemaCacheTitle': 'يلزم تحديث قاعدة البيانات',
+    'error.schemaCache': 'يلزم تحديث قاعدة البيانات: افتح Neon ← SQL Editor ← شغّل FULL_SCHEMA_sm.sql، ثم Data API ← Refresh schema cache.',
 
     'time.now': 'الآن', 'time.minute': '{n} د', 'time.hour': '{n} س',
     'time.day': '{n} ي', 'time.week': '{n} أ',
@@ -2156,6 +2165,14 @@ export function errorText(err) {
   if (status === 0 || /network|fetch|offline|Failed to fetch/i.test(raw)) return t('error.offline');
   if (status === 401) return t('error.session');
   if (status === 403 || raw === '__RLS_DENIED__') return t('error.denied');
+  // PGRST205 = PostgREST could not find a table in its schema cache.
+  // The SQL ran, the table exists, but the Data API was never told —
+  // the #1 cause of "could not found / can't post". Say exactly what
+  // to do, not a generic "not found".
+  if (err?.code === 'PGRST205' ||
+      (status === 404 && /schema cache|could not find the table/i.test(raw))) {
+    return t('error.schemaCache');
+  }
   if (status === 404) return t('error.notFound');
   if (status === 429) return t('error.rate');
   if (status >= 500)  return t('error.server');
