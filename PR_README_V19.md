@@ -1,68 +1,57 @@
-# PR to open: V19 — Marketplace, Facebook-style sidebar, Documents, Classmates
+# V19 — Marketplace, Facebook-style sidebar, Documents shelf, Classmates by level
 
-## How to ship (new coding session, or local clone)
+## What this branch adds
 
-```bash
-cd kollya-platform
+This PR adds the **V19 database schema** that supports the Marketplace,
+the Documents shelf, and Classmates-by-level features:
 
-git checkout arena/01a054ce-kollya-platform   # work is already here
-git push -u origin arena/01a054ce-kollya-platform
+- **Marketplace** — student flea market as the 5th campus tab
+  - `db/18_marketplace_sm.sql`: new `marketplace_items` table
+    (`seller_id`, `title`, `description`, `price_cents`, `currency`,
+    `category`, `condition`, `image_url`, `status`), indexes, an
+    `updated_at` trigger, and RLS (browse available, list your own,
+    update/delete your own, admin moderation).
+- **Documents shelf** — per-user upload shelf
+  - `db/19_docs_classmates_sm.sql`: new `documents` table
+    (`owner_id`, `title`, `description`, `subject`, `level`, `kind`,
+    `file_url`, `file_name`, `size_bytes`, `shared_public`,
+    `downloads`), indexes, a touch trigger, and RLS (owner full
+    access; approved users can read shared documents).
+- **Classmates by level**
+  - Adds `profiles.level` (`''` or `1`–`6`) plus indexes on
+    `(faculty, level)` / `(faculty)` / `(university)` for grouping
+    the Classmates screen.
 
-gh pr create --base main --head arena/01a054ce-kollya-platform \
-  --title "Marketplace, Facebook-style sidebar, Documents shelf, Classmates by level" \
-  --body-file PR_README_V19.md
-```
-
-The branch sits on the old base `9898042`. It does NOT contain PR #1's
-merge, so after pushing either (a) `git fetch origin && git merge origin/main`
-or (b) let GitHub compute it — the diff vs `main` is clean, shown below.
-
-If conflicts appear, `git rebase origin/main` resolves them trivially
-(the touched files are disjoint from PR #1's).
-
-## Commits
-
-- `6ca6211` Marketplace: student flea market as the 5th campus tab
-- `9defe30` Refresh public/FULL_SCHEMA_sm.sql copy with marketplace table
-- `f217d17` Facebook-style sidebar (hamburger + drawer), Documents shelf, Classmates by level
-
-## Diff vs merged main (28 files, +4880/−37)
+## Files changed
 
 ```
-db/18_marketplace_sm.sql            |  59 +   (marketplace table + RLS)
-db/19_docs_classmates_sm.sql        |  65 +   (documents table + profiles.level + RLS)
-db/FULL_SCHEMA_sm.sql               | 139 +-  (both merged in)
-db/README_sm.md                     |   4 +-
-public/index_sm.html                |  80 +   (hamburger, drawer, rail items)
-public/js/core/shell_sm.js          |  40 +   (rail toggle + drawer logic)
-public/js/core/api_sm.js            | 107 +-  (marketplace/documents/classmates methods, level col)
-public/js/core/i18n_sm.js           | 144 +-  (EN/FR/AR keys)
-public/js/core/icons_sm.js          |   6 +   (tag, file, upload, chart, menu)
-public/js/core/router_sm.js         |   3 +
-public/js/features/campus_sm.js     | 233 +-  (marketplace screen)
-public/js/features/documents_sm.js  | 204 ++  (new)
-public/js/features/classmates_sm.js | 125 ++  (new)
-public/js/features/profile_sm.js    |   9 +-  (level field)
-public/css/layout_sm.css            | 155 +-  (rail-closed, drawer, docs, classmates)
-public/sw_sm.js                     |   7 +-  (cache v3)
-tests/*                             | ~120   (nav 84/84, quality 62/62, mocks, routes)
-package.json / package-lock.json    | devDeps: puppeteer + @sparticuz/chromium (test infra)
-public/FULL_SCHEMA_sm.sql           | copy served at /FULL_SCHEMA_sm.sql for Neon paste
+PR_README_V19.md             |  68 +   (this PR description)
+db/18_marketplace_sm.sql     | 128 ++  (marketplace migration)
+db/19_docs_classmates_sm.sql | 158 ++  (documents + classmates migration)
+db/FULL_SCHEMA_V19_sm.sql    | 2948 +  (merged one-file V19 schema)
+db/FULL_SCHEMA_sm.sql        | 289 +-  (existing one-file schema, now V19)
+db/README_sm.md              |  19 +-  (points to V19 schema/migrations)
+public/FULL_SCHEMA_sm.sql    | 2948 +  (copy served for the Neon paste)
 ```
 
-## Verification (all green)
+## DB schema summary
 
-- nav 84/84 (hamburger collapse/expand, phone drawer open→navigate→close,
-  market/documents/classmates/profile in rail)
-- background 47/47 · live 74/74 · persist 38/38 · sound 22/22
-- quality 62/62 (new guards: manual toggle only, no auto-fold)
-- app 56/56, css 28/28, i18n-notify 68/68; jsdom = HEAD baseline
-- Live-verified: doc upload + delete, classmates grouping (4 faculties/6 levels/24 people), rail toggle, drawer navigation
+- 31 tables · 66 functions · 2 views · 86 policies · 34 indexes ·
+  17 triggers
+- Every statement is idempotent (`IF NOT EXISTS` / `OR REPLACE` /
+  `DROP … IF EXISTS`), safe to run on a fresh database or on top of
+  the existing schema.
+- `public/FULL_SCHEMA_sm.sql` is the single file to paste into Neon
+  (SQL Editor → Run → Data API → Refresh schema cache).
+- For an existing database you can instead run only:
+  ```sql
+  \i db/18_marketplace_sm.sql
+  \i db/19_docs_classmates_sm.sql
+  ```
 
-## Notes for the reviewer
+## Verification note
 
-- `public/FULL_SCHEMA_sm.sql` is the single-file schema the user pastes
-  into Neon (docs say "the one file"); it now contains marketplace +
-  documents + level. `db/18_*` and `db/19_*` are the readable migrations.
-- Launch still requires the user-side Neon step (Auth → Email & Password
-  + trusted domains) before real sign-in works.
+This branch contains the **database/schema layer** of V19. The V19
+frontend commits (`6ca6211`, `9defe30`, `f217d17`) are on the separate
+feature branch and are intentionally not part of this schema PR, so
+the schema can be reviewed and applied independently.
