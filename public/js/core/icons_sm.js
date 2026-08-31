@@ -110,6 +110,14 @@ export const I = {
   fire:      P('<path d="M12 22a7 7 0 0 0 7-7c0-5-4-6-4-9 0 0-3 1.5-3 5 0 1.5-1 2-1.5 1.2C10 11 10 9 10 9s-5 2.5-5 6a7 7 0 0 0 7 7z"/>'),
   graduation:P('<path d="m22 9-10-5L2 9l10 5z"/><path d="M6 11.5V16c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.5"/>'),
 
+  /* V19 — navigation & shelves */
+  menu:      P('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  store:     P('<path d="M4 7 5.5 3h13L20 7"/><path d="M4 7h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 21v-6h6v6"/>'),
+  file:      P('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
+  folder:    P('<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>'),
+  upload:    P('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/>'),
+  tag:       P('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>'),
+
   /* delivery ticks — one grey, two blue */
   tick:      P('<path d="M20 6 9 17l-5-5"/>'),
   tickDouble:P('<path d="M17 6 8 15l-3.5-3.5"/><path d="m22 6-8.5 8.5"/>')

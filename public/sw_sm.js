@@ -20,7 +20,7 @@
  * ============================================================
  */
 
-const VERSION    = 'v1';
+const VERSION    = 'v4';
 const SHELL      = `koliya-shell-${VERSION}`;
 const MEDIA      = `koliya-media-${VERSION}`;
 const FONTS      = `koliya-fonts-${VERSION}`;
@@ -32,6 +32,7 @@ const OFFLINE_URL = '/offline_sm.html';
 /** Files needed to render the frame with no network at all. */
 const PRECACHE = [
   '/',
+  '/index.html',
   '/index_sm.html',
   '/offline_sm.html',
   '/manifest_sm.json',

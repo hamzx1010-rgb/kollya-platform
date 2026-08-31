@@ -1395,12 +1395,131 @@ export const statsApi = {
 };
 
 /* ============================================================
+   V19 — MARKETPLACE
+   ============================================================ */
+
+function kindFromName(name) {
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  const map = {
+    pdf: 'pdf', doc: 'doc', docx: 'docx', ppt: 'ppt', pptx: 'pptx',
+    xls: 'xls', xlsx: 'xlsx', txt: 'txt', md: 'md', zip: 'zip',
+    png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image'
+  };
+  return map[ext] || 'other';
+}
+
+export const marketplaceApi = {
+  async list({ filter = 'all' } = {}) {
+    const mine = me.get();
+    const params = { order: 'created_at.desc', limit: 100, select: '*' };
+    if (filter === 'available') params.status = 'eq.available';
+    else if (filter === 'mine') {
+      if (!mine?.id) return [];
+      params.seller_id = `eq.${mine.id}`;
+    } else if (filter === 'sold') {
+      if (!mine?.id) return [];
+      params.seller_id = `eq.${mine.id}`;
+      params.status = 'eq.sold';
+    }
+    const rows = await soft(db.select('marketplace_items', params));
+    await hydratePeople(rows.map(r => r.seller_id).filter(Boolean));
+    return rows.map(r => ({ ...r, seller: person(r.seller_id) }));
+  },
+
+  async create(item) {
+    const row = {
+      seller_id: myId(),
+      title: item.title,
+      description: item.description || '',
+      price_cents: Math.max(0, Math.round(Number(item.price_cents) || 0)),
+      currency: 'DZD',
+      category: item.category || 'other',
+      condition: item.condition || 'used'
+    };
+    if (item.imageFile) row.image_url = await toStorable(item.imageFile, 'market');
+    return db.insert('marketplace_items', row);
+  },
+
+  async update(id, patch) {
+    const row = {};
+    if (patch.title !== undefined) row.title = patch.title;
+    if (patch.description !== undefined) row.description = patch.description;
+    if (patch.price_cents !== undefined) row.price_cents = Math.max(0, Math.round(Number(patch.price_cents) || 0));
+    if (patch.category !== undefined) row.category = patch.category;
+    if (patch.condition !== undefined) row.condition = patch.condition;
+    if (patch.status !== undefined) row.status = patch.status;
+    if (patch.imageFile) row.image_url = await toStorable(patch.imageFile, 'market');
+    if (!Object.keys(row).length) return null;
+    return db.update('marketplace_items', row, { id: `eq.${id}` });
+  },
+
+  remove(id) {
+    return db.remove('marketplace_items', { id: `eq.${id}` });
+  }
+};
+
+/* ============================================================
+   V19 — DOCUMENTS
+   ============================================================ */
+
+export const documentsApi = {
+  async list() {
+    const rows = await soft(db.select('documents', {
+      order: 'created_at.desc', limit: 100, select: '*'
+    }));
+    await hydratePeople(rows.map(r => r.owner_id).filter(Boolean));
+    return rows.map(r => ({ ...r, owner: person(r.owner_id) }));
+  },
+
+  async create(item) {
+    const fileUrl = await toStorable(item.file, 'doc');
+    return db.insert('documents', {
+      owner_id: myId(),
+      title: item.title,
+      description: item.description || '',
+      subject: item.subject || '',
+      level: item.level || '',
+      kind: kindFromName(item.file?.name),
+      file_url: fileUrl,
+      file_name: item.file?.name || '',
+      size_bytes: item.file?.size || 0,
+      shared_public: !!item.shared_public
+    });
+  },
+
+  remove(id) {
+    return db.remove('documents', { id: `eq.${id}` });
+  }
+};
+
+/* ============================================================
+   V19 — CLASSMATES
+   ============================================================ */
+
+export const classmatesApi = {
+  async list({ faculty = '', level = '' } = {}) {
+    const params = {
+      status: 'eq.approved',
+      select: 'id,username,full_name,faculty,university,level,avatar_url',
+      order: 'full_name.asc',
+      limit: 300
+    };
+    if (faculty) params.faculty = `eq.${faculty}`;
+    if (level) params.level = `eq.${level}`;
+    const rows = await db.select('profiles', params).catch(() => []);
+    cachePeople(rows);
+    return rows;
+  }
+};
+
+/* ============================================================
    WIRE EVERYTHING UP
    This is the call that was missing from app_sm.js.
    ============================================================ */
 
 export async function connectApi() {
-  const [feed, messages, stories, profile, campus, notifications, hub, leaderboard, inbox] =
+  const [feed, messages, stories, profile, campus, notifications, hub, leaderboard, inbox,
+         marketplace, documents, classmates] =
     await Promise.all([
       import('../features/feed_sm.js'),
       import('../features/messages_sm.js'),
@@ -1412,7 +1531,10 @@ export async function connectApi() {
       import('../features/leaderboard_sm.js'),
       // The app-wide inbox poller. Not a feature screen — it runs on
       // every route so a message arrives while you are on the feed.
-      import('./inbox_sm.js')
+      import('./inbox_sm.js'),
+      import('../features/marketplace_sm.js'),
+      import('../features/documents_sm.js'),
+      import('../features/classmates_sm.js')
     ]);
 
   feed.useApi(feedApi);
@@ -1458,6 +1580,9 @@ export async function connectApi() {
   notifications.useApi(notificationsApi);
   hub.useApi(statsApi);
   leaderboard.useApi(statsApi);
+  marketplace.useApi(marketplaceApi);
+  documents.useApi(documentsApi);
+  classmates.useApi(classmatesApi);
   inbox.useApi(messagesApi);
   inbox.initInbox();
   inbox.startInbox();
@@ -1466,11 +1591,12 @@ export async function connectApi() {
   // as "Étudiant" while the first request is in flight
   cachePeople(me.get());
 
-  console.info('[koliya] API connectée à Neon — 9 modules');
+  console.info('[koliya] API connectée à Neon — 12 modules');
   return true;
 }
 
 export default {
   feedApi, messagesApi, storiesApi, profileApi,
-  campusApi, notificationsApi, statsApi, connectApi
+  campusApi, notificationsApi, statsApi,
+  marketplaceApi, documentsApi, classmatesApi, connectApi
 };

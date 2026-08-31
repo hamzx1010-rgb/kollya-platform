@@ -155,6 +155,18 @@
         <i data-icon="trophy"></i>
         <span class="lbl" data-i18n="nav.hub"></span>
       </a>
+      <a class="nav-item" href="#/marketplace" data-nav="marketplace">
+        <i data-icon="store"></i>
+        <span class="lbl" data-i18n="nav.marketplace"></span>
+      </a>
+      <a class="nav-item" href="#/documents" data-nav="documents">
+        <i data-icon="file"></i>
+        <span class="lbl" data-i18n="nav.documents"></span>
+      </a>
+      <a class="nav-item" href="#/classmates" data-nav="classmates">
+        <i data-icon="graduation"></i>
+        <span class="lbl" data-i18n="nav.classmates"></span>
+      </a>
       <!-- PROFILE, phone only. On desktop the profile is already the
            avatar card pinned at the bottom of the rail; on a phone that
            card is off-screen, so there was no way to reach your own
@@ -222,6 +234,12 @@
         <button class="icon-btn lang-btn" id="btnLang" aria-label="Language" data-tip="Language">
           <span class="lang-code" id="langCode">EN</span>
         </button>
+        <!-- HAMBURGER — the phone's way into every tab. The bottom
+             bar only has room for five core items, so Marketplace,
+             Documents and Classmates live in this drawer. -->
+        <button class="icon-btn menu-btn" id="btnMenu" aria-label="Menu" data-tip="Menu">
+          <i data-icon="menu"></i>
+        </button>
         <button class="icon-btn" id="btnSearch" data-i18n-attr="aria-label:action.search" data-tip="Ctrl+K">
           <i data-icon="search"></i>
         </button>
@@ -241,6 +259,14 @@
 
   <!-- ---- RIGHT RAIL: only appears above 1180px ---- -->
   <aside class="right-rail" id="rightRail" data-i18n-attr="aria-label:nav.sidePanel"></aside>
+
+  <!-- ---- NAV DRAWER (phone hamburger) ----
+       Populated by shell_sm.js from ROUTES so every tab is reachable
+       even though the bottom bar only has room for five. -->
+  <div class="nav-drawer" id="navDrawer" aria-hidden="true">
+    <button class="nav-drawer-scrim" id="navDrawerScrim" aria-label="Close menu"></button>
+    <aside class="nav-drawer-panel" id="navDrawerPanel" role="dialog" aria-modal="true" aria-label="Menu"></aside>
+  </div>
 </div>
 
 <!-- ============ OVERLAY LAYERS ============ -->

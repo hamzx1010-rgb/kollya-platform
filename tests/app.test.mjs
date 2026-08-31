@@ -62,7 +62,7 @@ R.initRouter({start:'feed'});
 await new Promise(r=>setTimeout(r,150));
 
 // walk every real route
-const ROUTES=['feed','explore','messages','notifications','hub','channels','events','qa','saved','profile'];
+const ROUTES=['feed','explore','messages','notifications','hub','marketplace','documents','classmates','channels','events','qa','saved','profile'];
 for (const name of ROUTES) {
   errors.length=0;
   R.go(name);
@@ -72,6 +72,14 @@ for (const name of ROUTES) {
   ok(`${name}: no console errors`, errors.filter(e=>!/localStorage|icône/.test(e)).length===0);
   ok(`${name}: title updated`, D.getElementById('topbarTitle').textContent.length>0);
 }
+
+// V19 hamburger drawer: every tab reachable from the phone.
+ok('hamburger button exists', !!D.getElementById('btnMenu'));
+D.getElementById('btnMenu').click();
+ok('hamburger opens the drawer', D.getElementById('navDrawer').classList.contains('open'));
+ok('drawer lists the main tabs', D.querySelectorAll('#navDrawerPanel a').length >= 12);
+D.getElementById('navDrawerScrim').click();
+ok('scrim closes the drawer', !D.getElementById('navDrawer').classList.contains('open'));
 
 // Deep links with an argument.
 // This test boots the real app_sm.js with nobody signed in, so no API
