@@ -23,6 +23,9 @@ import { initNotifications, refreshNotificationBadge } from './features/notifica
 import { initCampus } from './features/campus_sm.js';
 import { initLeaderboard } from './features/leaderboard_sm.js';
 import { initSettings } from './features/settings_sm.js';
+import { initMarketplace } from './features/marketplace_sm.js';
+import { initDocuments } from './features/documents_sm.js';
+import { initClassmates } from './features/classmates_sm.js';
 import { openStories } from './features/stories_sm.js';
 import { renderAuth, renderPending } from './features/auth_ui_sm.js';
 import { initAuth, signOut } from './core/auth_sm.js';
@@ -328,6 +331,9 @@ async function boot() {
   initCampus(mount);
   initLeaderboard(mount);
   initSettings(mount);
+  initMarketplace(mount);
+  initDocuments(mount);
+  initClassmates(mount);
 
   if (!hasStorage) {
     toast(t('store.noStorage'), { kind: 'err', duration: 6000 });

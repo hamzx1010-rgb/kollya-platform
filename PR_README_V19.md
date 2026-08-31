@@ -1,57 +1,78 @@
-# V19 — Marketplace, Facebook-style sidebar, Documents shelf, Classmates by level
+# V19 — Marketplace, hamburger drawer, Documents shelf, Classmates by level
+
+This PR is the **frontend** half of V19. It sits on top of the V19
+database schema already in `main` (`db/18_marketplace_sm.sql`,
+`db/19_docs_classmates_sm.sql`) and adds the screens that use it.
 
 ## What this branch adds
 
-This PR adds the **V19 database schema** that supports the Marketplace,
-the Documents shelf, and Classmates-by-level features:
-
-- **Marketplace** — student flea market as the 5th campus tab
-  - `db/18_marketplace_sm.sql`: new `marketplace_items` table
-    (`seller_id`, `title`, `description`, `price_cents`, `currency`,
-    `category`, `condition`, `image_url`, `status`), indexes, an
-    `updated_at` trigger, and RLS (browse available, list your own,
-    update/delete your own, admin moderation).
-- **Documents shelf** — per-user upload shelf
-  - `db/19_docs_classmates_sm.sql`: new `documents` table
-    (`owner_id`, `title`, `description`, `subject`, `level`, `kind`,
-    `file_url`, `file_name`, `size_bytes`, `shared_public`,
-    `downloads`), indexes, a touch trigger, and RLS (owner full
-    access; approved users can read shared documents).
-- **Classmates by level**
-  - Adds `profiles.level` (`''` or `1`–`6`) plus indexes on
-    `(faculty, level)` / `(faculty)` / `(university)` for grouping
-    the Classmates screen.
+- **Marketplace** — the student flea market as a full campus tab
+  - `public/js/features/marketplace_sm.js`
+  - Grid of listings, filter chips (All / Available / Mine / Sold),
+    publish sheet with photo, price in DZD, category and condition,
+    "Mark as sold" and delete for the seller.
+  - `marketplaceApi` in `core/api_sm.js` (RLS + media size enforced
+    by the database, not the UI).
+- **Hamburger drawer**
+  - `#btnMenu` in the topbar opens a drawer built from the route table,
+    so Marketplace, Documents and Classmates are reachable on a phone
+    even though the bottom bar only fits five core items.
+  - Drawer markup in `index_sm.html`, logic in core/shell_sm.js.
+- **Documents shelf**
+  - `public/js/features/documents_sm.js`
+  - Upload sheet (title, subject, level, file, optional public share),
+    per-student "My shelf", "Shared by other students" list, download
+    and delete (owner only).
+  - `documentsApi` in `core/api_sm.js` using `toStorable(..., 'doc')`.
+- **Classmates** by faculty → level
+  - `public/js/features/classmates_sm.js`
+  - Approved students grouped by faculty, then by `profiles.level`
+    (1–6, or unset).
+  - `classmatesApi` in `core/api_sm.js`.
+- **Entry point + service worker fix** (`/` was serving the stale
+  3 KB placeholder)
+  - `public/index.html` is now the real app shell (same as
+    `index_sm.html`).
+  - `sw_sm.js` bumped to `v4` and precaches `/`, `index.html` and
+    `index_sm.html` so navigation falls back to the real shell.
+- **i18n**: EN / FR / AR + RTL-safe labels for every new screen and
+  the drawer, in `core/i18n_sm.js`.
+- **Tests**: `tests/app.test.mjs` now walks the three new routes and
+  asserts the hamburger opens/closes the drawer.
 
 ## Files changed
 
 ```
-PR_README_V19.md             |  68 +   (this PR description)
-db/18_marketplace_sm.sql     | 128 ++  (marketplace migration)
-db/19_docs_classmates_sm.sql | 158 ++  (documents + classmates migration)
-db/FULL_SCHEMA_V19_sm.sql    | 2948 +  (merged one-file V19 schema)
-db/FULL_SCHEMA_sm.sql        | 289 +-  (existing one-file schema, now V19)
-db/README_sm.md              |  19 +-  (points to V19 schema/migrations)
-public/FULL_SCHEMA_sm.sql    | 2948 +  (copy served for the Neon paste)
+public/index.html
+public/index_sm.html
+public/js/app_sm.js
+public/js/core/api_sm.js
+public/js/core/i18n_sm.js
+public/js/core/icons_sm.js
+public/js/core/media_sm.js
+public/js/core/router_sm.js
+public/js/core/shell_sm.js
+public/js/features/marketplace_sm.js      (new)
+public/js/features/documents_sm.js        (new)
+public/js/features/classmates_sm.js       (new)
+public/css/layout_sm.css
+public/sw_sm.js
+tests/app.test.mjs
 ```
 
-## DB schema summary
+## DB schema
 
-- 31 tables · 66 functions · 2 views · 86 policies · 34 indexes ·
-  17 triggers
-- Every statement is idempotent (`IF NOT EXISTS` / `OR REPLACE` /
-  `DROP … IF EXISTS`), safe to run on a fresh database or on top of
-  the existing schema.
-- `public/FULL_SCHEMA_sm.sql` is the single file to paste into Neon
-  (SQL Editor → Run → Data API → Refresh schema cache).
-- For an existing database you can instead run only:
-  ```sql
-  \i db/18_marketplace_sm.sql
-  \i db/19_docs_classmates_sm.sql
-  ```
+Already in `main`. For a fresh Neon setup run
+`db/FULL_SCHEMA_sm.sql` (or `db/18_marketplace_sm.sql` +
+`db/19_docs_classmates_sm.sql` on an existing database), then
+Data API → Refresh schema cache.
 
-## Verification note
+## Verification
 
-This branch contains the **database/schema layer** of V19. The V19
-frontend commits (`6ca6211`, `9defe30`, `f217d17`) are on the separate
-feature branch and are intentionally not part of this schema PR, so
-the schema can be reviewed and applied independently.
+- jsdom app smoke: `60/60` including the three new routes.
+- quality: `57/57`, css: `28/28`, core: `57/57`, language: `38/38`.
+- Pre-existing baseline failures (not regressions): dm 65/66,
+  hub-profile 57/58, leaderboard 31/33.
+- Static checks for the old deploy bug:
+  - `curl <url>/ | grep -c btnMenu` → `1`
+  - `curl <url>/sw_sm.js | grep VERSION` → `v4`

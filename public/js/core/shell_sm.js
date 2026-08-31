@@ -273,6 +273,68 @@ onEvent('inbox:unread', ({ total }) => {
 });
 
 /* ------------------------------------------------------------
+   6b. NAV DRAWER — the phone hamburger
+   The bottom bar has room for five core items, so Marketplace,
+   Documents and Classmates are reached from this drawer. Built
+   from ROUTES, not from a second list that can drift.
+   ------------------------------------------------------------ */
+
+const DRAWER_ROUTES = [
+  'feed', 'explore', 'messages', 'notifications', 'hub',
+  'marketplace', 'channels', 'events', 'documents', 'classmates',
+  'qa', 'profile', 'saved', 'leaderboard', 'settings'
+];
+
+function renderDrawer() {
+  const panel = $('#navDrawerPanel');
+  if (!panel) return;
+  panel.innerHTML = `
+    <div class="nav-drawer-head">
+      <span class="rail-logo"><span class="mark">K</span><span class="word">Koliya</span></span>
+      <button class="icon-btn nav-drawer-close" id="navDrawerClose" aria-label="${esc(t('action.close'))}">${icon('close', { size: 18 })}</button>
+    </div>
+    <nav class="nav-drawer-links" aria-label="${esc(t('nav.main'))}">
+      ${DRAWER_ROUTES.map(r => `<a class="nav-drawer-link" href="#/${r}" data-drawer="${r}">
+        ${icon(ROUTES[r]?.icon || 'compass', { size: 18 })}<span>${esc(routeTitle(r))}</span>
+      </a>`).join('')}
+    </nav>`;
+}
+
+export function openDrawer() {
+  const d = $('#navDrawer');
+  if (!d) return;
+  d.classList.add('open');
+  d.setAttribute('aria-hidden', 'false');
+  const first = d.querySelector('.nav-drawer-close');
+  if (first) first.focus();
+}
+
+export function closeDrawer() {
+  const d = $('#navDrawer');
+  if (!d) return;
+  d.classList.remove('open');
+  d.setAttribute('aria-hidden', 'true');
+  $('#btnMenu')?.focus();
+}
+
+function wireDrawer() {
+  const btn = $('#btnMenu');
+  const drawer = $('#navDrawer');
+  if (!btn || !drawer) return;
+  renderDrawer();
+
+  on(btn, 'click', () => {
+    drawer.classList.contains('open') ? closeDrawer() : openDrawer();
+  });
+  on($('#navDrawerScrim'), 'click', closeDrawer);
+  on($('#navDrawerClose'), 'click', closeDrawer);
+  on(drawer, 'click', e => {
+    if (e.target.closest('a[href^="#/"]')) closeDrawer();
+  });
+  onEvent('key:escape', closeDrawer);
+}
+
+/* ------------------------------------------------------------
    7. SHORTCUTS SHEET
    ------------------------------------------------------------ */
 
@@ -322,6 +384,7 @@ export function initShell() {
   applyTheme();
   wireRailPeek();
   wireScroll();
+  wireDrawer();
 
   $('#btnBack')   && on($('#btnBack'), 'click', () => back());
   $('#btnTheme')  && on($('#btnTheme'), 'click', cycleTheme);
@@ -345,6 +408,7 @@ export function initShell() {
     syncTopbar(name, arg);
     syncRightRail(name);
     closeMenu();
+    closeDrawer();
   });
 
   // the rail rule changes when crossing the mobile breakpoint

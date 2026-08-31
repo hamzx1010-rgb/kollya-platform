@@ -36,7 +36,9 @@ export const MEDIA_BUDGET = {
   story:  { maxDim: 1080, quality: 0.74, maxBytes: 2_000_000 },
   dm:     { maxDim: 1280, quality: 0.76, maxBytes: 1_400_000 },
   audio:  { maxBytes: 1_200_000 },
-  file:   { maxBytes: 900_000 }
+  file:   { maxBytes: 900_000 },
+  market: { maxDim: 1280, quality: 0.76, maxBytes: 2_000_000 },
+  doc:    { maxBytes: 8_000_000 }
 };
 
 export class MediaError extends Error {}
@@ -143,12 +145,12 @@ export async function packAudio(blob) {
   return url;
 }
 
-export async function packFile(file) {
-  const b = MEDIA_BUDGET.file;
+export async function packFile(file, kind = 'file') {
+  const b = MEDIA_BUDGET[kind] || MEDIA_BUDGET.file;
   const url = await blobToDataUrl(file);
   if (url.length > b.maxBytes) {
     throw new MediaError(
-      `Fichier trop lourd (${Math.round(url.length / 1024)} Ko). Maximum ~650 Ko.`
+      `Fichier trop lourd (${Math.round(url.length / 1024)} Ko). Maximum ~${Math.round(b.maxBytes / 1024)} Ko.`
     );
   }
   return url;
@@ -168,7 +170,7 @@ export async function toStorable(blobOrFile, kind = 'post') {
 
   if (isImage) return shrinkImage(blobOrFile, kind);
   if (isAudio) return packAudio(blobOrFile);
-  return packFile(blobOrFile);
+  return packFile(blobOrFile, kind);
 }
 
 /** True when a stored value is safe to put in <img src>. */
