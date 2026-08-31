@@ -3,24 +3,199 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Koliya</title>
-<!--
-  The real app lives in index_sm.html (the _sm suffix is the naming
-  convention for this project). Static hosts serve index.html for "/",
-  so this file forwards to it. It also keeps the site working if a
-  rewrite rule is ever missing or misconfigured.
--->
-<meta http-equiv="refresh" content="0; url=index_sm.html">
-<link rel="canonical" href="index_sm.html">
+<title>Koliya — Le réseau social des étudiants algériens</title>
+<meta name="description" content="Koliya est le réseau social privé des étudiants universitaires algériens : ta carte étudiante, ton campus, ta promo.">
+<meta name="theme-color" content="#FAFAF9">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563EB'/><path d='M26 12 16 7 6 12l10 5z' fill='%23fff'/><path d='M10 14.5V18c0 1.6 2.7 2.8 6 2.8s6-1.2 6-2.8v-3.5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'/></svg>">
 <style>
-  body{margin:0;height:100vh;display:grid;place-items:center;
-       font-family:system-ui,-apple-system,sans-serif;background:#FAFAF9;color:#16181C}
-  @media (prefers-color-scheme:dark){body{background:#0F1115;color:#E9EBEE}}
-  a{color:#2563EB}
+  :root {
+    --brand: #2563EB; --brand-2: #7C5BE8; --ink: #16181C; --mut: #5B6169;
+    --line: #E5E4E1; --bg: #FAFAF9; --card: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #E9EBEE; --mut: #9BA3AE; --line: #262A31; --bg: #0F1115; --card: #171A1F; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border-bottom: 1px solid var(--line);
+  }
+  .head { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+  .logo .mark {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    background: var(--brand); color: #fff; border-radius: 9px; font-size: 15px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 42px; padding: 0 22px; border-radius: 999px;
+    font: inherit; font-weight: 600; font-size: 14px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    text-decoration: none; cursor: pointer; transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary {
+    background: linear-gradient(135deg, #5B7CFA, #7C5BE8);
+    color: #fff; border: none; box-shadow: 0 4px 14px rgba(59,98,246,.30);
+  }
+  .btn.small { height: 36px; padding: 0 16px; font-size: 13px; }
+
+  .hero { padding: 88px 0 64px; text-align: center; }
+  .hero .kicker {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--brand); border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--line));
+    background: color-mix(in srgb, var(--brand) 8%, transparent);
+    border-radius: 999px; padding: 5px 14px; margin-bottom: 22px;
+  }
+  .hero h1 {
+    font-size: clamp(32px, 5.2vw, 56px); line-height: 1.08; letter-spacing: -.03em; font-weight: 800;
+    max-width: 760px; margin: 0 auto 18px;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(120deg, #3B62F6, #7C5BE8 60%, #E85B9F);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p { font-size: clamp(16px, 2vw, 19px); color: var(--mut); max-width: 560px; margin: 0 auto 30px; }
+  .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero .note { margin-top: 16px; font-size: 13px; color: var(--mut); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; padding: 24px 0 80px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    padding: 24px; transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(16,18,20,.10); }
+  .card .ic {
+    width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px;
+    background: color-mix(in srgb, var(--brand) 10%, transparent); color: var(--brand);
+    font-size: 20px; margin-bottom: 14px;
+  }
+  .card h3 { font-size: 16px; margin-bottom: 6px; }
+  .card p { font-size: 14px; color: var(--mut); }
+
+  .how { border-top: 1px solid var(--line); padding: 64px 0; }
+  .how h2 { font-size: clamp(24px, 3vw, 32px); text-align: center; letter-spacing: -.02em; margin-bottom: 40px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; counter-reset: step; }
+  .step { text-align: center; padding: 0 10px; }
+  .step .n {
+    counter-increment: step; width: 44px; height: 44px; margin: 0 auto 12px;
+    display: grid; place-items: center; border-radius: 50%;
+    background: linear-gradient(135deg, #5B7CFA, #7C5BE8); color: #fff; font-weight: 800; font-size: 18px;
+  }
+  .step h3 { font-size: 16px; margin-bottom: 4px; }
+  .step p { font-size: 14px; color: var(--mut); }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--mut); }
+  .foot a { color: var(--mut); text-decoration: none; }
+  .foot a:hover { color: var(--ink); text-decoration: underline; }
+  .foot .links { display: flex; gap: 18px; }
+  @media (max-width: 640px) { .hero { padding: 56px 0 40px; } }
 </style>
 </head>
 <body>
-  <p>Chargement de Koliya… <a href="index_sm.html">Continuer</a></p>
-  <script>location.replace('index_sm.html' + location.hash);</script>
+
+<header>
+  <div class="wrap head">
+    <div class="logo"><span class="mark">K</span> Koliya</div>
+    <a class="btn small" href="index_sm.html">Se connecter</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="kicker">🇩🇿 Réseau privé · étudiants uniquement</span>
+    <h1>Ton campus, ta promo,<br>ta <span class="grad">carte étudiante</span>.</h1>
+    <p>Koliya est le réseau social privé des étudiants universitaires algériens.
+       Tu rejoins avec ta carte étudiant, tu retrouves ta faculté, et tout le reste reste entre étudiants.</p>
+    <div class="cta">
+      <a class="btn primary" href="index_sm.html">Rejoindre avec ma carte</a>
+      <a class="btn" href="index_sm.html">Se connecter</a>
+    </div>
+    <div class="note">Approuvé par un administrateur avant d'entrer · gratuit · français, العربية, English</div>
+  </section>
+
+  <section class="wrap">
+    <div class="grid">
+      <div class="card">
+        <div class="ic">🪪</div>
+        <h3>Ta carte étudiante</h3>
+        <p>Ton profil s'affiche comme une carte étudiante : photo, numéro, faculté, université — un clin d'œil à celle de ta poche.</p>
+      </div>
+      <div class="card">
+        <div class="ic">💬</div>
+        <h3>Messagerie privée</h3>
+        <p>Discute avec tes camarades, envoie des photos, des voix et des GIF. Les demandes de message restent à approuver.</p>
+      </div>
+      <div class="card">
+        <div class="ic">❓</div>
+        <h3>Q&amp;A du campus</h3>
+        <p>« Qui a le cours de M. Benaissa ? » Pose la question, anonymement si tu veux, et obtiens une réponse d'un étudiant.</p>
+      </div>
+      <div class="card">
+        <div class="ic">📅</div>
+        <h3>Événements &amp; sorties</h3>
+        <p>Réunions de club, partiels, sorties entre amis : crée un événement, invite ta promo, suivez qui vient.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🔥</div>
+        <h3>Défis &amp; XP</h3>
+        <p>Poste, réponds, aide tes camarades : gagne de l'XP, enchaîne les jours et monte au classement de ta faculté.</p>
+      </div>
+      <div class="card">
+        <div class="ic">📸</div>
+        <h3>Stories du campus</h3>
+        <p>La vie de l'université en stories éphémères : l'amphi bondé, la pause café, la bibliothèque à 17h.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="how">
+    <div class="wrap">
+      <h2>Comment ça marche</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="n"></div>
+          <h3>Crée ton compte</h3>
+          <p>Entre ton numéro de carte étudiant (ex. CS-042) et tes infos.</p>
+        </div>
+        <div class="step">
+          <div class="n"></div>
+          <h3>Un admin t'approuve</h3>
+          <p>Le réseau est privé : chaque compte est vérifié avant d'entrer.</p>
+        </div>
+        <div class="step">
+          <div class="n"></div>
+          <h3>Rejoins ton campus</h3>
+          <p>Retrouve ta faculté, ta promo, et commence à poster.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="logo" style="font-size:15px"><span class="mark" style="width:24px;height:24px;font-size:12px">K</span> Koliya — كُلِّيَّة</div>
+    <div class="links">
+      <a href="cgu.html">Conditions d'utilisation</a>
+      <a href="privacy.html">Confidentialité</a>
+      <a href="index_sm.html">Ouvrir l'app</a>
+    </div>
+  </div>
+</footer>
+
 </body>
 </html>

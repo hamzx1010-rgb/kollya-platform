@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   email            text,
   student_card     text NOT NULL,
   faculty          text DEFAULT ''::text NOT NULL,
+  university       text DEFAULT ''::text NOT NULL,
   bio              text DEFAULT ''::text NOT NULL,
   pronouns         text,
   website          text,
@@ -113,7 +114,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   CONSTRAINT profiles_avatar_size CHECK (media_ok(avatar_url, 400000)) NOT VALID,
   CONSTRAINT profiles_banner_size CHECK (media_ok(banner_url, 900000)) NOT VALID,
   CONSTRAINT profiles_role_check CHECK ((role = ANY (ARRAY['student'::text, 'admin'::text]))),
-  CONSTRAINT profiles_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'banned'::text])))
+  CONSTRAINT profiles_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'banned'::text, 'deleted'::text])))
 );
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS id text DEFAULT auth.user_id();
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS username text;

@@ -98,11 +98,7 @@ function headerMarkup(u) {
       <span id="pfRank"></span>
     </div>
     <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div>
-    ${u.student_card ? `<div class="pf-card" data-tip="${esc(t('profile.cardTip'))}">
-      ${icon('graduation', { size: 13 })}
-      <span class="pf-card-label">${esc(t('profile.card'))}</span>
-      <span class="pf-card-num">${esc(u.student_card)}</span>
-    </div>` : ''}
+    ${u.student_card ? studentCardMarkup(u) : ''}
     ${u.bio ? `<p class="pf-bio">${richText(u.bio)}</p>` : ''}
     ${profileLinks(u)}
 
@@ -118,6 +114,85 @@ function headerMarkup(u) {
       ${badges.length > 6 ? `<button class="pill" id="pfAllBadges">+${badges.length - 6}</button>` : ''}
     </div>` : ''}
   </div>`;
+}
+
+/**
+ * The profile identity as a student card — inspired by the Algerian
+ * student card (photo, number, validity, barcode) but unmistakably
+ * Koliya: its own wordmark and layout, none of the official wording,
+ * so it reads as a nod, not a forgery.
+ */
+function studentCardMarkup(u) {
+  const startYear = u.created_at ? new Date(u.created_at).getFullYear() : new Date().getFullYear();
+  const untilYear = startYear + 5;
+  const place = [u.university, u.faculty].filter(Boolean).join(' · ');
+  return `
+  <div class="student-card" data-tip="${esc(t('profile.cardTip'))}">
+    <div class="sc-top">
+      <span class="sc-brand">
+        <span class="sc-mark" aria-hidden="true">K</span>
+        <span class="sc-word">Koliya</span>
+      </span>
+      <span class="sc-type">${esc(t('profile.studentCard'))}</span>
+      <span class="sc-chip" aria-hidden="true"></span>
+    </div>
+    <div class="sc-body">
+      <div class="sc-id">
+        <span class="sc-av" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>
+          ${u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}
+        </span>
+        <div class="sc-who">
+          <div class="sc-name">${esc(u.full_name || '—')}</div>
+          <div class="sc-handle"><span class="handle">@${esc(u.username || '')}</span></div>
+          ${place ? `<div class="sc-uni">${esc(place)}</div>` : ''}
+        </div>
+      </div>
+      <div class="sc-data">
+        <div class="sc-field">
+          <span class="sc-label">${esc(t('profile.cardNumber'))}</span>
+          <span class="sc-num">${esc(u.student_card)}</span>
+        </div>
+        <div class="sc-field">
+          <span class="sc-label">${esc(t('profile.cardValid'))}</span>
+          <span class="sc-dates">${startYear} → ${untilYear}</span>
+        </div>
+      </div>
+    </div>
+    <div class="sc-foot">
+      <span class="sc-barcode" aria-hidden="true"></span>
+      <span class="sc-qr" aria-hidden="true">${qrPattern(u.id)}</span>
+    </div>
+  </div>`;
+}
+
+/**
+ * A deterministic QR-*looking* pattern seeded by the user id. It is
+ * decorative — the real identifier is the card number above it — and
+ * it stays identical on every visit, which is what makes it feel like
+ * a printed card. Finders in the corners, pseudo-random core.
+ */
+function qrPattern(seed) {
+  const N = 9;
+  let h = 0;
+  const s = String(seed || '');
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  const rects = [];
+  const finder = (x, y) => {
+    const fx = x % 3, fy = y % 3;
+    return fx === 0 || fy === 0 || fx === 2 || fy === 2;
+  };
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const corner = (x < 3 && y < 3) || (x >= N - 3 && y < 3) || (x < 3 && y >= N - 3);
+      let on = corner ? finder(x, y) : false;
+      if (!corner) {
+        h = (h * 1103515245 + 12345) >>> 0;
+        on = (h & 3) !== 0;   // ~75% density, like a real QR core
+      }
+      if (on) rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
+    }
+  }
+  return `<svg viewBox="0 0 ${N} ${N}" class="sc-qr-svg" aria-hidden="true">${rects.join('')}</svg>`;
 }
 
 /** Two labels stacked: "Following" normally, "Unfollow" on hover. */
@@ -507,8 +582,14 @@ async function openPeopleList(kind, u) {
   modal({ title: kind === 'followers' ? t('profile.followersTitle') : t('profile.followingTitle'), body: list });
 
   let rows = [];
+  let pending = [];
   try {
     rows = kind === 'followers' ? await api.followers(u.id) : await api.following(u.id);
+    // Pending requests only ever appear on MY OWN followers list — they
+    // are the people waiting for a decision. (api.respondToRequest has
+    // existed for ages; nothing ever called it, so a private account
+    // could never see or answer its own requests.)
+    if (u.isMe && kind === 'followers') pending = await api.followRequests?.() || [];
   } catch { /* fall through to the empty state */ }
 
   // "Remove" only on MY OWN followers list: it deletes THEIR follow of
@@ -517,7 +598,28 @@ async function openPeopleList(kind, u) {
   // on a list of people I follow.
   const canRemove = u.isMe && kind === 'followers';
 
-  list.innerHTML = rows.length
+  const pendingBox = el('div', { class: 'col g3' });
+  if (pending.length) {
+    const head = el('div', { class: 'hub-sec-head', style: 'margin:var(--s2) 0 var(--s1)' },
+      `${esc(t('profile.pendingRequests'))} · ${pending.length}`);
+    pendingBox.append(head);
+    for (const p of pending) {
+      pendingBox.append(el('div', { class: 'row g3 people-row' },
+        el('a', { class: 'row g3 grow', style: 'min-width:0', href: `#/profile/${esc(p.username)}` },
+          p.avatar_url
+            ? el('span', { class: 'av sm' }, el('img', { src: safeUrl(p.avatar_url), alt: '' }))
+            : el('span', { class: 'av sm', style: `background:${avatarColor(p.id)}` }, esc(initials(p.full_name))),
+          el('div', { class: 'grow', style: 'min-width:0' },
+            el('div', { class: 't-sm t-bold truncate' }, esc(p.full_name)),
+            el('div', { class: 't-xs t-dim' }, el('span', { class: 'handle' }, `@${esc(p.username)}`)))),
+        el('button', { class: 'btn btn-primary btn-sm', 'data-faccept': esc(p.id) }, esc(t('profile.acceptRequest'))),
+        el('button', { class: 'btn btn-outline btn-sm', 'data-fdecline': esc(p.id) }, esc(t('profile.declineRequest')))
+      ));
+    }
+  }
+  if (pending.length) list.append(pendingBox);
+
+  list.innerHTML += rows.length
     ? rows.map(p => `
       <div class="row g3 people-row">
         <a class="row g3 grow" style="min-width:0" href="#/profile/${esc(p.username)}">
@@ -534,7 +636,35 @@ async function openPeopleList(kind, u) {
 
   if (!canRemove) return;
 
+  // Accept / decline a pending follow request, then drop the row and
+  // update the follower count that sits behind the modal.
   on(list, 'click', async e => {
+    const acc = e.target.closest('[data-faccept]');
+    const dec = e.target.closest('[data-fdecline]');
+    if (acc || dec) {
+      const id = (acc || dec).dataset.faccept || (acc || dec).dataset.fdecline;
+      const who = pending.find(p => String(p.id) === String(id));
+      (acc || dec).disabled = true;
+      try {
+        await api.respondToRequest(id, !!acc);
+        e.target.closest('.people-row')?.remove();
+        if (acc) {
+          const n = $('#stFollowers');
+          if (n) n.textContent = (Number(n.textContent) || 0) + 1;
+          toast(t('profile.requestAccepted'), 'ok');
+        } else {
+          toast(t('profile.requestDeclined'), { duration: 2200 });
+        }
+        pending = pending.filter(p => String(p.id) !== String(id));
+        const head = list.querySelector('.hub-sec-head');
+        if (head && !pending.length) head.textContent = '';
+      } catch (err) {
+        (acc || dec).disabled = false;
+        toast(errorText(err), 'err');
+      }
+      return;
+    }
+
     const btn = e.target.closest('[data-remove]');
     if (!btn) return;
     e.preventDefault();
@@ -576,6 +706,18 @@ const FACULTIES = [
   'Médecine', 'Pharmacie', 'Génie civil', 'Génie mécanique', 'Électronique',
   'Architecture', 'Droit', 'Économie', 'Sciences politiques', 'Lettres',
   'Langues étrangères', 'Psychologie', 'Sociologie', 'Sciences du sport', 'Agronomie'
+];
+
+/* The biggest Algerian universities, for the datalist. Free text wins —
+   a student at a small annexe types their own. */
+const UNIVERSITIES = [
+  'USTHB — Alger', 'Université Alger 1', 'Université Alger 2', 'Université Alger 3',
+  'USTO — Oran', 'Université Oran 1', 'Université Oran 2',
+  'Université Constantine 1', 'Université Constantine 2', 'Université Constantine 3',
+  'Université Sétif 1', 'Université Sétif 2',
+  'Université de Tlemcen', 'Université de Béjaïa', 'Université de Annaba',
+  'Université de Blida 1', 'Université de Batna 1', 'Université de Ouargla',
+  'Université de Mostaganem', 'Université de Skikda', 'Université de Tizi Ouzou (UMMTO)'
 ];
 
 function openEditProfile(u) {
@@ -626,6 +768,11 @@ function openEditProfile(u) {
     ...FACULTIES.map(f => el('option', { value: f, selected: f === u.faculty }, f)),
     ...(u.faculty && !FACULTIES.includes(u.faculty)
       ? [el('option', { value: u.faculty, selected: true }, u.faculty)] : []));
+
+  const uniInput = el('input', { class: 'input', value: u.university || '', maxlength: '80',
+                                 list: 'uniDatalist', placeholder: t('profile.universityHint') });
+  const uniList = el('datalist', { id: 'uniDatalist' },
+    ...UNIVERSITIES.map(n => el('option', { value: n })));
 
   const pronounInput  = el('input', { class: 'input', value: u.pronouns || '', placeholder: 'il / elle / iel' });
   const siteInput     = el('input', { class: 'input', value: u.website || '',  placeholder: 'https://…', type: 'url' });
@@ -683,6 +830,7 @@ function openEditProfile(u) {
       el('div', { class: 'pe-sec' }, t('profile.identity')),
       field(t('profile.name'), nameInput),
       field("Nom d'utilisateur", userInput, 'Lettres, chiffres, point et tiret bas. Il apparaît dans votre lien de profil.'),
+      field(t('profile.university'), el('div', { class: 'row g2' }, uniInput, uniList), t('profile.universityHint')),
       field(t('profile.faculty'), facSelect),
       field(t('profile.pronouns'), pronounInput, t('profile.pronounsHint')),
 
@@ -759,6 +907,7 @@ function openEditProfile(u) {
         full_name: nameInput.value.trim(),
         username,
         bio: bioInput.value.trim(),
+        university: uniInput.value.trim(),
         faculty: facSelect.value,
         pronouns: pronounInput.value.trim() || null,
         website: siteInput.value.trim() || null,

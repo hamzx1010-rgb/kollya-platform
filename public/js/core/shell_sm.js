@@ -16,10 +16,11 @@
  * ============================================================
  */
 
-import { $, $$, on, throttle, rafThrottle, env, initials, avatarColor, modKey } from './utils_sm.js';
+import { $, $$, on, throttle, rafThrottle, env, initials, avatarColor, modKey, esc, safeUrl } from './utils_sm.js';
 import { state, setState, on as onEvent, emit, prefs, applyTheme, me } from './store_sm.js';
-import { ROUTES, go, back, currentRoute, shortcuts } from './router_sm.js';
+import { ROUTES, routeTitle, go, back, currentRoute, shortcuts } from './router_sm.js';
 import { modal, toast, closeMenu, contextMenu } from './ui_sm.js';
+import { icon } from './icons_sm.js';
 import { t, lang, setLang, LANGS, applyI18n } from './i18n_sm.js';
 
 /* ------------------------------------------------------------
@@ -69,6 +70,89 @@ function syncTopbar(routeName, arg) {
   // the back arrow exists only when going back means something
   const app = $('#app');
   if (app) app.dataset.canBack = String(!!arg || !meta.nav);
+}
+
+/* ------------------------------------------------------------
+   3b. RIGHT RAIL — the discovery sidebar that was built and never
+   switched on. useRightRail() existed since the shell was written
+   but no route ever called it, so at ≥1180px the feed sat alone in
+   the middle of ~200px of empty space each side. Feed and Explore
+   now get it filled with people to follow, trends and shortcuts.
+   ------------------------------------------------------------ */
+
+const RAIL_ROUTES = new Set(['feed', 'explore']);
+
+function syncRightRail(name) {
+  useRightRail(RAIL_ROUTES.has(name));
+  if (RAIL_ROUTES.has(name)) renderRightRail().catch(() => {});
+}
+
+async function renderRightRail() {
+  const rail = $('#rightRail');
+  if (!rail) return;
+  const { campusApi, profileApi } = await import('./api_sm.js');
+
+  const [people, trends, followStates] = await Promise.all([
+    campusApi.searchPeople('').catch(() => []),
+    campusApi.trends().catch(() => []),
+    profileApi.myFollowStates().catch(() => ({})),
+  ]);
+
+  const followLabel = state =>
+    state === 'following' ? t('explore.following')
+      : state === 'requested' ? t('profile.requestedBtn') : t('explore.follow');
+
+  rail.innerHTML = `
+    <div class="rail-block">
+      <div class="rail-title">${esc(t('rail.suggestions'))}</div>
+      ${people.slice(0, 4).map(u => {
+        const st = followStates[String(u.id)];
+        const state = st === 'accepted' ? 'following' : st === 'pending' ? 'requested' : 'none';
+        return `<a class="rail-person" href="#/profile/${esc(u.username)}">
+          <span class="av sm" ${u.avatar_url ? '' : `style="background:${avatarColor(u.id)}"`}>${
+            u.avatar_url ? `<img src="${esc(safeUrl(u.avatar_url))}" alt="">` : esc(initials(u.full_name))}</span>
+          <span class="grow" style="min-width:0">
+            <span class="t-bold truncate" style="display:block;font-size:var(--fs-sm)">${esc(u.full_name)}</span>
+            <span class="t-xs t-dim truncate" style="display:block"><span class="handle">@${esc(u.username)}</span></span>
+          </span>
+          <button class="btn btn-sm ${state === 'none' ? 'btn-primary' : 'btn-outline'}" data-rf="${esc(u.id)}"
+                  data-state="${state}" data-private="${u.is_private ? '1' : '0'}">${esc(followLabel(state))}</button>
+        </a>`;
+      }).join('')}
+    </div>
+    ${trends.length ? `<div class="rail-block">
+      <div class="rail-title">${esc(t('rail.trending'))}</div>
+      ${trends.slice(0, 5).map(tr => `<a class="rail-trend" href="#/explore?tag=${esc(tr.tag)}">
+        <span class="t-bold">#${esc(tr.tag)}</span>
+        <span class="t-xs t-dim">${tr.posts} publication${tr.posts > 1 ? 's' : ''}</span>
+      </a>`).join('')}
+    </div>` : ''}
+    <div class="rail-block">
+      <div class="rail-title">${esc(t('rail.shortcuts'))}</div>
+      <div class="rail-links">
+        ${[['channels', 'hash'], ['events', 'calendar'], ['qa', 'help'], ['saved', 'bookmark'], ['leaderboard', 'chart']]
+          .map(([r, ic]) => `<a class="rail-link" href="#/${r}">${icon(ic, { size: 15 })}<span>${esc(routeTitle(r))}</span></a>`).join('')}
+      </div>
+    </div>`;
+
+  // Follow toggles, same optimistic behaviour as the search rows.
+  for (const btn of $$('[data-rf]', rail)) {
+    on(btn, 'click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const next = btn.dataset.state === 'none'
+        ? (btn.dataset.private === '1' ? 'requested' : 'following') : 'none';
+      btn.disabled = true;
+      try {
+        await profileApi.follow(btn.dataset.rf, next);
+        btn.dataset.state = next;
+        btn.classList.toggle('btn-primary', next !== 'none');
+        btn.classList.toggle('btn-outline', next === 'none');
+        btn.textContent = followLabel(next === 'requested' ? 'requested' : next);
+      } catch { /* the button just snaps back on next render */ }
+      btn.disabled = false;
+    });
+  }
 }
 
 /* ------------------------------------------------------------
@@ -259,6 +343,7 @@ export function initShell() {
     syncRail();
     syncNav(name);
     syncTopbar(name, arg);
+    syncRightRail(name);
     closeMenu();
   });
 

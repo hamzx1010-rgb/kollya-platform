@@ -62,6 +62,14 @@ const FACULTIES = new Set(['Informatique','Mathématiques','Physique','Chimie','
   'Médecine','Pharmacie','Génie civil','Génie mécanique','Électronique','Architecture',
   'Droit','Économie','Sciences politiques','Lettres','Langues étrangères','Psychologie',
   'Sociologie','Sciences du sport','Agronomie']);
+// University names are DATA exactly like faculties: real institutions,
+// read the same in every language. (profile_sm.js datalist.)
+const UNIVERSITIES = new Set(['Université Alger 1','Université Alger 2','Université Alger 3',
+  'Université Oran 1','Université Oran 2','Université Constantine 1','Université Constantine 2',
+  'Université Constantine 3','Université Sétif 1','Université Sétif 2','Université de Tlemcen',
+  'Université de Béjaïa','Université de Annaba','Université de Blida 1','Université de Batna 1',
+  'Université de Ouargla','Université de Mostaganem','Université de Skikda',
+  'Université de Tizi Ouzou (UMMTO)']);
 
 const leaks = [];
 for (const f of allJs) {
@@ -71,7 +79,7 @@ for (const f of allJs) {
   for (const m of [...code.matchAll(/'([^'\\\n]{4,70})'/g), ...code.matchAll(/"([^"\\\n]{4,70})"/g)]) {
     const v = m[1];
     if (!FRENCH.test(v)) continue;
-    if (FACULTIES.has(v)) continue;
+    if (FACULTIES.has(v) || UNIVERSITIES.has(v)) continue;
     if (/^--|^\/|^#|^data:|carte\.koliya|@carte/.test(v)) continue;
     // utils_sm holds the per-language time units by design: the
     // French entry in a fr/en/ar map is not a leak, it is the map.

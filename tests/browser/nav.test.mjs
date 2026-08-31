@@ -76,7 +76,9 @@ for (const width of [360, 412]) {
   await wait(1300);
   reached.push(await page.evaluate(() => location.hash.replace(/^#\//, '').split('/')[0]));
 
-  for (const id of ['qa', 'channels', 'saved', 'explore']) {
+  // Explore is a bottom tab, not a strip tab (see the V9 note in
+  // campus_sm.js: "Explore is NOT in this list any more").
+  for (const id of ['qa', 'channels', 'saved']) {
     const clicked = await page.evaluate(i => {
       const b = document.querySelector(`[data-campus-tab="${i}"]`);
       if (!b) return false;
@@ -133,7 +135,7 @@ for (const width of [360, 412]) {
   });
 
   s.ok(strip, 'campus tab strip renders');
-  s.eq(strip && strip.tabs.length, 5, 'five discovery tabs');
+  s.eq(strip && strip.tabs.length, 4, 'four campus tabs (Explore is its own bottom tab)');
   s.ok(strip && strip.tabs.every(t => !t.clipped),
        'no tab label is clipped at 360px');
   s.ok(strip && strip.tabs.every(t => t.text.length > 0),

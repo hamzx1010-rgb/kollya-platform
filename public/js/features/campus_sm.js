@@ -574,9 +574,10 @@ async function renderExplore(q = '') {
   host.innerHTML = loading(3);
 
   if (q) {
-    let people = [], posts = [];
+    let people = [], posts = [], followStates = {};
     try {
       [people, posts] = await Promise.all([api.searchPeople(q), api.searchPosts(q)]);
+      followStates = await api.myFollowStates?.() || {};
     } catch (err) { failed(host, err, () => renderExplore(q)); return; }
 
     if (!people.length && !posts.length) {
@@ -585,19 +586,33 @@ async function renderExplore(q = '') {
       return;
     }
 
+    /* Instagram-style: a name search shows ACCOUNTS first — tap a row
+       to enter the profile, Follow lives on the row. Posts come below
+       under their own heading. */
+    const accountRow = u => {
+      const st = followStates[String(u.id)];
+      const state = st === 'accepted' ? 'following' : st === 'pending' ? 'requested' : 'none';
+      const label = state === 'following' ? t('explore.following')
+        : state === 'requested' ? t('profile.requestedBtn') : t('explore.follow');
+      const place = [u.university, u.faculty].filter(Boolean).join(' · ');
+      return `
+        <a class="cc acct" href="#/profile/${esc(u.username)}">
+          ${avatarChip(u, 'av')}
+          <div class="grow" style="min-width:0">
+            <div class="t-bold truncate">${esc(u.full_name)}</div>
+            <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span></div>
+            ${place ? `<div class="t-xs t-dim2 truncate">${esc(place)}</div>` : ''}
+          </div>
+          <button class="btn btn-sm acct-follow ${state === 'none' ? 'btn-primary' : 'btn-outline'}"
+                  data-acct-follow="${esc(u.id)}" data-state="${state}"
+                  data-private="${u.is_private ? '1' : '0'}">${esc(label)}</button>
+        </a>`;
+    };
+
     host.innerHTML = `
-      ${people.length ? `<div class="hub-sec-head" style="margin:var(--s3) 0">Personnes · ${people.length}</div>` +
-        people.map(u => `<div class="cc">
-            ${avatarChip(u, 'av')}
-            <div class="grow" style="min-width:0"><div class="t-bold truncate">${esc(u.full_name)}</div>
-            <div class="t-sm t-dim"><span class="handle">@${esc(u.username)}</span> · ${esc(u.faculty || '')}</div></div>
-            <div class="row g1">
-              ${u.is_private === false || u.i_follow !== false
-                ? `<button class="icon-btn sm" data-msg="${esc(u.id)}" data-tip="Message" aria-label="Message">${icon('message', { size: 15 })}</button>` : ''}
-              <a class="btn btn-outline btn-sm" href="#/profile/${esc(u.username)}">${esc(t('action.view'))}</a>
-            </div>
-          </div>`).join('') : ''}
-      ${posts.length ? `<div class="hub-sec-head" style="margin:var(--s4) 0 var(--s3)">${t('feed.post')} · ${posts.length}</div>` +
+      ${people.length ? `<div class="hub-sec-head" style="margin:var(--s3) 0">${esc(t('explore.accounts'))} · ${people.length}</div>` +
+        people.map(accountRow).join('') : ''}
+      ${posts.length ? `<div class="hub-sec-head" style="margin:var(--s4) 0 var(--s3)">${esc(t('explore.postsTitle'))} · ${posts.length}</div>` +
         posts.map(p => {
           const a = p.anonymous ? { full_name: t('feed.anonymous'), id: 'anon' } : person(p.user_id);
           return `<article class="cc">
@@ -608,6 +623,29 @@ async function renderExplore(q = '') {
               <div class="t-sm t-dim">${esc(truncate(p.text || '', 120))}</div>
             </div></article>`;
         }).join('') : ''}`;
+
+    // Follow button on the row: toggle without leaving the search.
+    for (const btn of $$('.acct-follow', host)) {
+      on(btn, 'click', async e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = btn.dataset.acctFollow;
+        const next = btn.dataset.state === 'none'
+          ? (btn.dataset.private === '1' ? 'requested' : 'following')
+          : 'none';
+        btn.disabled = true;
+        try {
+          await api.follow(id, next);
+          followStates[String(id)] = next === 'none' ? undefined : (next === 'requested' ? 'pending' : 'accepted');
+          btn.dataset.state = next === 'none' ? 'none' : (next === 'requested' ? 'requested' : 'following');
+          btn.classList.toggle('btn-primary', next !== 'none');
+          btn.classList.toggle('btn-outline', next === 'none');
+          btn.textContent = next === 'none' ? t('explore.follow')
+            : next === 'requested' ? t('profile.requestedBtn') : t('explore.following');
+        } catch { toast(t('feed.failed'), 'err'); }
+        btn.disabled = false;
+      });
+    }
     return;
   }
 
