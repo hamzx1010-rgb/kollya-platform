@@ -2,13 +2,17 @@
 
 ## Use this
 
-**`db/FULL_SCHEMA_sm.sql`**
+**`db/FULL_SCHEMA_sm.sql`** (same file is also served at
+`public/FULL_SCHEMA_sm.sql` for the one-file Neon paste, and is
+copied as `db/FULL_SCHEMA_V19_sm.sql` to make the V19 version obvious).
 
 Neon Console → SQL Editor → paste the whole file → Run →
 Data API page → **Refresh schema cache** → reload the app.
 
-That is everything. Do not run `01_…` through `11_…` — this file is
-already all of them.
+That is everything. Do not run `01_…` through `19_…` — this file is
+already all of them (including the V19 Marketplace + Documents +
+Classmates migrations `18_marketplace_sm.sql` and
+`19_docs_classmates_sm.sql`).
 
 Safe to run twice. Safe on a database that already has your data:
 it creates what is missing, replaces every function and policy with
@@ -42,18 +46,19 @@ correct**, in dependency order:
  5. functions                               11. final check
 ```
 
-26 tables · 29 functions · 2 views · 64 policies · 21 indexes ·
-3 triggers.
+31 tables · 66 functions · 2 views · 86 policies · 34 indexes ·
+17 triggers.
 
 ---
 
 ## How it was produced, and how it is checked
 
-`tests/sql/build_schema.mjs` loads all eleven migrations into a
+`tests/sql/build_schema.mjs` loads all migration files into a
 throwaway PostgreSQL 17, lets the database settle the final state,
 then reads that state back out of the catalog. So the file cannot
 drift from what the migrations actually produce — it *is* what they
-produce.
+produce. The V19 addition is applied the same way (see
+`db/18_marketplace_sm.sql` + `db/19_docs_classmates_sm.sql`).
 
 Verified, not assumed:
 
