@@ -78,8 +78,13 @@ function postMedia(p) {
   }
   const src = p.image_url || (p.media_type === 'image' ? p.media_url : null);
   if (!src) return '';
+  // A post image is content, not decoration: alt="" hid it from screen
+  // readers entirely. The post's own text is the best description we
+  // have; the author's name is the fallback.
+  const alt = (p.text || '').trim().slice(0, 120) ||
+              t('a11y.postImage', { name: person(p.user_id)?.full_name || '' });
   return `<div class="post-media media-zoom" data-zoom="${esc(safeUrl(src))}">
-      <img src="${esc(safeUrl(src))}" alt="" loading="lazy">
+      <img src="${esc(safeUrl(src))}" alt="${esc(alt)}" loading="lazy">
     </div>`;
 }
 
@@ -295,8 +300,18 @@ function postMenu(e, p) {
     { sep: true },
     mine
       ? { label: t('action.delete'), icon: I.trash, danger: true, onClick: () => deletePost(p) }
-      : { label: t('action.report'), icon: I.flag, danger: true, onClick: () => toast(t('toast.reportSent'), 'ok') }
+      // This used to fire a "Report sent" toast and do nothing at all —
+      // the worst kind of safety feature. It writes a row now.
+      : { label: t('action.report'), icon: I.flag, danger: true, onClick: () => reportPost(p) }
   ]);
+}
+
+async function reportPost(p) {
+  try {
+    const { profileApi } = await import('../core/api_sm.js');
+    await profileApi.report('post', p.id, t('report.fromFeed'));
+    toast(t('toast.reportSentAdmin'), 'ok');
+  } catch { toast(t('toast.reportFailed'), 'err'); }
 }
 
 function hidePost(p) {

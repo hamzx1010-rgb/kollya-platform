@@ -45,7 +45,7 @@ const field = ({ id, label, type = 'text', placeholder = '', hint = '', autocomp
              ${maxlength ? `maxlength="${maxlength}"` : ''}
              aria-describedby="${id}-msg">
       ${type === 'password' ? `<button type="button" class="auth-eye" data-eye="${id}"
-             aria-label="Afficher le mot de passe">${icon('eyeOff', { size: 17 })}</button>` : ''}
+             aria-label="${esc(t('a11y.showPassword'))}">${icon('eyeOff', { size: 17 })}</button>` : ''}
     </div>
     <div class="field-msg" id="${id}-msg">${hint ? `<span class="t-xs t-dim2">${esc(hint)}</span>` : ''}</div>
   </div>`;
@@ -57,10 +57,10 @@ function signinMarkup() {
                 hint:t('auth.cardHint'), autocomplete:'username', maxlength:24 })}
       ${field({ id:'inPass', label:t('auth.password'), type:'password',
                 placeholder:'••••••••', autocomplete:'current-password' })}
-      <button type="button" class="auth-link" id="forgotBtn">Mot de passe oublié ?</button>
-      <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">Se connecter</button>
+      <button type="button" class="auth-link" id="forgotBtn">${esc(t('auth.forgot'))}</button>
+      <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">${esc(t('auth.signIn'))}</button>
     </form>
-    <p class="auth-switch">Pas encore de compte ?
+    <p class="auth-switch">${esc(t('auth.noAccountQ'))}
       <button class="auth-link" id="toSignup">${t('auth.createAccount')}</button></p>`;
 }
 
@@ -70,14 +70,14 @@ function signupMarkup() {
       ${field({ id:'inCard', label:t('auth.cardReq'), placeholder:'CS-042',
                 hint:t('auth.usernameHint'), autocomplete:'username', maxlength:24 })}
       ${field({ id:'inName', label:t('auth.fullNameReq'), placeholder:'Sara Benali', autocomplete:'name' })}
-      ${field({ id:'inUser', label:"Nom d'utilisateur *", placeholder:'sara.b',
-                hint:'Lettres, chiffres, point et tiret bas', autocomplete:'nickname', maxlength:24 })}
-      ${field({ id:'inMail', label:'Email *', type:'email', placeholder:'sara@gmail.com',
-                hint:'Pour vous contacter — pas pour la connexion', autocomplete:'email' })}
+      ${field({ id:'inUser', label:t('auth.usernameReq'), placeholder:'sara.b',
+                hint:t('auth.usernameRule'), autocomplete:'nickname', maxlength:24 })}
+      ${field({ id:'inMail', label:t('auth.emailReq'), type:'email', placeholder:'sara@gmail.com',
+                hint:t('auth.emailHint'), autocomplete:'email' })}
       <div class="field">
-        <label class="label" for="inFac">Faculté</label>
+        <label class="label" for="inFac">${esc(t('auth.faculty'))}</label>
         <select class="input" id="inFac">
-          <option value="">Sélectionnez…</option>
+          <option value="">${esc(t('auth.select'))}</option>
           ${FACULTIES.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}
         </select>
       </div>
@@ -86,11 +86,11 @@ function signupMarkup() {
       <div class="pw-meter" id="pwMeter"><i></i><i></i><i></i><i></i></div>
       <button class="btn btn-primary btn-full btn-lg" id="submitBtn" type="submit">${t('auth.createMine')}</button>
       <p class="t-xs t-dim2" style="text-align:center">
-        Votre compte sera validé par un administrateur avant activation.
+        ${esc(t('auth.approval'))}
       </p>
     </form>
-    <p class="auth-switch">Déjà inscrit ?
-      <button class="auth-link" id="toSignin">Se connecter</button></p>`;
+    <p class="auth-switch">${esc(t('auth.haveAccountQ'))}
+      <button class="auth-link" id="toSignin">${esc(t('auth.signIn'))}</button></p>`;
 }
 
 /* ------------------------------------------------------------
@@ -112,16 +112,16 @@ function setMsg(id, text, kind = 'err') {
 // switch never reaches them. Verified in Chrome: the notification
 // filters stayed English while the rest of the UI was Arabic.
 const authRules = () => ({
-  inCard: v => !v ? 'Champ obligatoire'
-                : !isValidCard(v) ? 'Format invalide (ex. CS-042)' : '',
-  inName: v => !v ? 'Champ obligatoire'
+  inCard: v => !v ? t('auth.required')
+                : !isValidCard(v) ? t('auth.badCardFormat') : '',
+  inName: v => !v ? t('auth.required')
                 : v.trim().length < 2 ? t('auth.nameShort') : '',
-  inUser: v => !v ? 'Champ obligatoire'
+  inUser: v => !v ? t('auth.required')
                 : v.trim().length < 3 ? t('auth.min3')
-                : !/^[a-zA-Z0-9._]+$/.test(v.trim()) ? 'Lettres, chiffres, . et _ uniquement' : '',
-  inMail: v => !v ? 'Champ obligatoire'
-                : !isValidEmail(v) ? 'Adresse email invalide' : '',
-  inPass: v => !v ? 'Champ obligatoire'
+                : !/^[a-zA-Z0-9._]+$/.test(v.trim()) ? t('auth.usernameOnly') : '',
+  inMail: v => !v ? t('auth.required')
+                : !isValidEmail(v) ? t('auth.badEmail') : '',
+  inPass: v => !v ? t('auth.required')
                 : v.length < 8 ? t('auth.min8') : ''
 });
 
@@ -167,7 +167,15 @@ export function renderAuth(onSuccess) {
         ${mode === 'signin' ? signinMarkup() : signupMarkup()}
       </div>
       <p class="auth-foot t-xs t-dim2">
-        Réseau privé des étudiants universitaires algériens
+        ${esc(t('auth.foot'))}
+      </p>
+      <!-- The terms and the privacy policy have to be readable BEFORE
+           the account is created, not only from Settings afterwards. -->
+      <p class="auth-legal t-xs t-dim2">
+        ${esc(t('auth.legal'))}
+        <a href="cgu.html" target="_blank" rel="noopener">${esc(t('settings.cgu'))}</a>
+        ·
+        <a href="privacy.html" target="_blank" rel="noopener">${esc(t('settings.privacy'))}</a>
       </p>
     </div>`;
 
@@ -211,7 +219,7 @@ function wire(onSuccess) {
       const showing = input.type === 'text';
       input.type = showing ? 'password' : 'text';
       btn.innerHTML = icon(showing ? 'eyeOff' : 'globe', { size: 17 });
-      btn.setAttribute('aria-label', showing ? 'Afficher le mot de passe' : t('a11y.hidePassword'));
+      btn.setAttribute('aria-label', showing ? t('a11y.showPassword') : t('a11y.hidePassword'));
     });
   }
 
@@ -221,7 +229,7 @@ function wire(onSuccess) {
   on($('#forgotBtn'), 'click', async () => {
     const value = $('#inCard')?.value;
     if (!isValidCard(value)) {
-      setMsg('inCard', 'Saisissez votre carte étudiant d\'abord');
+      setMsg('inCard', t('auth.enterCardFirst'));
       $('#inCard')?.focus();
       return;
     }
@@ -268,7 +276,7 @@ async function submit(onSuccess) {
     }
     onSuccess?.();
   } catch (e) {
-    errBox.textContent = e instanceof AuthError ? e.message : 'Une erreur est survenue.';
+    errBox.textContent = e instanceof AuthError ? e.message : t('error.generic');
     errBox.classList.remove('hidden');
     // point at the field the server complained about
     if (/carte|card/i.test(e.message)) $('#inCard')?.focus();
@@ -289,12 +297,11 @@ export function renderPending(onSignOut) {
     <div class="auth-wrap">
       <div class="auth-card" style="text-align:center">
         <div class="empty-art" style="margin:0 auto var(--s4)">${icon('clock', { size: 32 })}</div>
-        <h2 style="font-size:var(--fs-xl);margin-bottom:var(--s2)">Compte en attente</h2>
+        <h2 style="font-size:var(--fs-xl);margin-bottom:var(--s2)">${esc(t('auth.pendingTitle'))}</h2>
         <p class="t-dim" style="margin-bottom:var(--s5)">
-          Votre inscription a bien été reçue. Un administrateur doit valider
-          votre carte étudiant avant que vous puissiez accéder à Koliya.
+          ${esc(t('auth.pendingBody'))}
         </p>
-        <button class="btn btn-outline btn-full" id="pendingOut">Se déconnecter</button>
+        <button class="btn btn-outline btn-full" id="pendingOut">${esc(t('settings.signOut'))}</button>
       </div>
     </div>`;
   on($('#pendingOut'), 'click', () => onSignOut?.());

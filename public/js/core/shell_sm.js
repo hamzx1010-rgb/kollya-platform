@@ -11,8 +11,9 @@
  *   b.onclick = () => body.classList.toggle('side-folded');
  * That asked the student a question they never wanted to answer.
  *
- * Here the rail collapses because you opened a conversation, and
- * expands because your mouse arrived. No button exists.
+ * Here the rail folds from ONE place: the ☰ that sits inside the
+ * sidebar, on the logo row. Opening a tab folds it too, so the page
+ * you just chose gets the width back — Facebook's behaviour.
  * ============================================================
  */
 
@@ -28,22 +29,91 @@ import { t, lang, setLang, LANGS, applyI18n } from './i18n_sm.js';
    ------------------------------------------------------------ */
 
 /**
- * The rail is always expanded.
+ * The rail folds the way Facebook's does — by hand, from a ☰ that
+ * lives INSIDE the sidebar, and automatically once you commit to a
+ * tab so the page you just opened gets the width.
  *
- * Three mechanisms used to decide its width — a per-route rule, a
- * 2.2s auto-fold timer, and a hover "peek" that floated it over the
- * content. They contradicted each other mid-transition, which is why
- * the icons looked crushed and the panel felt like it was fighting
- * you. Reconciling three sources of truth for one number was the
- * wrong fix; removing the feature is the right one.
+ * The three mechanisms that used to fight each other (a per-route
+ * rule, a 2.2s timer and a hover peek) are still gone. There is one
+ * source of truth now: `railCollapsed`, changed only by a click.
+ *
+ * Phones are untouched: under 900px the rail is a bottom bar and the
+ * state has no meaning, so it is forced back to 'expanded'.
  */
+const RAIL_KEY = 'kl.rail.collapsed';
+const DESKTOP = '(min-width: 900px)';
+
+let railCollapsed = (() => {
+  try { return localStorage.getItem(RAIL_KEY) === '1'; } catch { return false; }
+})();
+
+const isDesktop = () => {
+  try { return window.matchMedia?.(DESKTOP)?.matches ?? true; } catch { return true; }
+};
+
 function syncRail() {
   const app = $('#app');
-  if (app) app.dataset.rail = 'expanded';
+  if (!app) return;
+  const collapsed = railCollapsed && isDesktop();
+  app.dataset.rail = collapsed ? 'collapsed' : 'expanded';
+
+  const btn = $('#btnRailFold');
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    const label = t(collapsed ? 'nav.expand' : 'nav.collapse');
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+  }
+
+  // Collapsed rows are icons only, so the label has to survive as a
+  // tooltip and as the accessible name. A native `title` is used on
+  // purpose: the rail scrolls and clips, which would cut a CSS
+  // tooltip in half on a 64px strip.
+  for (const item of $$('#railNav .nav-item')) {
+    const label = item.querySelector('.lbl')?.textContent?.trim();
+    if (!label) continue;
+    if (collapsed) { item.setAttribute('title', label); item.setAttribute('aria-label', label); }
+    else { item.removeAttribute('title'); item.removeAttribute('aria-label'); }
+  }
 }
 
-/** Kept as a no-op: callers and tests still reference it. */
-function wireRailPeek() {}
+/** Fold / unfold by hand. */
+function setRail(collapsed) {
+  railCollapsed = !!collapsed;
+  try { localStorage.setItem(RAIL_KEY, railCollapsed ? '1' : '0'); } catch { /* private mode */ }
+  syncRail();
+}
+
+export function toggleRail() { setRail(!railCollapsed); }
+export const railState = () => (railCollapsed ? 'collapsed' : 'expanded');
+
+/**
+ * Wiring: the in-sidebar ☰ toggles, and choosing a tab folds — the
+ * page you just asked for is what you want the pixels for. Only a
+ * real pointer click folds it, never a programmatic go(), so deep
+ * links and boot land expanded unless you folded it yourself.
+ */
+function wireRailFold() {
+  const btn = $('#btnRailFold');
+  if (btn) on(btn, 'click', e => { e.preventDefault(); toggleRail(); });
+
+  const nav = $('#railNav');
+  if (nav) {
+    on(nav, 'click', e => {
+      if (!e.target.closest('.nav-item')) return;
+      if (!isDesktop()) return;          // phones: the rail is a bottom bar
+      setRail(true);
+    });
+  }
+
+  // Crossing the phone breakpoint changes what the state means.
+  try {
+    window.matchMedia?.(DESKTOP)?.addEventListener?.('change', syncRail);
+  } catch { /* older engines */ }
+}
+
+/** Kept for callers and tests that still reference it. */
+function wireRailPeek() { wireRailFold(); }
 
 /* ------------------------------------------------------------
    2. ACTIVE NAV ITEM
@@ -238,6 +308,8 @@ function openLangMenu(e) {
 onEvent('i18n:changed', () => {
   syncLangButton();
   applyI18n(document);
+  // rail tooltips are copies of the labels, so they change too
+  syncRail();
   // Nav labels and the page title come from ROUTES, so re-run the
   // two syncs that read them. No reload — the whole point of keeping
   // the strings in memory.
@@ -391,6 +463,7 @@ function cycleTheme() {
 export function initShell() {
   applyTheme();
   wireRailPeek();
+  syncRail();
   wireScroll();
   wireDrawer();
 

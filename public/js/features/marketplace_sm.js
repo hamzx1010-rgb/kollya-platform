@@ -113,13 +113,13 @@ function render(host) {
       icon: I.store,
       title: t('error.loading'),
       text: errorText(loadError)
-    })}</div>`;
+    }).outerHTML}</div>`;
   } else if (!items.length) {
     list.innerHTML = `<div>${emptyState({
       icon: I.store,
       title: t('marketplace.empty.title'),
       text: t('marketplace.empty.text')
-    })}</div>`;
+    }).outerHTML}</div>`;
   } else {
     list.innerHTML = `<div class="mp-grid">${items.map(card).join('')}</div>`;
   }

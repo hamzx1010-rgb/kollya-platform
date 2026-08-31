@@ -1771,8 +1771,17 @@ function msgMenu(e, m) {
     { sep: true },
     mine
       ? { label: t('action.delete'), icon: I.trash, danger: true, onClick: () => removeMsg(m) }
-      : { label: t('action.report'),  icon: I.flag,  danger: true, onClick: () => toast(t('toast.reportSent'), 'ok') }
+      // A report has to reach the moderators, not just the toast layer.
+      : { label: t('action.report'),  icon: I.flag,  danger: true, onClick: () => reportMessage(m) }
   ]);
+}
+
+async function reportMessage(m) {
+  try {
+    const { profileApi } = await import('../core/api_sm.js');
+    await profileApi.report('message', m.id, t('report.fromMessage'));
+    toast(t('toast.reportSentAdmin'), 'ok');
+  } catch { toast(t('toast.reportFailed'), 'err'); }
 }
 
 async function copyMsg(m) {

@@ -119,6 +119,21 @@ await new Promise(r=>setTimeout(r,120));   // posts are fetched, not invented
 ok('posts listed', D.querySelectorAll('#pfBody .post').length===3);
 ok('badges strip', !!D.querySelector('.pf-badge'));
 
+// V20 — the profile head IS the student card. Not a card widget added
+// inside the profile: the head itself is the card, with a SQUARE photo
+// and the banner left exactly as it was.
+ok('the head is one card panel', !!D.querySelector('.pf-idcard .pf-head'));
+ok('the banner is still there', !!D.querySelector('.pf-idcard') && !!D.querySelector('#pfCover .pf-cover-img'));
+ok('no copied student-card widget', !D.querySelector('.student-card, .sc-barcode, .sc-qr, .sc-chip'));
+ok('the card carries the identity', !!D.querySelector('.pf-idcard .pf-name') &&
+   /@sara\.b/.test(D.querySelector('.pf-handle-line')?.textContent || ''));
+ok('the card is labelled as one', !!D.querySelector('.pf-eyebrow'));
+const layoutCss = fs.readFileSync(new URL('../public/css/layout_sm.css', import.meta.url), 'utf8');
+ok('the photo is square, not a circle',
+   /\.pf-avatar-wrap \.av \{[^}]*border-radius:\s*var\(--r-lg\)/s.test(layoutCss));
+ok('the xp ring follows the square photo',
+   /\.pf-avatar-wrap \.av-ring \{[^}]*border-radius:/s.test(layoutCss));
+
 // tab switching
 const mediaTab=[...D.querySelectorAll('.pf-tab')].find(x=>x.dataset.tab==='media');
 mediaTab.click(); await new Promise(r=>setTimeout(r,140));

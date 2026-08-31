@@ -11,7 +11,9 @@ for(const k of ['window','document','location','history','navigator','HTMLElemen
 globalThis.addEventListener=window.addEventListener.bind(window);
 globalThis.localStorage=window.localStorage;
 globalThis.innerWidth=1400; globalThis.innerHeight=900;
-globalThis.matchMedia=q=>({matches:/hover: hover|pointer: fine/.test(q),addEventListener(){},removeEventListener(){}});
+// 1400x900 in this DOM, so the desktop query has to answer true —
+// the sidebar fold only applies above 900px.
+globalThis.matchMedia=q=>({matches:/hover: hover|pointer: fine|min-width: 900px/.test(q),addEventListener(){},removeEventListener(){}});
 globalThis.IntersectionObserver=class{observe(){}unobserve(){}disconnect(){}};
 globalThis.requestAnimationFrame=f=>setTimeout(()=>f(performance.now()),0);
 globalThis.cancelAnimationFrame=id=>clearTimeout(id);
@@ -69,6 +71,10 @@ for (const name of ROUTES) {
   await new Promise(r=>setTimeout(r,180));
   const inner=D.getElementById('viewInner');
   ok(`${name}: renders content`, inner.children.length>0 || inner.textContent.trim().length>0);
+  // V20: emptyState() returns a NODE. Interpolating it into a template
+  // string printed "[object HTMLDivElement]" on Marketplace, Documents
+  // and Classmates instead of an empty state.
+  ok(`${name}: no stringified DOM node`, !/\[object [A-Z]/.test(inner.textContent));
   ok(`${name}: no console errors`, errors.filter(e=>!/localStorage|icône/.test(e)).length===0);
   ok(`${name}: title updated`, D.getElementById('topbarTitle').textContent.length>0);
 }
@@ -86,12 +92,45 @@ ok('drawer has NO notifications entry (it lives in the top bar now)',
 D.getElementById('navDrawerScrim').click();
 ok('scrim closes the drawer', !D.getElementById('navDrawer').classList.contains('open'));
 
+// V20 sidebar fold — Facebook style: the ☰ is INSIDE the rail, on the
+// logo row, and opening a tab folds the rail down to icons.
+const app = D.getElementById('app');
+const fold = D.getElementById('btnRailFold');
+ok('fold button sits inside the rail logo row', !!D.querySelector('.nav-rail .rail-logo #btnRailFold'));
+ok('rail starts expanded', app.dataset.rail === 'expanded');
+D.querySelector('#railNav .nav-item[data-nav="hub"]').click();
+await new Promise(r=>setTimeout(r,120));
+ok('choosing a tab folds the rail', app.dataset.rail === 'collapsed');
+ok('fold button reports the state', fold.getAttribute('aria-expanded') === 'false');
+ok('collapsed rows keep their label as a tooltip',
+   !!D.querySelector('#railNav .nav-item[title]'));
+fold.click();
+await new Promise(r=>setTimeout(r,60));
+ok('the in-rail hamburger expands it again', app.dataset.rail === 'expanded');
+ok('expanded rows drop the tooltip', !D.querySelector('#railNav .nav-item[title]'));
+fold.click();
+ok('the hamburger folds it too', app.dataset.rail === 'collapsed');
+fold.click();
+ok('the phone hamburger is still the drawer, not the fold',
+   D.getElementById('btnMenuTop') !== fold);
+
 // V19.1 notifications bell in the top bar, badge id unchanged.
 ok('top bar bell exists', !!D.getElementById('btnNotifsTop'));
 ok('bell links to notifications', D.getElementById('btnNotifsTop').getAttribute('href') === '#/notifications');
 ok('bell carries data-nav for the active state', D.getElementById('btnNotifsTop').dataset.nav === 'notifications');
 ok('badge kept its id inside the bell', !!D.querySelector('#btnNotifsTop #badgeNotifs'));
 ok('notifications is gone from the rail', !D.querySelector('#railNav [data-nav="notifications"]'));
+
+// V20 audit — an unknown hash gets a real 404 screen with a way home,
+// instead of being silently rewritten to the feed.
+location.hash = '#/definitely-not-a-route';
+await new Promise(r=>setTimeout(r,220));
+const nf = D.getElementById('viewInner');
+ok('unknown route renders a 404 screen', !!nf.querySelector('.empty-title'));
+ok('the 404 screen offers a way home', !!nf.querySelector('.empty .btn'));
+nf.querySelector('.empty .btn').click();
+await new Promise(r=>setTimeout(r,200));
+ok('the 404 button goes home', location.hash === '#/feed');
 
 // Deep links with an argument.
 // This test boots the real app_sm.js with nobody signed in, so no API

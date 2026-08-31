@@ -253,7 +253,7 @@ function openEventDetail(e) {
     // chose, and stacks above them on a phone where there is no room
     // for two columns. `[img:left]` is the marker createEvent() writes.
     body: `<div class="ev-detail${/\[img:left\]/.test(e.description || '') ? ' img-left' : ''}${e.cover_url ? ' has-cover' : ''}">
-      ${e.cover_url ? `<div class="ev-cover"><img src="${esc(safeUrl(e.cover_url))}" alt=""></div>` : ''}
+      ${e.cover_url ? `<div class="ev-cover"><img src="${esc(safeUrl(e.cover_url))}" alt="${esc(t('a11y.eventCover', { title: e.title || '' }))}"></div>` : ''}
       <div class="col g3 ev-detail-info">
       <div class="row g3"><span class="tg-ic">${icon('calendar', { size: 16 })}</span>
         <div><div class="t-sm">${d ? d.toLocaleDateString('fr', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Date à préciser'}</div>
@@ -724,7 +724,9 @@ async function renderSaved() {
         </div>
       </div>
       ${p.text ? `<div class="post-text">${richText(p.text)}</div>` : ''}
-      ${src ? `<div class="post-media"><img src="${esc(safeUrl(src))}" alt="" loading="lazy"></div>` : ''}
+      ${src ? `<div class="post-media"><img src="${esc(safeUrl(src))}" alt="${
+        esc((p.text || '').trim().slice(0, 120) || t('a11y.postImage', { name: a.full_name || '' }))
+      }" loading="lazy"></div>` : ''}
     </article>`;
   }).join('');
 }

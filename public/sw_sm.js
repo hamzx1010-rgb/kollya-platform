@@ -20,7 +20,11 @@
  * ============================================================
  */
 
-const VERSION    = 'v4';
+// v5 — V20 ships new CSS (collapsed rail, student-card head) and new
+// JS. Bumping the version drops the old shell caches on activate, so a
+// returning student is not served last week's layout with this week's
+// markup.
+const VERSION    = 'v5';
 const SHELL      = `koliya-shell-${VERSION}`;
 const MEDIA      = `koliya-media-${VERSION}`;
 const FONTS      = `koliya-fonts-${VERSION}`;

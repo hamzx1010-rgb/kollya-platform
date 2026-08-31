@@ -91,14 +91,14 @@ function render(host) {
         icon: I.folder,
         title: t('error.loading'),
         text: errorText(loadError)
-      })}</div>` : ''}
+      }).outerHTML}</div>` : ''}
       ${section(t('documents.myShelf'), mine)}
       ${section(t('documents.sharedShelf'), shared)}
       ${!loading && !loadError && !items.length ? `<div>${emptyState({
         icon: I.folder,
         title: t('documents.empty.title'),
         text: t('documents.empty.text')
-      })}</div>` : ''}
+      }).outerHTML}</div>` : ''}
     </div>`;
   wire(host);
 }

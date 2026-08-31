@@ -16,7 +16,7 @@ import {
   $, $$, el, on, esc, timeAgo, initials, avatarColor, truncate, onVisible
 } from '../core/utils_sm.js';
 import { me, setState, state, scoped, on as onEvent } from '../core/store_sm.js';
-import { t } from '../core/i18n_sm.js';
+import { t, errorText } from '../core/i18n_sm.js';
 import { person, cachePeople } from '../core/people_sm.js';
 import { safeUrl } from '../core/utils_sm.js';
 import { I, icon, reactionIcon } from '../core/icons_sm.js';
@@ -37,10 +37,21 @@ let filter = 'all';
    still bold on your phone.
    ------------------------------------------------------------ */
 
+// A failed load used to return [] and paint "No notifications yet",
+// which is a lie: an empty inbox and a broken database look nothing
+// alike to the student. The error is kept and shown (that includes
+// the stale Neon schema cache message).
+let loadError = null;
+
 async function load() {
+  loadError = null;
   if (!api?.listNotifications) return [];
   try { return await api.listNotifications(); }
-  catch (e) { console.warn('[koliya] notifications indisponibles', e.message); return []; }
+  catch (e) {
+    loadError = e;
+    console.warn('[koliya] notifications indisponibles', e.message);
+    return [];
+  }
 }
 
 /* ------------------------------------------------------------
@@ -157,11 +168,18 @@ function render() {
 
   if (!groups.length) {
     host.innerHTML = '';
-    host.append(emptyState({
-      icon: I.bell,
-      title: t('notif.none'),
-      text: t('empty.notifHere')
-    }));
+    host.append(loadError
+      ? emptyState({
+          icon: I.bell,
+          title: t('error.loading'),
+          text: errorText(loadError),
+          action: { label: t('action.retry'), onClick: () => load().then(rows => { items = rows; render(); }) }
+        })
+      : emptyState({
+          icon: I.bell,
+          title: t('notif.none'),
+          text: t('empty.notifHere')
+        }));
     updateBadge();
     return;
   }
