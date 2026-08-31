@@ -45,7 +45,7 @@ const inList = ids => `in.(${[...new Set(ids.map(String))]
 // outsider. Verified in PostgreSQL that RLS lets one student read
 // another's — it is not private data here.
 const PROFILE_COLS =
-  'id,username,full_name,faculty,avatar_url,banner_url,bio,xp,streak,role,status,is_private,last_seen,website,github,linkedin,pronouns,student_card';
+  'id,username,full_name,faculty,university,avatar_url,banner_url,bio,xp,streak,role,status,is_private,last_seen,website,github,linkedin,pronouns,student_card';
 
 /** Load any profiles we do not have cached yet, in one request. */
 async function hydratePeople(ids) {
@@ -777,6 +777,54 @@ export const profileApi = {
     return rows.map(r => person(r.follower_id));
   },
 
+  /**
+   * Everyone who asked to follow ME and is still waiting for a decision.
+   * The profile screen shows these with Accept / Decline (see
+   * api.respondToRequest) — without this list a private account could
+   * never see its pending requests at all.
+   */
+  async followRequests() {
+    const rows = await db.select('follows', {
+      followee_id: `eq.${myId()}`, state: 'eq.pending', select: 'follower_id', limit: 100
+    }).catch(() => []);
+    if (!rows.length) return [];
+    await hydratePeople(rows.map(r => r.follower_id));
+    return rows.map(r => person(r.follower_id)).filter(Boolean);
+  },
+
+  /**
+   * followee_id -> 'pending' | 'accepted' for everyone I follow or asked
+   * to follow. Lets search and the right rail paint Follow buttons in
+   * the right state in one request instead of one per row.
+   */
+  async myFollowStates() {
+    const rows = await db.select('follows', {
+      follower_id: `eq.${myId()}`, select: 'followee_id,state', limit: 500
+    }).catch(() => []);
+    const map = {};
+    for (const r of rows) map[String(r.followee_id)] = r.state;
+    return map;
+  },
+
+  /**
+   * Self-service account deletion. The RPC (db/17_student_card_sm.sql)
+   * is SECURITY DEFINER: it sets status='deleted' and blanks personal
+   * data, which RLS would otherwise refuse — a student cannot change
+   * their own status through the ordinary UPDATE policy.
+   */
+  async deleteAccount() {
+    const ok = await db.rpc('self_delete_account', {}).catch(() => null);
+    if (ok !== null) return ok;
+    // Older database without the RPC: RLS lets a student change their
+    // own bio/links but not their status, so if the UPDATE comes back
+    // empty the deletion was refused — say so instead of pretending.
+    const [row] = await db.update('profiles',
+      { status: 'deleted', bio: '', website: null, github: null, linkedin: null },
+      { id: `eq.${myId()}` });
+    if (!row) throw new Error('self_delete_account missing — run db/17_student_card_sm.sql');
+    return true;
+  },
+
   async following(userId) {
     const rows = await db.select('follows', {
       follower_id: `eq.${userId}`, state: 'eq.accepted', select: 'followee_id', limit: 200
@@ -792,7 +840,7 @@ export const profileApi = {
    */
   async updateProfile(patch, { avatarFile, bannerFile } = {}) {
     const row = {};
-    for (const k of ['full_name','bio','faculty','pronouns','website','github','linkedin','is_private','username']) {
+    for (const k of ['full_name','bio','faculty','university','pronouns','website','github','linkedin','is_private','username']) {
       if (patch[k] !== undefined) row[k] = patch[k];
     }
     if (avatarFile) row.avatar_url = await toStorable(avatarFile, 'avatar');
@@ -1390,8 +1438,23 @@ export async function connectApi() {
     updateChannelSettings: campusApi.updateChannelSettings
   });
   stories.useApi(storiesApi);
-  profile.useApi(profileApi);
-  campus.useApi(campusApi);
+  profile.useApi({
+    ...profileApi,
+    // The followers modal is where follow requests are finally
+    // answered, but the decision RPC lives on notificationsApi (it
+    // clears the requester's inbox row too). Same spread pattern as
+    // messages above.
+    respondToRequest: notificationsApi.respondToRequest
+  });
+  // Search needs the follow controls on its account rows (Instagram
+  // style), so Campus gets the follow half of profileApi alongside
+  // its own methods — same pattern as messages above.
+  campus.useApi({
+    ...campusApi,
+    follow:             profileApi.follow,
+    myFollowStates:     profileApi.myFollowStates,
+    followRequests:     profileApi.followRequests
+  });
   notifications.useApi(notificationsApi);
   hub.useApi(statsApi);
   leaderboard.useApi(statsApi);

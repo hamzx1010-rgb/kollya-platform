@@ -41,7 +41,7 @@ export function seed() {
     status: 'approved', role: id === 'u1' ? 'student' : 'student',
     bio: `Étudiant en ${f}`, avatar_url: null, banner_url: null,
     is_private: false, student_card: `CS-${id.slice(1).padStart(3, '0')}`,
-    email: `${u}@carte.koliya.dz`, created_at: iso(60000), ...extra
+    university: 'USTHB — Alger', email: `${u}@carte.koliya.dz`, created_at: iso(60000), ...extra
   });
   return {
     profiles: [
@@ -110,7 +110,8 @@ export function seed() {
       { follower_id: 'u2', followee_id: 'u1' }, { follower_id: 'u5', followee_id: 'u1' },
       { follower_id: 'u7', followee_id: 'u1' }, { follower_id: 'u8', followee_id: 'u1' },
       { follower_id: 'u9', followee_id: 'u1' }, { follower_id: 'u10', followee_id: 'u1' },
-      { follower_id: 'u11', followee_id: 'u1' }
+      { follower_id: 'u11', followee_id: 'u1' },
+      { follower_id: 'u12', followee_id: 'u1', state: 'pending' }
     ],
     blocks: [],
     stories: [
@@ -150,12 +151,17 @@ export function seed() {
 /* ------------------------------------------------------------------ */
 /* PostgREST filter engine                                             */
 /* ------------------------------------------------------------------ */
+// PostgREST wildcards are asterisks (ilike.*foo*) — escape every regex
+// special EXCEPT * and %, then turn those two into '.*' (and % into .*
+// for the pg LIKE style).
+const likeRx = b => new RegExp('^' + b.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/[%*]/g, '.*') + '$', 'i');
+
 const cmp = {
   eq: (a, b) => String(a) === b, neq: (a, b) => String(a) !== b,
   gt: (a, b) => a > b, gte: (a, b) => a >= b, lt: (a, b) => a < b, lte: (a, b) => a <= b,
   is: (a, b) => (b === 'null' ? a === null || a === undefined : String(a) === b),
-  like: (a, b) => new RegExp('^' + b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i').test(String(a ?? '')),
-  ilike: (a, b) => new RegExp('^' + b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i').test(String(a ?? '')),
+  like: (a, b) => likeRx(b).test(String(a ?? '')),
+  ilike: (a, b) => likeRx(b).test(String(a ?? '')),
   in: (a, b) => b.replace(/^\(|\)$/g, '').split(',').map(s => s.replace(/^"|"$/g, '')).includes(String(a)),
   cs: () => true, not: () => true
 };
@@ -344,9 +350,11 @@ export function startMockNeon({ port = 0, signedIn = true, state = seed(), log =
           /* -- 07_privacy_sm.sql -- */
           case 'profile_counts': {
             const u = a.p_user;
+            // Accepted only — pending requests must not inflate the
+            // follower count (mirrors the real 07_privacy_sm.sql RPC).
             return S(200, [{
-              followers: state.follows.filter(f => f.followee_id === u).length,
-              following: state.follows.filter(f => f.follower_id === u).length,
+              followers: state.follows.filter(f => f.followee_id === u && f.state !== 'pending').length,
+              following: state.follows.filter(f => f.follower_id === u && f.state !== 'pending').length,
               posts: state.posts.filter(p => p.user_id === u).length
             }]);
           }
@@ -389,6 +397,27 @@ export function startMockNeon({ port = 0, signedIn = true, state = seed(), log =
             return S(200, [{ streak: prof?.streak ?? 0, broke: false, froze: false }]);
           }
           case 'touch_presence': return S(200, null);
+          /* -- 15_follow_notify_sm.sql -- */
+          case 'respond_follow_request': {
+            if (a.p_accept) {
+              const f = state.follows.find(x => x.follower_id === a.p_actor && x.followee_id === meId);
+              if (f) f.state = 'accepted';
+            } else {
+              state.follows = state.follows.filter(x => !(x.follower_id === a.p_actor && x.followee_id === meId));
+            }
+            return S(200, true);
+          }
+          /* -- 17_student_card_sm.sql -- */
+          case 'self_delete_account': {
+            const prof = state.profiles.find(p => p.id === meId);
+            if (prof) {
+              prof.status = 'deleted'; prof.deleted_at = new Date().toISOString();
+              prof.bio = ''; prof.website = null; prof.github = null; prof.linkedin = null;
+              prof.avatar_url = null; prof.banner_url = null;
+              state.follows = state.follows.filter(f => f.follower_id !== meId && f.followee_id !== meId);
+            }
+            return S(200, true);
+          }
           default: return S(200, []);
         }
       }

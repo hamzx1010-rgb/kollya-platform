@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   -- and normalised (upper case, no spaces) before it is stored.
   student_card  TEXT NOT NULL UNIQUE,
   faculty       TEXT NOT NULL DEFAULT '',
+  university    TEXT NOT NULL DEFAULT '',
   bio           TEXT NOT NULL DEFAULT '',
   pronouns      TEXT,
   website       TEXT,
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   banner_url    TEXT,                      -- R2 URL, never base64
 
   status        TEXT NOT NULL DEFAULT 'pending'
-                CHECK (status IN ('pending','approved','rejected','banned')),
+                CHECK (status IN ('pending','approved','rejected','banned','deleted')),
+  deleted_at    TIMESTAMPTZ,
   role          TEXT NOT NULL DEFAULT 'student'
                 CHECK (role IN ('student','admin')),
 
@@ -53,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_card ON profiles(upper(student_card));
 CREATE INDEX IF NOT EXISTS idx_profiles_status   ON profiles(status);
 CREATE INDEX IF NOT EXISTS idx_profiles_faculty  ON profiles(faculty);
+CREATE INDEX IF NOT EXISTS idx_profiles_university ON profiles(university);
 
 -- ---------- follows -----------------------------------------
 -- Was: three text[] columns on the user row. Now a real table.

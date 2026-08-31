@@ -197,9 +197,13 @@ export function initials(name) {
     .map(w => w[0] || '').join('').toUpperCase() || '?';
 }
 
+/* One step darker than the old palette: white initials on #16A34A /
+   #0891B2 / #DC2626 / #EA580C measured 3.3–3.9:1 — under AA. These
+   are the 600/700 stops of the same hues, so the look is unchanged
+   but the white text clears 4.5:1 on every swatch. */
 const AVATAR_COLORS = [
-  '#2563EB','#7C3AED','#DB2777','#EA580C',
-  '#16A34A','#0891B2','#DC2626','#9333EA'
+  '#2563EB','#6D28D9','#BE185D','#C2410C',
+  '#15803D','#0E7490','#B91C1C','#7E22CE'
 ];
 /** Same user always gets the same colour. */
 export function avatarColor(id) {

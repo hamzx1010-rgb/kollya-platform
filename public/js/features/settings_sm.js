@@ -15,7 +15,7 @@ import { me, prefs, applyTheme, on as onEvent } from '../core/store_sm.js';
 import { I, icon } from '../core/icons_sm.js';
 import { toast, modal, confirmDialog } from '../core/ui_sm.js';
 import { route } from '../core/router_sm.js';
-import { t, lang, setLang, LANGS } from '../core/i18n_sm.js';
+import { t, lang, setLang, LANGS, errorText } from '../core/i18n_sm.js';
 import sfx from '../core/sound_sm.js';
 import {
   supported as notifSupported, permission as notifPermission,
@@ -219,6 +219,39 @@ function render(host) {
         </div>
       </section>
 
+      <!-- LEGAL -->
+      <section class="set-sec">
+        <div class="set-head">
+          <span class="set-ic">${icon('lock', { size: 17 })}</span>
+          <div class="grow">
+            <div class="set-title">${esc(t('settings.legal'))}</div>
+          </div>
+        </div>
+        <div class="set-actions">
+          <a class="btn btn-outline" href="cgu.html" target="_blank" rel="noopener">
+            ${icon('flag', { size: 15 })} ${esc(t('settings.cgu'))}
+          </a>
+          <a class="btn btn-outline" href="privacy.html" target="_blank" rel="noopener">
+            ${icon('shield', { size: 15 })} ${esc(t('settings.privacy'))}
+          </a>
+        </div>
+      </section>
+
+      <!-- DANGER ZONE -->
+      <section class="set-sec">
+        <div class="set-head">
+          <span class="set-ic">${icon('trash', { size: 17 })}</span>
+          <div class="grow">
+            <div class="set-title">${esc(t('settings.dangerZone'))}</div>
+          </div>
+        </div>
+        <div class="set-actions">
+          <button class="btn btn-outline danger" id="deleteAccount">
+            ${icon('trash', { size: 15 })} ${esc(t('settings.deleteAccount'))}
+          </button>
+        </div>
+      </section>
+
     </div>`;
 
   wire(host);
@@ -312,6 +345,33 @@ function wire(host) {
     await signOut();
     location.hash = '';
     location.reload();
+  });
+
+  // DELETE MY ACCOUNT — soft delete now, purge later. The RPC lives in
+  // db/17_student_card_sm.sql; without it the call fails loudly and the
+  // user stays signed in, so nobody thinks they deleted what is still
+  // there.
+  on($('#deleteAccount'), 'click', async () => {
+    if (!await confirmDialog({
+      title: t('settings.deleteAccountTitle'),
+      message: t('settings.deleteAccountBody'),
+      confirmLabel: t('settings.deleteConfirm'),
+      danger: true
+    })) return;
+    const btn = $('#deleteAccount');
+    if (btn) btn.disabled = true;
+    try {
+      const { profileApi } = await import('../core/api_sm.js');
+      await profileApi.deleteAccount();
+      toast(t('settings.accountDeleted'), 'ok');
+      const { signOut } = await import('../core/auth_sm.js');
+      await signOut();
+      location.hash = '';
+      location.reload();
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      toast(errorText(err), 'err');
+    }
   });
 }
 
