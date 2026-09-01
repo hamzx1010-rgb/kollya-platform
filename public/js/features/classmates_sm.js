@@ -87,6 +87,7 @@ function render(host) {
         <div class="page-title">${esc(t('classmates.title'))}</div>
         <div class="page-sub">${esc(t('classmates.sub'))}</div>
       </div>
+      <button class="btn btn-primary" id="clmSearch">${icon('search', { size: 15 })} ${esc(t('action.apply'))}</button>
     </div>
     <div class="clm-level-selects">
       <input class="input" id="clmFaculty" list="facultyList" value="${esc(faculty || '')}" placeholder="${esc(t('classmates.facultyPh'))}">
@@ -94,7 +95,6 @@ function render(host) {
       <select class="select" id="clmLevel">
         ${LEVELS.map(l => `<option value="${l}"${l === level ? ' selected' : ''}>${esc(levelLabel(l))}</option>`).join('')}
       </select>
-      <button class="btn btn-outline" id="clmSearch">${icon('search', { size: 15 })} ${esc(t('action.apply'))}</button>
     </div>
     ${loading ? skeletonList(4, 'post') : ''}
     ${!loading && loadError ? `<div>${emptyState({

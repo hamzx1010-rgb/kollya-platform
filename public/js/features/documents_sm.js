@@ -48,17 +48,19 @@ function docRow(doc) {
   const owner = doc.owner || { id: doc.owner_id, full_name: 'Étudiant', username: doc.owner_id || '' };
   const kind = doc.kind || 'pdf';
   return `<article class="doc-row" data-id="${esc(doc.id)}">
-    <span class="doc-kind">${icon(kindIcon(kind), { size: 18 })}</span>
-    <div class="doc-body">
-      <div class="doc-title">${esc(truncate(doc.title, 90))}</div>
-      <div class="file-name">${esc(doc.file_name || '')}</div>
-      <div class="doc-meta">
-        <span>${esc(owner.full_name)}</span>
-        <span>${fileSize(Number(doc.size_bytes) || 0)}</span>
-        <span>${esc(doc.subject || '')}</span>
-        ${doc.level ? `<span>${esc(t('documents.levelN', { n: doc.level }))}</span>` : ''}
-        ${doc.shared_public ? `<span class="doc-shared">${icon('globe', { size: 12 })} ${esc(t('documents.shared'))}</span>` : ''}
+    <div class="doc-head">
+      <span class="doc-kind">${icon(kindIcon(kind), { size: 18 })}</span>
+      <div class="doc-body">
+        <div class="doc-title">${esc(truncate(doc.title, 90))}</div>
+        <div class="file-name">${esc(doc.file_name || '')}</div>
       </div>
+    </div>
+    <div class="doc-meta">
+      <span>${esc(owner.full_name)}</span>
+      <span>${fileSize(Number(doc.size_bytes) || 0)}</span>
+      <span>${esc(doc.subject || '')}</span>
+      ${doc.level ? `<span>${esc(t('documents.levelN', { n: doc.level }))}</span>` : ''}
+      ${doc.shared_public ? `<span class="doc-shared">${icon('globe', { size: 12 })} ${esc(t('documents.shared'))}</span>` : ''}
     </div>
     <div class="doc-actions">
       ${doc.file_url ? `<a class="btn btn-outline btn-sm" href="${esc(safeUrl(doc.file_url))}" download="${esc(doc.file_name || 'doc')}">${icon('download', { size: 14 })} ${esc(t('documents.download'))}</a>` : ''}

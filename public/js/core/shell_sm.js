@@ -157,6 +157,23 @@ function syncRightRail(name) {
   if (RAIL_ROUTES.has(name)) renderRightRail().catch(() => {});
 }
 
+/* ------------------------------------------------------------
+   3c. CONTENT WIDTH — one variable (--page-w), one class.
+   Grids and list-heavy screens get the wider track; prose — the
+   feed, a profile, a post, the DM thread — stays on --feed-w,
+   where lines of text stay readable. Toggled centrally here, from
+   the route, so no view paints its own width.
+   ------------------------------------------------------------ */
+const WIDE_ROUTES = new Set([
+  'explore', 'channels', 'events', 'qa', 'saved',
+  'hub', 'marketplace', 'documents', 'classmates',
+  'leaderboard', 'notifications', 'settings'
+]);
+
+function syncContentWidth(name) {
+  $('#viewInner')?.classList.toggle('is-wide', WIDE_ROUTES.has(name));
+}
+
 async function renderRightRail() {
   const rail = $('#rightRail');
   if (!rail) return;
@@ -488,6 +505,7 @@ export function initShell() {
     syncNav(name);
     syncTopbar(name, arg);
     syncRightRail(name);
+    syncContentWidth(name);
     closeMenu();
     closeDrawer();
   });

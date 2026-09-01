@@ -255,6 +255,9 @@
   container-type: inline-size;
   container-name: feed;
 }
+/* the wider track for content-heavy pages — one variable, one class
+   (set by shell_sm.js per route), no per-page width hacks */
+.view-inner.is-wide { max-width: var(--page-w); }
 
 /* Posts adapt to the column, not the window — so a split screen
    narrows the card gracefully instead of clipping it. */
@@ -857,7 +860,7 @@
   }
 
   .main { height: calc(100dvh - 62px); }
-  .view-inner { max-width: none; }
+  .view-inner, .view-inner.is-wide { max-width: none; }
 
   /* list and thread become two screens instead of two columns */
   .dm-list {
@@ -1585,7 +1588,7 @@
    and two saturated blocks stacked read as a header, not as content. */
 .hub-strip {
   display: flex; align-items: center; gap: var(--s3);
-  margin: 0 var(--s4) var(--s3);
+  margin: 0 0 var(--s3);
   padding: var(--s2) var(--s3);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -1664,7 +1667,7 @@
    ============================================================ */
 .hub-hero {
   position: relative; overflow: hidden;
-  margin: var(--s4);
+  margin: var(--s4) 0 var(--s4);
   padding: var(--s5);
   border-radius: var(--r-xl);
   color: #fff;
@@ -1698,7 +1701,7 @@
   70%     { filter: brightness(.95); }
 }
 
-.hub-sec { margin: var(--s4); }
+.hub-sec { margin: 0 0 var(--s6); }
 .hub-sec-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--s3);
@@ -1706,26 +1709,26 @@
   font-size: var(--fs-lg); font-weight: 650;
 }
 
-/* quests */
+/* quests — one surface per screen: rows separated by hairlines, no
+   bordered boxes inside the page */
 .quest {
   /* align-items:center squeezed the 4px bar against the label because
      the 34px icon set the row height. Aligning to the start and
      giving the bar real room lets the meter read as a meter. */
   display: flex; align-items: flex-start; gap: var(--s3);
-  padding: var(--s3);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  margin-bottom: var(--s2);
-  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  padding: var(--s4) 0;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--t-fast) var(--ease);
 }
-.quest.done { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 7%, transparent); }
+.quest:hover { background: color-mix(in srgb, var(--hover) 70%, transparent); }
 .quest.done .quest-ic { background: var(--ok); color: #fff; }
 .quest.done .t-sm { text-decoration: line-through; color: var(--text-2); }
 .quest-ic {
   display: grid; place-items: center;
   width: 34px; height: 34px; flex-shrink: 0;
   border-radius: var(--r-sm);
-  background: var(--surface-2); color: var(--text-2);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand-on-tint);
 }
 
 /* The meter itself: taller, with space above it, and a fill that
@@ -1733,7 +1736,7 @@
 .quest .bar {
   height: 6px;
   margin-top: var(--s2);
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .quest .bar-fill {
   background: var(--grad);
@@ -1748,7 +1751,7 @@
 }
 
 /* badges */
-.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: var(--s2); }
+.badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: var(--s3); }
 .badge {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: var(--s3) var(--s2);
@@ -1799,7 +1802,7 @@
    would have silently matched nothing and left the page-sized 96px
    bottom padding inside a card. */
 #boardList .lb-table { padding: 0 0 var(--s1); }
-#boardList .lb-row { padding-inline: var(--s2); }
+#boardList .lb-row { padding-inline: 0; }
 #boardList .lb-row:last-child { border-bottom: none; }
 
 /* confetti */
@@ -1816,7 +1819,12 @@
 /* ============================================================
    PROFILE
    ============================================================ */
-.pf-cover { position: relative; height: 160px; overflow: hidden; }
+/* the banner breaks out of the view's side gutters so it reads as a
+   full-bleed cover; the card keeps its s4/s3 margin inside it */
+.pf-cover {
+  position: relative; height: 160px; overflow: hidden;
+  margin-inline: calc(-1 * clamp(0px, 1.5vw, var(--s4)));
+}
 .pf-cover-img {
   position: absolute; inset: 0;
   transform: scale(calc(1 + var(--shrink, 0) * .08));
@@ -1828,44 +1836,66 @@
 .pf-cover-edit:hover { background: rgba(0,0,0,.6); color: #fff; }
 
 /* ---------- THE PROFILE *IS* THE STUDENT CARD ----------------
-   Not a card widget inside the profile — the head itself is the
-   card. A panel lifted over the banner, a SQUARE photo pinned to
-   its inline-start corner, and a strip of printed fields under the
-   identity. Nothing here imitates the official Algerian card: no
-   chip, no barcode, no QR, no state wording — a hairline of Koliya
-   gradient along the top edge and the app's own type scale.
+   The banner is full-bleed and NOTHING overlaps it: the card starts
+   exactly where the banner ends (zero negative margin), so the
+   card's top border is the banner's bottom edge and is visible all
+   the way across. The SQUARE photo straddles that seam — exactly
+   half above, half below — and is never clipped: instead of an
+   overflow:hidden on the card fighting a negative margin, .pf-head
+   reserves the overhang as padding-top and the avatar wrap pulls
+   up by half its own (fixed) height.
+   Nothing here imitates the official Algerian card: no chip, no
+   barcode, no QR, no state wording — a 3px gradient hairline along
+   the card's top edge and the app's own type scale.
    Logical properties throughout, so Arabic mirrors it for free. */
 .pf-idcard {
   position: relative;
-  margin: -40px var(--s4) 0;
-  padding: var(--s4);
+  margin: 0 var(--s4);
+  padding: 0 var(--s4) var(--s4);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background:
     radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 60%),
     var(--surface);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  /* NO overflow:hidden — that used to slice off the half of the
+     photo that hangs above the seam. The ::before hairline now
+     follows the card's own corner radius, so nothing needs clipping. */
 }
 /* the one flourish: a gradient hairline where a card would have its
-   printed band. Symmetric, so RTL needs nothing. */
+   printed band. It follows the card's rounded top corners itself,
+   which is why the card no longer needs overflow:hidden. Symmetric,
+   so RTL needs nothing. */
 .pf-idcard::before {
-  content: ''; position: absolute; inset: 0 0 auto 0;
-  height: 3px; background: var(--grad);
+  content: ''; position: absolute; top: 0; inset-inline: 0;
+  height: 3px; border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--grad);
 }
 [data-theme="dark"] .pf-idcard { border-color: var(--border-strong); }
 
+/* Photo overhang = half the ring's outer height (96 photo + 8 ring
+   = 104, half = 52). padding-top reserves it as real layout space;
+   the wrap's negative margin pulls only the photo back over the
+   seam. The two values always move together. */
 .pf-head {
   display: flex; align-items: flex-start;
-  gap: var(--s4); padding: 0;
+  gap: var(--s4);
+  padding-top: 52px;
 }
 
 /* ---- the photo: SQUARE, as on a card. The XP ring keeps working —
    a conic gradient does not care about the corner radius. ---- */
-.pf-avatar-wrap { position: relative; margin-top: -68px; flex: none; }
+.pf-avatar-wrap {
+  position: relative;
+  flex: none;
+  margin-top: -52px;            /* half the ring hangs over the seam */
+  z-index: 1;                   /* above the card border + hairline */
+}
 .pf-avatar-wrap .av-ring {
-  padding: 4px; background-color: var(--bg);
-  border-radius: calc(var(--r-lg) + 6px);
+  padding: 4px;
+  /* concentric with the square: photo radius (20) + ring pad (4) */
+  border-radius: calc(var(--r-lg) + 4px);
+  background-color: var(--bg);
 }
 .pf-avatar-wrap .av {
   width: 96px; height: 96px;
@@ -1873,6 +1903,8 @@
   border-radius: var(--r-lg);
   font-size: var(--fs-2xl);
 }
+/* the image is inset by the 4px pin ring, so its radius is the photo
+   radius minus the ring width — concentric corners inside and out */
 .pf-avatar-wrap .av img { border-radius: calc(var(--r-lg) - 4px); }
 .pf-avatar-edit {
   position: absolute; bottom: 2px; inset-inline-end: 2px;
@@ -1885,16 +1917,17 @@
   transform: translateX(-50%);
   padding: 2px 10px; border-radius: var(--r-full);
   background: var(--grad); color: #fff;
-  font-size: 10.5px; font-weight: 700;
+  font-size: var(--fs-xs); font-weight: 700;
   box-shadow: var(--glow);
   white-space: nowrap;
 }
 
-/* ---- identity block ---- */
-.pf-who { min-width: 0; flex: 1; padding-top: var(--s1); }
+/* ---- identity block: its top edge lines up with the photo's
+   bottom half at the seam, not squashed under the picture ---- */
+.pf-who { min-width: 0; flex: 1; padding-top: var(--s3); }
 .pf-eyebrow {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 9.5px; font-weight: 700;
+  font-size: var(--fs-xs); font-weight: 700;
   letter-spacing: .14em; text-transform: uppercase;
   color: var(--text-3);
 }
@@ -1902,32 +1935,35 @@
   display: grid; place-items: center;
   width: 16px; height: 16px; border-radius: 5px;
   background: var(--grad); color: #fff;
-  font-size: 10px; font-weight: 800; letter-spacing: 0;
+  font-size: var(--fs-xs); font-weight: 800; letter-spacing: 0;
 }
-.pf-name-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-top: 2px; }
+.pf-name-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; margin-top: var(--s1); }
 .pf-name { font-size: var(--fs-xl); line-height: 1.2; }
-.pf-handle-line { margin-top: 2px; }
+.pf-handle-line { margin-top: var(--s1); }
 
 .pf-actions { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.pf-actions .btn { white-space: nowrap; }
 
 /* ---- the printed field strip ----
-   A dashed rule separates it from the identity the way a card's
-   data block is separated from the photo block. */
+   One hairline separates it from the identity, like a card's data
+   block. No panel, no second background: the card is the only
+   surface here. Rhythm on the 4px scale: s4 above the rule, s3
+   between rule and values. */
 .pf-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: var(--s3) var(--s4);
   margin-top: var(--s4); padding-top: var(--s3);
-  border-top: 1px dashed var(--border-strong, var(--border));
+  border-top: 1px solid var(--border);
 }
 .pf-field { min-width: 0; }
 .pf-field-label {
-  font-size: 9.5px; font-weight: 700;
+  font-size: var(--fs-xs); font-weight: 700;
   letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-3);
 }
 .pf-field-value {
-  margin: 2px 0 0;
+  margin-top: var(--s1);
   font-size: var(--fs-sm); font-weight: 600; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1940,7 +1976,7 @@
 }
 
 .pf-identity { padding: var(--s4) 0 0; display: flex; flex-direction: column; gap: var(--s2); }
-.pf-bio { font-size: var(--fs-md); line-height: 1.55; margin-top: var(--s1); }
+.pf-bio { font-size: var(--fs-md); line-height: 1.55; }
 
 .pf-stats { display: flex; gap: var(--s5); margin-top: var(--s2); flex-wrap: wrap; }
 
@@ -1956,7 +1992,7 @@
 .people-row > a { text-decoration: none; color: inherit; }
 .people-row [data-remove] { flex-shrink: 0; }
 .pf-stat {
-  display: flex; align-items: baseline; gap: 5px;
+  display: flex; align-items: baseline; gap: var(--s1);
   font-size: var(--fs-sm); color: var(--text-2);
   border-radius: var(--r-sm);
 }
@@ -1974,23 +2010,30 @@ button.pf-stat:hover span { text-decoration: underline; }
 }
 
 .pf-tabs { top: 0; }
-.pf-tab { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.pf-tab { display: flex; align-items: center; justify-content: center; gap: var(--s1); }
 
-.pf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 3px; }
+.pf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s1); padding: var(--s1); }
 .pf-tile { aspect-ratio: 1; overflow: hidden; background: var(--surface-2); cursor: zoom-in; }
 .pf-tile img { width: 100%; height: 100%; object-fit: cover; transition: transform var(--t) var(--ease); }
 .pf-tile:hover img { transform: scale(1.05); }
 
 @media (max-width: 600px) {
-  /* On a phone the card runs edge to edge and the actions drop under
-     the identity — three buttons beside an 80px photo left the name
-     with about six characters of room. */
-  .pf-idcard { margin-inline: var(--s3); padding: var(--s3); }
-  .pf-head { flex-wrap: wrap; gap: var(--s3); }
-  .pf-avatar-wrap { margin-top: -52px; }
-  .pf-avatar-wrap .av { width: 80px; height: 80px; }
-  .pf-who { flex-basis: 60%; }
-  .pf-actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+  /* Same seam, same idea on a phone: the card gets an s3 gutter,
+     the banner stays full-bleed. The photo is 76px: ring outer =
+     84, half = 42 — head padding and wrap margin move together.
+     Actions drop to their own full-width row UNDER the identity so
+     the name is never squeezed to a few characters. */
+  .pf-cover { height: 128px; }
+  .pf-idcard { margin-inline: var(--s3); padding: 0 var(--s3) var(--s3); }
+  .pf-head { flex-wrap: wrap; gap: var(--s3); padding-top: 42px; }
+  .pf-avatar-wrap { margin-top: -42px; }
+  .pf-avatar-wrap .av { width: 76px; height: 76px; }
+  .pf-who { flex: 1 1 auto; min-width: 0; padding-top: var(--s2); }
+  .pf-actions {
+    order: 3; width: 100%;
+    flex-wrap: wrap;
+  }
+  .pf-actions .btn { flex: 1 1 auto; }
   .pf-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2) var(--s3); }
   .pf-stats { gap: var(--s4); }
 }
@@ -2112,6 +2155,7 @@ button.pf-stat:hover span { text-decoration: underline; }
   transition: background var(--t-fast) var(--ease);
 }
 .cc:hover { background: var(--hover); }
+.cc .t-bold { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-ic {
   display: grid; place-items: center;
   width: 46px; height: 46px; flex-shrink: 0;
@@ -2127,6 +2171,7 @@ button.pf-stat:hover span { text-decoration: underline; }
   transition: background var(--t-fast) var(--ease);
 }
 .ev:hover { background: var(--hover); }
+.ev .t-bold { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ev-date {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   width: 52px; height: 56px; flex-shrink: 0;
@@ -2144,6 +2189,8 @@ button.pf-stat:hover span { text-decoration: underline; }
   transition: background var(--t-fast) var(--ease);
 }
 .qa:hover { background: var(--hover); }
+.qa p { word-break: break-word; }
+.qa .t-bold { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qa-best {
   margin-top: var(--s3); padding: var(--s3);
   border-radius: var(--r);
@@ -2268,16 +2315,17 @@ button.pf-stat:hover span { text-decoration: underline; }
 .lb-head {
   position: sticky; top: 0; z-index: var(--z-sticky);
   display: flex; flex-direction: column; gap: var(--s3);
-  padding: var(--s4);
+  padding: var(--s4) var(--s4) var(--s4);
   border-bottom: 1px solid var(--border);
   background: var(--bar); backdrop-filter: blur(var(--blur-bar));
 }
 .lb-title { display: flex; align-items: center; gap: var(--s3); }
 .lb-title-ic {
-  display: grid; place-items: center;
-  width: 40px; height: 40px; border-radius: var(--r);
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: var(--r);
   background: var(--grad); color: #fff; box-shadow: var(--glow);
 }
+.lb-title .t-bold { font-size: var(--fs-2xl); letter-spacing: -.02em; line-height: 1.15; }
 .lb-filters { display: flex; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
 
 /* ONE TABLE — gold / silver / bronze rank chips, nothing else.
@@ -2295,8 +2343,6 @@ button.pf-stat:hover span { text-decoration: underline; }
   text-transform: uppercase;
   letter-spacing: .04em;
   border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; z-index: 1;
-  background: var(--bg);
 }
 /* the header's avatar column has no header text, but the rows do —
    reserve it so the columns line up */
@@ -2565,11 +2611,12 @@ button.pf-stat:hover span { text-decoration: underline; }
 .pe-avatar .av {
   width: 96px; height: 96px;
   border: 4px solid var(--surface);
-  border-radius: var(--r-full);
+  border-radius: var(--r-lg);
   overflow: hidden;
   font-size: var(--fs-2xl);
   box-shadow: var(--shadow);
 }
+.pe-avatar .av img { border-radius: calc(var(--r-lg) - 4px); }
 .pe-avatar .av img { width: 100%; height: 100%; object-fit: cover; }
 
 .pe-cam {
@@ -2640,16 +2687,15 @@ button.pf-stat:hover span { text-decoration: underline; }
 /* profile links row */
 .pf-links { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
 .pf-link {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 11px;
+  display: inline-flex; align-items: center; gap: var(--s1);
+  padding: var(--s1) var(--s3);
   border-radius: var(--r-full);
   border: 1px solid var(--border);
-  background: var(--surface-2);
   color: var(--text-2);
   font-size: var(--fs-xs); font-weight: 550;
-  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
-.pf-link:hover { border-color: var(--brand); color: var(--brand); }
+.pf-link:hover { border-color: var(--brand); color: var(--brand); background: var(--hover); }
 
 /* the profile avatar and banner now hold real photos */
 #pfAvatar { overflow: hidden; }
@@ -2852,29 +2898,31 @@ button.pf-stat:hover span { text-decoration: underline; }
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--s2);
 }
+/* language cards live inside the surface section card: hairlines,
+   not a second filled box */
 .lang-card {
   position: relative;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1);
   padding: var(--s3) var(--s4);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  background: var(--surface);
   text-align: start;
   transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
 .lang-card:hover { border-color: var(--border-strong); background: var(--hover); }
 .lang-card.on {
-  border-color: var(--brand);
-  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--border));
+  background: color-mix(in srgb, var(--brand) 7%, transparent);
 }
 .lang-badge {
   display: grid; place-items: center;
   min-width: 30px; height: 24px;
-  padding: 0 7px;
-  margin-bottom: 4px;
+  padding: 0 var(--s2);
+  margin-bottom: var(--s1);
   border-radius: var(--r-sm);
-  background: var(--surface-2);
-  font-size: 11px; font-weight: 800; letter-spacing: .04em;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand-on-tint);
+  font-size: var(--fs-xs); font-weight: 800; letter-spacing: .04em;
 }
 .lang-card.on .lang-badge { background: var(--brand); color: #fff; }
 .lang-native { font-size: var(--fs-base); font-weight: 650; }
@@ -2889,7 +2937,9 @@ button.pf-stat:hover span { text-decoration: underline; }
    SETTINGS
    ============================================================ */
 
-.settings { padding: var(--s4) 0 var(--s12); display: flex; flex-direction: column; gap: var(--s4); }
+/* settings read as a list of sections, not a wall of panels: a max
+   width keeps the rows readable on the wide track. */
+.settings { max-width: 760px; margin-inline: auto; padding: var(--s4) 0 var(--s12); display: flex; flex-direction: column; gap: var(--s4); }
 
 .set-sec {
   padding: var(--s4);
@@ -2902,8 +2952,8 @@ button.pf-stat:hover span { text-decoration: underline; }
   display: grid; place-items: center;
   width: 34px; height: 34px; flex-shrink: 0;
   border-radius: var(--r-sm);
-  background: var(--surface-2);
-  color: var(--text-2);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand-on-tint);
 }
 .set-title { font-size: var(--fs-base); font-weight: 650; }
 .set-hint { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.45; margin-top: 2px; }
@@ -2944,8 +2994,12 @@ button.pf-stat:hover span { text-decoration: underline; }
 .perm-chip.warn { background: color-mix(in srgb, #F59E0B 16%, transparent);       color: #B45309; }
 .perm-chip.off  { background: var(--surface-2);                                   color: var(--text-3); }
 
-/* segmented control */
-.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r); background: var(--surface-2); }
+/* segmented control — a hairline track on the card, not a filled box */
+.seg {
+  display: inline-flex; padding: 3px; gap: 2px;
+  border-radius: var(--r);
+  background: var(--hover);
+}
 .seg-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 13px;
@@ -2955,7 +3009,10 @@ button.pf-stat:hover span { text-decoration: underline; }
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .seg-btn:hover { color: var(--text); }
-.seg-btn.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.seg-btn.on {
+  background: var(--surface); color: var(--text);
+  box-shadow: var(--shadow-xs);
+}
 
 
 /* ============================================================
@@ -3378,23 +3435,36 @@ button.pf-stat:hover span { text-decoration: underline; }
 .nav-drawer-link:hover { background: var(--hover); }
 .nav-drawer-link svg { flex-shrink: 0; }
 
-/* ---- Marketplace ---- */
+/* ---- Page heads: one rhythm on every tab ----
+   A page title (fs-2xl), a one-line subtitle, and the primary action
+   pinned to the inline-end of the same row. */
 .page-head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: var(--s3); padding: var(--s4) 0; margin-bottom: var(--s2);
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--s3); padding: var(--s5) 0 var(--s4); flex-wrap: wrap;
 }
-.page-title { font-size: var(--fs-xl); font-weight: 750; letter-spacing: -.02em; }
-.page-sub { color: var(--text-2); font-size: var(--fs-sm); }
-.mp-filters { display: flex; gap: var(--s2); overflow-x: auto; padding: var(--s2) 0 var(--s3); }
+.page-head > div { min-width: 0; }
+@media (max-width: 560px) {
+  .page-head { align-items: center; padding: var(--s4) 0 var(--s3); }
+}
+.page-title { font-size: var(--fs-2xl); font-weight: 750; letter-spacing: -.02em; line-height: 1.15; }
+.page-sub { color: var(--text-2); font-size: var(--fs-sm); margin-top: var(--s1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-head .btn { flex: none; }
+
+/* ---- Marketplace ---- */
+.mp-filters { display: flex; gap: var(--s2); overflow-x: auto; padding: 0 0 var(--s4); scrollbar-width: none; }
+.mp-filters::-webkit-scrollbar { display: none; }
 .mp-filter {
   flex: 0 0 auto; min-height: 36px; padding: 0 var(--s4);
   border-radius: var(--r-full); border: 1px solid var(--border);
   background: var(--surface); color: var(--text-2); font-size: var(--fs-sm); font-weight: 550;
 }
 .mp-filter.on { color: #fff; background: var(--grad); border-color: transparent; }
+/* the grid is the surface: cards keep theirs, the page behind does
+   not. 16px gap, min 200px cards, and auto-fill never stretches an
+   orphan card to fill the track. */
 .mp-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--s3); padding-bottom: var(--s8);
+  gap: var(--s4); padding-bottom: var(--s8);
 }
 .mp-card {
   overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-lg);
@@ -3402,8 +3472,8 @@ button.pf-stat:hover span { text-decoration: underline; }
 }
 .mp-img { aspect-ratio: 4 / 3; background: var(--surface-2); object-fit: cover; width: 100%; }
 .mp-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mp-body { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s3); flex: 1; }
-.mp-title { font-weight: 650; font-size: var(--fs-md); }
+.mp-body { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s3); flex: 1; min-width: 0; }
+.mp-title { font-weight: 650; font-size: var(--fs-md); overflow-wrap: break-word; }
 .mp-price { color: var(--brand); font-weight: 750; font-size: var(--fs-md); }
 .mp-sub { color: var(--text-2); font-size: var(--fs-xs); }
 .mp-status {
@@ -3412,59 +3482,85 @@ button.pf-stat:hover span { text-decoration: underline; }
 }
 .mp-status.available { background: color-mix(in srgb, var(--ok, #16A34A) 14%, transparent); color: var(--ok, #16A34A); }
 .mp-status.sold, .mp-status.removed { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
-.mp-actions { display: flex; gap: var(--s1); margin-top: auto; padding-top: var(--s2); }
-.mp-actions .btn { flex: 1; }
+.mp-actions { display: flex; gap: var(--s1); margin-top: auto; padding-top: var(--s2); flex-wrap: wrap; }
 .mp-form-img { width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--r); }
 
-/* ---- Documents ---- */
-.doc-shelf-title { font-size: var(--fs-lg); font-weight: 700; margin: var(--s5) 0 var(--s2); }
-.doc-list { display: flex; flex-direction: column; gap: var(--s2); padding-bottom: var(--s8); }
-.doc-row {
-  display: flex; align-items: center; gap: var(--s3); padding: var(--s3);
-  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
+/* ---- Documents ----
+   The grid is the layout, each doc is a card (one surface), the
+   shelf title is a hairline-separated section heading. */
+.doc-shelf-title {
+  display: flex; align-items: center; gap: var(--s3);
+  font-size: var(--fs-md); font-weight: 700;
+  margin: var(--s5) 0 var(--s3); padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--border);
 }
-.doc-row:hover { border-color: var(--border-strong); }
+.doc-shelf-title:first-child { margin-top: 0; }
+.doc-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s4); padding-bottom: var(--s8);
+}
+.doc-row {
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.doc-row:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.doc-head { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
 .doc-kind {
   width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--r);
   display: grid; place-items: center; background: color-mix(in srgb, var(--brand) 12%, transparent);
   color: var(--brand);
 }
 .doc-body { flex: 1; min-width: 0; }
-.doc-title { font-weight: 650; font-size: var(--fs-md); }
-.doc-meta { color: var(--text-2); font-size: var(--fs-xs); display: flex; flex-wrap: wrap; gap: var(--s2); }
+.doc-title {
+  font-weight: 650; font-size: var(--fs-md);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-meta { color: var(--text-2); font-size: var(--fs-xs); display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
 .doc-shared { color: var(--brand); }
-.doc-actions { display: flex; gap: var(--s1); }
-.file-name { font-size: var(--fs-xs); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-actions { display: flex; gap: var(--s1); margin-top: auto; }
+.doc-actions .btn { white-space: nowrap; }
+.doc-actions a.btn { flex: 1; }
+.file-name {
+  font-size: var(--fs-xs); color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-top: var(--s1);
+}
 
-/* ---- Classmates ---- */
-.clm-fac {
-  border: 1px solid var(--border); border-radius: var(--r-lg);
-  background: var(--surface); overflow: hidden; margin-bottom: var(--s4);
-}
+/* ---- Classmates ----
+   Faculty groups are separated by a heading + hairline, not boxes.
+   Person cards are the only surface. */
+.clm-fac { margin-bottom: var(--s6); }
 .clm-fac-head {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
-  padding: var(--s3) var(--s4); background: color-mix(in srgb, var(--brand) 7%, transparent);
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2);
+  padding-bottom: var(--s2); margin-bottom: var(--s3);
+  border-bottom: 1px solid var(--border);
 }
-.clm-fac-name { font-weight: 700; }
-.clm-fac-count { color: var(--text-2); font-size: var(--fs-sm); }
+.clm-fac-name { font-size: var(--fs-lg); font-weight: 700; }
+.clm-fac-count { color: var(--text-2); font-size: var(--fs-sm); flex-shrink: 0; }
 .clm-level-title {
-  padding: var(--s2) var(--s4); font-size: var(--fs-sm); font-weight: 700; color: var(--text-2);
-  border-top: 1px solid var(--border);
+  padding: var(--s2) 0; font-size: var(--fs-sm); font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .06em;
 }
 .clm-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--s2); padding: var(--s2) var(--s3) var(--s3);
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--s4); padding: 0 0 var(--s3);
 }
 .clm-card {
-  display: flex; align-items: center; gap: var(--s2); padding: var(--s2);
-  border-radius: var(--r); border: 1px solid var(--border); color: var(--text);
+  display: flex; align-items: center; gap: var(--s3); padding: var(--s3);
+  border-radius: var(--r); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
 }
-.clm-card:hover { border-color: var(--border-strong); background: var(--hover); }
+.clm-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.clm-card .av { flex-shrink: 0; }
 .clm-card .grow { min-width: 0; }
-.clm-level-selects { display: flex; gap: var(--s2); padding: var(--s2) 0 var(--s4); flex-wrap: wrap; }
-.clm-level-selects .select { min-width: 180px; }
+.clm-level-selects { display: flex; gap: var(--s2); padding: 0 0 var(--s4); flex-wrap: wrap; }
+.clm-level-selects .input { flex: 1; min-width: 180px; }
+.clm-level-selects .select { min-width: 150px; }
 @media (max-width: 600px) {
-  .mp-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  .doc-row { align-items: flex-start; flex-wrap: wrap; }
-  .doc-actions { width: 100%; }
+  .mp-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s3); }
+  .doc-list { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
 }
